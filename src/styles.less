@@ -15,6 +15,52 @@
   --lane-width: 272px;
 }
 
+.kanban-plugin__new-board-modal,
+.kanban-plugin__new-card-modal {
+  padding: 22px 26px;
+
+  h2 {
+    margin: 0 0 14px 0;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+  }
+}
+
+.kanban-plugin__new-board-input {
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: var(--input-radius);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  font-size: 15px;
+}
+
+.kanban-plugin__new-board-actions {
+  display: flex;
+  gap: 10px;
+
+  button {
+    padding: 8px 12px;
+    border-radius: var(--button-radius);
+  }
+}
+
+.kanban-plugin__item-title-line-wrapper {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  text-align: center;
+  color: var(--text-normal);
+}
+
+.kanban-plugin__item-title-line-text {
+  font-weight: 700;
+  text-align: center;
+}
+
 .kanban-plugin {
   contain: content;
   height: 100%;
@@ -322,6 +368,25 @@ button.kanban-plugin__search-cancel-button .kanban-plugin__icon {
   }
 }
 
+.kanban-plugin__lane-body {
+  overflow: hidden;
+  max-height: 2000px;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-height 200ms ease,
+    opacity 200ms ease,
+    transform 200ms ease;
+}
+
+.kanban-plugin__lane-body.is-opening,
+.kanban-plugin__lane-body.is-closing {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
 .kanban-plugin__placeholder.kanban-plugin__lane-placeholder {
   height: 100%;
   flex-grow: 1;
@@ -411,7 +476,7 @@ button.kanban-plugin__lane-action-add {
   width: auto;
 
   .kanban-plugin__lane-header-wrapper {
-    writing-mode: vertical-lr;
+    writing-mode: horizontal-tb;
   }
 
   .kanban-plugin__lane-header-wrapper {
@@ -420,7 +485,7 @@ button.kanban-plugin__lane-action-add {
 
   .kanban-plugin__lane-title-count,
   .kanban-plugin__lane-title-text {
-    transform: rotate(180deg);
+    transform: none;
   }
 
   .kanban-plugin__lane-settings-button-wrapper {

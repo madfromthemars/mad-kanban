@@ -16,6 +16,7 @@ import {
   LaneTemplate,
 } from 'src/components/types';
 import { laneTitleWithMaxItems } from 'src/helpers';
+import { buildLink, getListFilePathFromBoardPath } from 'src/kanbanFileHelpers';
 import { defaultSort } from 'src/helpers/util';
 import { t } from 'src/lang/helpers';
 import { visit } from 'unist-util-visit';
@@ -445,7 +446,16 @@ export function boardToMd(board: Board) {
     return md + laneToMd(lane);
   }, '');
 
+  const listLinks =
+    board.children.length > 0
+      ? `\n${board.children
+          .map((lane) => buildLink(getListFilePathFromBoardPath(board.id, lane.data.title)))
+          .join(' ')}\n\n`
+      : '';
+
   const frontmatter = ['---', '', stringifyYaml(board.data.frontmatter), '---', '', ''].join('\n');
 
-  return frontmatter + lanes + archiveToMd(board.data.archive) + settingsToCodeblock(board);
+  return (
+    frontmatter + lanes + listLinks + archiveToMd(board.data.archive) + settingsToCodeblock(board)
+  );
 }

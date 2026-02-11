@@ -2,6 +2,14 @@ import { EditorView } from '@codemirror/view';
 import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'preact/compat';
 import useOnclickOutside from 'react-cool-onclickoutside';
 import { t } from 'src/lang/helpers';
+import {
+  addBoardLinkToListFile,
+  ensureFolder,
+  getBoardFolderPath,
+  getListFilePath,
+  getListFolderPath,
+  sanitizeName,
+} from 'src/kanbanFileHelpers';
 import { parseLaneTitle } from 'src/parsers/helpers/parser';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
@@ -29,13 +37,36 @@ export function LaneForm({ onNewLane, closeLaneForm }: LaneFormProps) {
   }, []);
 
   const createLane = useCallback(
-    (cm: EditorView, title: string) => {
+    async (cm: EditorView, title: string) => {
+      const parsed = parseLaneTitle(title);
+      const rawTitle = parsed.title.trim() ? parsed.title : t('Untitled');
+      const sanitizedTitle = sanitizeName(rawTitle);
+
+      if (sanitizedTitle) {
+        try {
+          const vault = stateManager.app.vault;
+          const boardFolderPath = getBoardFolderPath(stateManager.file);
+          await ensureFolder(vault, boardFolderPath);
+
+          const listFolderPath = getListFolderPath(stateManager.file, rawTitle);
+          await ensureFolder(vault, listFolderPath);
+
+          const listFilePath = getListFilePath(stateManager.file, rawTitle);
+          if (!vault.getAbstractFileByPath(listFilePath)) {
+            await vault.create(listFilePath, '');
+          }
+          await addBoardLinkToListFile(stateManager.app, listFilePath, stateManager.file.path);
+        } catch (e) {
+          console.error('Error creating list artifacts:', e);
+        }
+      }
+
       boardModifiers.addLane({
         ...LaneTemplate,
         id: generateInstanceId(),
         children: [],
         data: {
-          ...parseLaneTitle(title),
+          ...parsed,
           shouldMarkItemsComplete: shouldMarkAsComplete,
         },
       });
@@ -51,21 +82,21 @@ export function LaneForm({ onNewLane, closeLaneForm }: LaneFormProps) {
       setShouldMarkAsComplete(false);
       onNewLane();
     },
-    [onNewLane, setShouldMarkAsComplete, boardModifiers]
+    [onNewLane, setShouldMarkAsComplete, boardModifiers, stateManager]
   );
 
   const editState = useMemo(() => ({ x: 0, y: 0 }), []);
   const onEnter = useCallback(
     (cm: EditorView, mod: boolean, shift: boolean) => {
       if (!allowNewLine(stateManager, mod, shift)) {
-        createLane(cm, cm.state.doc.toString());
+        void createLane(cm, cm.state.doc.toString());
         return true;
       }
     },
     [createLane]
   );
   const onSubmit = useCallback(
-    (cm: EditorView) => createLane(cm, cm.state.doc.toString()),
+    (cm: EditorView) => void createLane(cm, cm.state.doc.toString()),
     [createLane]
   );
 
@@ -93,7 +124,7 @@ export function LaneForm({ onNewLane, closeLaneForm }: LaneFormProps) {
           className={c('lane-action-add')}
           onClick={() => {
             if (editorRef.current) {
-              createLane(editorRef.current, editorRef.current.state.doc.toString());
+              void createLane(editorRef.current, editorRef.current.state.doc.toString());
             }
           }}
         >

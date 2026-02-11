@@ -1,7 +1,16 @@
 import animateScrollTo from 'animated-scroll-to';
 import classcat from 'classcat';
 import update from 'immutability-helper';
-import { Fragment, memo, useCallback, useContext, useMemo, useRef, useState } from 'preact/compat';
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'preact/compat';
 import {
   DraggableProps,
   Droppable,
@@ -78,6 +87,27 @@ function DraggableLaneRaw({
       });
     });
   }, [stateManager, laneIndex]);
+
+  const [showBody, setShowBody] = useState(!isCollapsed);
+  const [isOpening, setIsOpening] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  useEffect(() => {
+    if (isCollapsed) {
+      if (!showBody) return;
+      setIsClosing(true);
+      const timeout = activeWindow.setTimeout(() => {
+        setShowBody(false);
+        setIsClosing(false);
+      }, 200);
+      return () => activeWindow.clearTimeout(timeout);
+    }
+
+    setShowBody(true);
+    setIsOpening(true);
+    const raf = activeWindow.requestAnimationFrame(() => setIsOpening(false));
+    return () => activeWindow.cancelAnimationFrame(raf);
+  }, [isCollapsed, showBody]);
 
   const addItems = useCallback(
     (items: Item[]) => {
@@ -166,48 +196,64 @@ function DraggableLaneRaw({
               toggleIsCollapsed={toggleIsCollapsed}
             />
 
-            {!search?.query && !isCollapsed && shouldPrepend && (
-              <ItemForm
-                addItems={addItems}
-                hideButton={isCompactPrepend}
-                editState={editState}
-                setEditState={setEditState}
-              />
-            )}
-
-            {!isCollapsed && (
-              <DroppableComponent
-                elementRef={elementRef}
-                measureRef={measureRef}
-                id={lane.id}
-                index={laneIndex}
-                data={lane}
+            {showBody && (
+              <div
+                className={classcat([
+                  c('lane-body'),
+                  {
+                    'is-opening': isOpening,
+                    'is-closing': isClosing,
+                  },
+                ])}
               >
-                <ScrollContainer
-                  className={classcat([c('lane-items'), c('vertical')])}
+                {!search?.query && shouldPrepend && (
+                  <ItemForm
+                    addItems={addItems}
+                    hideButton={isCompactPrepend}
+                    editState={editState}
+                    setEditState={setEditState}
+                    listTitle={lane.data.title}
+                  />
+                )}
+
+                <DroppableComponent
+                  elementRef={elementRef}
+                  measureRef={measureRef}
                   id={lane.id}
                   index={laneIndex}
-                  isStatic={isStatic}
-                  triggerTypes={laneAccepts}
+                  data={lane}
                 >
-                  <SortableComponent onSortChange={setIsSorting} axis="vertical">
-                    <Items
-                      items={lane.children}
-                      isStatic={isStatic}
-                      shouldMarkItemsComplete={shouldMarkItemsComplete}
-                    />
-                    <SortPlaceholder
-                      accepts={laneAccepts}
-                      index={lane.children.length}
-                      isStatic={isStatic}
-                    />
-                  </SortableComponent>
-                </ScrollContainer>
-              </DroppableComponent>
-            )}
+                  <ScrollContainer
+                    className={classcat([c('lane-items'), c('vertical')])}
+                    id={lane.id}
+                    index={laneIndex}
+                    isStatic={isStatic}
+                    triggerTypes={laneAccepts}
+                  >
+                    <SortableComponent onSortChange={setIsSorting} axis="vertical">
+                      <Items
+                        items={lane.children}
+                        isStatic={isStatic}
+                        shouldMarkItemsComplete={shouldMarkItemsComplete}
+                      />
+                      <SortPlaceholder
+                        accepts={laneAccepts}
+                        index={lane.children.length}
+                        isStatic={isStatic}
+                      />
+                    </SortableComponent>
+                  </ScrollContainer>
+                </DroppableComponent>
 
-            {!search?.query && !isCollapsed && !shouldPrepend && (
-              <ItemForm addItems={addItems} editState={editState} setEditState={setEditState} />
+                {!search?.query && !shouldPrepend && (
+                  <ItemForm
+                    addItems={addItems}
+                    editState={editState}
+                    setEditState={setEditState}
+                    listTitle={lane.data.title}
+                  />
+                )}
+              </div>
             )}
           </CollapsedDropArea>
         </div>

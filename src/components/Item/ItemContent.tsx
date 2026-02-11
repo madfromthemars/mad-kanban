@@ -8,11 +8,20 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'preact/hooks';
 import { StateManager } from 'src/StateManager';
+import { TFile } from 'obsidian';
 import { useNestedEntityPath } from 'src/dnd/components/Droppable';
 import { Path } from 'src/dnd/types';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
+import {
+  extractCardTitle,
+  findCardFilePathInListFile,
+  findCardFilePathInListFolder,
+  getListFilePath,
+  getListFolderPath,
+} from 'src/kanbanFileHelpers';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
 import {
@@ -30,6 +39,12 @@ import {
   constructMenuTimePickerOnChange,
   constructTimePicker,
 } from './helpers';
+
+const cardBodyCache = new Map<string, string>();
+
+function getCardCacheKey(boardPath: string, cardTitle: string) {
+  return `${boardPath}::${cardTitle}`;
+}
 
 export function useDatePickers(item: Item, explicitPath?: Path) {
   const { stateManager, boardModifiers } = useContext(KanbanContext);
@@ -82,6 +97,20 @@ export interface ItemContentProps {
   showMetadata?: boolean;
   editState: EditState;
   isStatic: boolean;
+}
+
+function splitTitleAndBody(titleRaw: string) {
+  const lines = titleRaw.split(/\r?\n/);
+  const first = lines[0]?.trim() ?? '';
+  return {
+    titleLine: first,
+    body: lines.slice(1).join('\n').trim(),
+  };
+}
+
+function combineTitleAndBody(titleLine: string, body: string) {
+  if (!body.trim()) return titleLine.trim();
+  return `${titleLine.trim()}\n${body.trim()}`;
 }
 
 function checkCheckbox(stateManager: StateManager, title: string, checkboxIndex: number) {
@@ -191,19 +220,49 @@ export const ItemContent = memo(function ItemContent({
   const { stateManager, filePath, boardModifiers } = useContext(KanbanContext);
   const getDateColor = useGetDateColorFn(stateManager);
   const titleRef = useRef<string | null>(null);
+  const [externalBody, setExternalBody] = useState<string | null>(null);
+  const { titleLine, body } = useMemo(
+    () => splitTitleAndBody(item.data.titleRaw),
+    [item.data.titleRaw]
+  );
+  const path = useNestedEntityPath();
+  const cardTitle = useMemo(() => extractCardTitle(item.data.titleRaw), [item.data.titleRaw]);
+  const cacheKey = useMemo(
+    () => (cardTitle ? getCardCacheKey(stateManager.file.path, cardTitle) : ''),
+    [stateManager.file.path, cardTitle]
+  );
+  const laneTitle = useMemo(
+    () => stateManager.state?.children?.[path[0]]?.data?.title || '',
+    [stateManager.state, path]
+  );
+  const [cardFilePath, setCardFilePath] = useState<string>('');
+  const lastCardFilePathRef = useRef<string>('');
+  const lastExternalBodyRef = useRef<string>('');
 
   useEffect(() => {
     if (editState === EditingState.complete) {
       if (titleRef.current !== null) {
-        boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRef.current));
+        const updatedBody = titleRef.current;
+        if (cardFilePath) {
+          const target = stateManager.app.vault.getAbstractFileByPath(cardFilePath);
+          if (target && target instanceof TFile) {
+            void stateManager.app.vault.modify(target, updatedBody);
+            setExternalBody(updatedBody);
+            if (cacheKey) {
+              cardBodyCache.set(cacheKey, updatedBody);
+            }
+          }
+        } else {
+          const updated = combineTitleAndBody(titleLine, updatedBody);
+          boardModifiers.updateItem(path, stateManager.updateItemContent(item, updated));
+        }
       }
       titleRef.current = null;
     } else if (editState === EditingState.cancel) {
       titleRef.current = null;
     }
-  }, [editState, stateManager, item]);
+  }, [editState, stateManager, item, cardFilePath, titleLine, boardModifiers, path]);
 
-  const path = useNestedEntityPath();
   const { onEditDate, onEditTime } = useDatePickers(item);
   const onEnter = useCallback(
     (cm: EditorView, mod: boolean, shift: boolean) => {
@@ -254,6 +313,75 @@ export const ItemContent = memo(function ItemContent({
     [path, boardModifiers, stateManager, item]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!laneTitle || !cardTitle) {
+      setCardFilePath('');
+      setExternalBody(null);
+      lastCardFilePathRef.current = '';
+      lastExternalBodyRef.current = '';
+      return;
+    }
+
+    if (lastCardFilePathRef.current) {
+      const basename = lastCardFilePathRef.current.split('/').pop() || '';
+      if (basename) {
+        const optimisticPath = `${getListFolderPath(stateManager.file, laneTitle)}/${basename}`;
+        setCardFilePath(optimisticPath);
+      }
+    }
+
+    const listFilePath = getListFilePath(stateManager.file, laneTitle);
+    const listFolderPath = getListFolderPath(stateManager.file, laneTitle);
+    void findCardFilePathInListFile(stateManager.app, listFilePath, cardTitle).then((path) => {
+      if (cancelled) return;
+      if (path) {
+        setCardFilePath(path);
+        return;
+      }
+
+      void findCardFilePathInListFolder(stateManager.app, listFolderPath, cardTitle).then(
+        (fallbackPath) => {
+          if (cancelled) return;
+          if (fallbackPath) {
+            setCardFilePath(fallbackPath);
+          }
+        }
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [laneTitle, cardTitle, stateManager.app, stateManager.file]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!cardFilePath) {
+      return;
+    }
+
+    const file = stateManager.app.vault.getAbstractFileByPath(cardFilePath);
+    if (!(file && file instanceof TFile)) {
+      return;
+    }
+
+    void stateManager.app.vault.read(file).then((content) => {
+      if (cancelled) return;
+      setExternalBody(content);
+      lastExternalBodyRef.current = content;
+      if (cacheKey) {
+        cardBodyCache.set(cacheKey, content);
+      }
+    });
+
+    lastCardFilePathRef.current = cardFilePath;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cardFilePath, stateManager.app.vault]);
+
   if (!isStatic && isEditing(editState)) {
     return (
       <div className={c('item-input-wrapper')}>
@@ -263,7 +391,7 @@ export const ItemContent = memo(function ItemContent({
           onEnter={onEnter}
           onEscape={onEscape}
           onSubmit={onSubmit}
-          value={item.data.titleRaw}
+          value={externalBody ?? body}
           onChange={(update) => {
             if (update.docChanged) {
               titleRef.current = update.state.doc.toString().trim();
@@ -274,25 +402,28 @@ export const ItemContent = memo(function ItemContent({
     );
   }
 
+  const cachedBody = cacheKey ? cardBodyCache.get(cacheKey) : undefined;
+  const displayBody = externalBody ?? cachedBody ?? body;
   return (
     <div onClick={onWrapperClick} className={c('item-title')}>
-      {isStatic ? (
-        <MarkdownClonedPreviewRenderer
-          entityId={item.id}
-          className={c('item-markdown')}
-          markdownString={item.data.title}
-          searchQuery={searchQuery}
-          onPointerUp={onCheckboxContainerClick}
-        />
-      ) : (
-        <MarkdownRenderer
-          entityId={item.id}
-          className={c('item-markdown')}
-          markdownString={item.data.title}
-          searchQuery={searchQuery}
-          onPointerUp={onCheckboxContainerClick}
-        />
-      )}
+      {(displayBody || !titleLine) &&
+        (isStatic ? (
+          <MarkdownClonedPreviewRenderer
+            entityId={item.id}
+            className={c('item-markdown')}
+            markdownString={displayBody || ''}
+            searchQuery={searchQuery}
+            onPointerUp={onCheckboxContainerClick}
+          />
+        ) : (
+          <MarkdownRenderer
+            entityId={item.id}
+            className={c('item-markdown')}
+            markdownString={displayBody || ''}
+            searchQuery={searchQuery}
+            onPointerUp={onCheckboxContainerClick}
+          />
+        ))}
       {showMetadata && (
         <div className={c('item-metadata')}>
           <RelativeDate item={item} stateManager={stateManager} />

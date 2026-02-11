@@ -1,5 +1,6 @@
 import classcat from 'classcat';
 import update from 'immutability-helper';
+import { Notice, TFile } from 'obsidian';
 import { JSX, createPortal, memo, useCallback, useMemo } from 'preact/compat';
 
 import { KanbanView } from './KanbanView';
@@ -19,6 +20,16 @@ import {
   updateEntity,
 } from './dnd/util/data';
 import { getBoardModifiers } from './helpers/boardModifiers';
+import {
+  addCardLinkToListFile,
+  extractCardTitle,
+  ensureFolder,
+  getListFilePath,
+  getListFolderPath,
+  findCardFilePathInListFile,
+  sanitizeName,
+  removeCardLinkFromListFile,
+} from './kanbanFileHelpers';
 import KanbanPlugin from './main';
 import { frontmatterKey } from './parsers/common';
 import {
@@ -29,6 +40,44 @@ import {
 
 export function createApp(win: Window, plugin: KanbanPlugin) {
   return <DragDropApp win={win} plugin={plugin} />;
+}
+
+async function moveCardArtifacts(
+  stateManager: any,
+  fromListTitle: string,
+  toListTitle: string,
+  titleRaw: string
+) {
+  if (fromListTitle === toListTitle) return;
+
+  const cardTitle = extractCardTitle(titleRaw);
+  const cardName = sanitizeName(cardTitle);
+  if (!cardName) return;
+
+  const app = stateManager.app;
+  const kanbanFile = stateManager.file;
+  const vault = app.vault;
+  const fromListFilePath = getListFilePath(kanbanFile, fromListTitle);
+  const toListFilePath = getListFilePath(kanbanFile, toListTitle);
+  const fromCardPath = await findCardFilePathInListFile(app, fromListFilePath, cardTitle);
+  if (!fromCardPath) return;
+  const basename = fromCardPath.split('/').pop() || '';
+  const toCardPath = `${getListFolderPath(kanbanFile, toListTitle)}/${basename}`;
+
+  await ensureFolder(vault, getListFolderPath(kanbanFile, toListTitle));
+
+  const fromFile = vault.getAbstractFileByPath(fromCardPath);
+  if (fromFile instanceof TFile) {
+    if (vault.getAbstractFileByPath(toCardPath)) {
+      new Notice(`Card "${cardTitle}" already exists in "${toListTitle}".`);
+      return;
+    }
+
+    await vault.rename(fromFile, toCardPath);
+  }
+
+  await removeCardLinkFromListFile(app, fromListFilePath, fromCardPath);
+  await addCardLinkToListFile(app, toListFilePath, toCardPath);
 }
 
 const View = memo(function View({ view }: { view: KanbanView }) {
@@ -109,6 +158,24 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
           dropPath.push(0);
         }
 
+        const boardSnapshot = stateManager.state;
+        const entityToMove = getEntityFromPath(boardSnapshot, dragPath);
+        const fromLaneTitle = boardSnapshot?.children?.[dragPath[0]]?.data?.title;
+        const toLaneTitle = boardSnapshot?.children?.[dropPath[0]]?.data?.title;
+        if (
+          entityToMove?.type === DataTypes.Item &&
+          fromLaneTitle &&
+          toLaneTitle &&
+          dragPath[0] !== dropPath[0]
+        ) {
+          void moveCardArtifacts(
+            stateManager,
+            fromLaneTitle,
+            toLaneTitle,
+            entityToMove.data.titleRaw
+          );
+        }
+
         return stateManager.setState((board) => {
           const entity = getEntityFromPath(board, dragPath);
           const newBoard: Board = moveEntity(
@@ -126,6 +193,10 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
                   dropPath,
                   entity
                 );
+                if (fromLaneTitle && toLaneTitle && dragPath[0] !== dropPath[0]) {
+                  const cardTitle = extractCardTitle(next.data.titleRaw);
+                  if (!cardTitle) return next;
+                }
                 return next;
               }
               return entity;

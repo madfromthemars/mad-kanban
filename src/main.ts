@@ -1,6 +1,8 @@
 import { around } from 'monkey-around';
 import {
+  App,
   MarkdownView,
+  Modal,
   Platform,
   Plugin,
   TFile,
@@ -43,6 +45,66 @@ function getEditorClass(app: any) {
   md.unload();
 
   return MarkdownEditor;
+}
+
+class NewKanbanModal extends Modal {
+  defaultValue: string;
+  onSubmit: (value: string | null) => void;
+  submitted: boolean = false;
+  inputEl: HTMLInputElement;
+
+  constructor(app: App, defaultValue: string, onSubmit: (value: string | null) => void) {
+    super(app);
+    this.defaultValue = defaultValue;
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('kanban-plugin__new-board-modal');
+
+    contentEl.createEl('h2', { text: t('New kanban board') });
+
+    this.inputEl = contentEl.createEl('input', {
+      type: 'text',
+      placeholder: t('Untitled Kanban'),
+    });
+    this.inputEl.addClass('kanban-plugin__new-board-input');
+    this.inputEl.value = this.defaultValue;
+    this.inputEl.addEventListener('keydown', (evt) => {
+      if (evt.key === 'Enter') {
+        evt.preventDefault();
+        this.submit();
+      }
+    });
+
+    const actions = contentEl.createDiv({ cls: 'kanban-plugin__new-board-actions' });
+    const createButton = actions.createEl('button', {
+      text: t('Create new board'),
+      cls: 'mod-cta',
+    });
+    const cancelButton = actions.createEl('button', { text: t('Cancel') });
+
+    createButton.addEventListener('click', () => this.submit());
+    cancelButton.addEventListener('click', () => this.close());
+
+    setTimeout(() => this.inputEl.focus(), 0);
+  }
+
+  submit() {
+    if (this.submitted) return;
+    this.submitted = true;
+    this.onSubmit(this.inputEl.value);
+    this.close();
+  }
+
+  onClose() {
+    this.contentEl.empty();
+    if (!this.submitted) {
+      this.onSubmit(null);
+    }
+  }
 }
 
 export default class KanbanPlugin extends Plugin {
@@ -336,18 +398,39 @@ export default class KanbanPlugin extends Plugin {
     } as ViewState);
   }
 
+  async promptNewKanbanName(): Promise<string | null> {
+    return new Promise((resolve) => {
+      const modal = new NewKanbanModal(this.app, t('Untitled Kanban'), (value) => resolve(value));
+      modal.open();
+    });
+  }
+
   async newKanban(folder?: TFolder) {
     const targetFolder = folder
       ? folder
       : this.app.fileManager.getNewFileParent(app.workspace.getActiveFile()?.path || '');
 
     try {
+      const requestedName = await this.promptNewKanbanName();
+      if (requestedName === null) return;
+      const name = requestedName.trim() || t('Untitled Kanban');
+
       const kanban: TFile = await (app.fileManager as any).createNewMarkdownFile(
         targetFolder,
-        t('Untitled Kanban')
+        name
       );
 
       await this.app.vault.modify(kanban, basicFrontmatter);
+
+      const parentPath = kanban.parent?.path || '';
+      const folderPath = parentPath ? `${parentPath}/${kanban.basename}_folder` : `${kanban.basename}_folder`;
+      if (!this.app.vault.getAbstractFileByPath(folderPath)) {
+        await this.app.vault.createFolder(folderPath);
+      }
+      const tagsFolderPath = `${folderPath}/tags`;
+      if (!this.app.vault.getAbstractFileByPath(tagsFolderPath)) {
+        await this.app.vault.createFolder(tagsFolderPath);
+      }
       await this.app.workspace.getLeaf().setViewState({
         type: kanbanViewType,
         state: { file: kanban.path },

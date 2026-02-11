@@ -19,6 +19,7 @@ import { c } from '../helpers';
 import { EditState, EditingState, Item, isEditing } from '../types';
 import { ItemCheckbox } from './ItemCheckbox';
 import { ItemContent } from './ItemContent';
+import { extractCardTitle } from 'src/kanbanFileHelpers';
 import { useItemMenu } from './ItemMenu';
 import { ItemMenuButton } from './ItemMenuButton';
 import { ItemMetadata } from './MetadataTable';
@@ -48,6 +49,7 @@ const ItemInner = memo(function ItemInner({
 }: ItemInnerProps) {
   const { stateManager, boardModifiers } = useContext(KanbanContext);
   const [editState, setEditState] = useState<EditState>(EditingState.cancel);
+  const titleLabel = useMemo(() => extractCardTitle(item.data.titleRaw), [item.data.titleRaw]);
 
   const dndManager = useContext(DndManagerContext);
 
@@ -115,6 +117,11 @@ const ItemInner = memo(function ItemInner({
       className={c('item-content-wrapper')}
       {...ignoreAttr}
     >
+      {titleLabel && (
+        <div className={c('item-title-line-wrapper')}>
+          <div className={c('item-title-line-text')}>{titleLabel}</div>
+        </div>
+      )}
       <div className={c('item-title-wrapper')} {...ignoreAttr}>
         <ItemCheckbox
           boardModifiers={boardModifiers}
