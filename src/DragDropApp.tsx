@@ -27,6 +27,7 @@ import {
   getListFilePath,
   getListFolderPath,
   findCardFilePathInListFile,
+  findCardFilePathInListFolder,
   sanitizeName,
   removeCardLinkFromListFile,
 } from './kanbanFileHelpers';
@@ -58,14 +59,27 @@ async function moveCardArtifacts(
   const kanbanFile = stateManager.file;
   const vault = app.vault;
   const fromListFilePath = getListFilePath(kanbanFile, fromListTitle);
+  const fromListFolderPath = getListFolderPath(kanbanFile, fromListTitle);
   const toListFilePath = getListFilePath(kanbanFile, toListTitle);
-  const fromCardPath = await findCardFilePathInListFile(app, fromListFilePath, cardTitle);
-  if (!fromCardPath) return;
+  const toListFolderPath = getListFolderPath(kanbanFile, toListTitle);
+
+  // Try to find the card file - first in list file, then in folder
+  let fromCardPath = await findCardFilePathInListFile(app, fromListFilePath, cardTitle);
+  if (!fromCardPath) {
+    fromCardPath = await findCardFilePathInListFolder(app, fromListFolderPath, cardTitle);
+  }
+  if (!fromCardPath) {
+    console.debug(`[Kanban] Card file not found for "${cardTitle}" in "${fromListTitle}"`);
+    return;
+  }
+
   const basename = fromCardPath.split('/').pop() || '';
-  const toCardPath = `${getListFolderPath(kanbanFile, toListTitle)}/${basename}`;
+  const toCardPath = `${toListFolderPath}/${basename}`;
 
-  await ensureFolder(vault, getListFolderPath(kanbanFile, toListTitle));
+  // Ensure destination folder exists
+  await ensureFolder(vault, toListFolderPath);
 
+  // Move the file
   const fromFile = vault.getAbstractFileByPath(fromCardPath);
   if (fromFile instanceof TFile) {
     if (vault.getAbstractFileByPath(toCardPath)) {
@@ -76,6 +90,7 @@ async function moveCardArtifacts(
     await vault.rename(fromFile, toCardPath);
   }
 
+  // Update list file links
   await removeCardLinkFromListFile(app, fromListFilePath, fromCardPath);
   await addCardLinkToListFile(app, toListFilePath, toCardPath);
 }
