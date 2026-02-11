@@ -1,4 +1,4 @@
-import { useContext } from 'preact/compat';
+import { useContext, useState } from 'preact/compat';
 
 import { Icon } from '../Icon/Icon';
 import { DateFilterType, FilterContext, StatusFilterType } from '../context';
@@ -6,6 +6,7 @@ import { c } from '../helpers';
 
 export function QuickFilters() {
   const filterContext = useContext(FilterContext);
+  const [showAllTags, setShowAllTags] = useState(false);
 
   if (!filterContext) return null;
 
@@ -41,8 +42,37 @@ export function QuickFilters() {
     { value: 'complete', label: 'Done' },
   ];
 
+  const visibleTags = showAllTags ? availableTags : availableTags.slice(0, 15);
+  const hasMoreTags = availableTags.length > 15;
+
   return (
     <div className={c('quick-filters')}>
+      {/* Tags - primary filter */}
+      {availableTags.length > 0 && (
+        <div className={c('quick-filters-tags')}>
+          {visibleTags.map((tag) => (
+            <button
+              key={tag}
+              className={`${c('tag-filter')} ${filters.tags.includes(tag) ? c('tag-filter-active') : ''}`}
+              onClick={() => toggleTag(tag)}
+            >
+              #{tag}
+            </button>
+          ))}
+          {hasMoreTags && !showAllTags && (
+            <button className={c('tag-filter-more')} onClick={() => setShowAllTags(true)}>
+              +{availableTags.length - 15} more
+            </button>
+          )}
+          {showAllTags && hasMoreTags && (
+            <button className={c('tag-filter-more')} onClick={() => setShowAllTags(false)}>
+              Show less
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Secondary filters row */}
       <div className={c('quick-filters-row')}>
         {/* Status filter */}
         <div className={c('filter-group')}>
@@ -81,24 +111,6 @@ export function QuickFilters() {
           </button>
         )}
       </div>
-
-      {/* Tags row */}
-      {availableTags.length > 0 && (
-        <div className={c('quick-filters-tags')}>
-          {availableTags.slice(0, 10).map((tag) => (
-            <button
-              key={tag}
-              className={`${c('tag-filter')} ${filters.tags.includes(tag) ? c('tag-filter-active') : ''}`}
-              onClick={() => toggleTag(tag)}
-            >
-              #{tag}
-            </button>
-          ))}
-          {availableTags.length > 10 && (
-            <span className={c('tag-filter-more')}>+{availableTags.length - 10} more</span>
-          )}
-        </div>
-      )}
     </div>
   );
 }
