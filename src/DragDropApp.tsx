@@ -162,95 +162,105 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
         const entityToMove = getEntityFromPath(boardSnapshot, dragPath);
         const fromLaneTitle = boardSnapshot?.children?.[dragPath[0]]?.data?.title;
         const toLaneTitle = boardSnapshot?.children?.[dropPath[0]]?.data?.title;
-        if (
+        const needsMoveArtifacts =
           entityToMove?.type === DataTypes.Item &&
           fromLaneTitle &&
           toLaneTitle &&
-          dragPath[0] !== dropPath[0]
-        ) {
+          dragPath[0] !== dropPath[0];
+
+        // Move file artifacts first, then update state
+        if (needsMoveArtifacts) {
           void moveCardArtifacts(
             stateManager,
             fromLaneTitle,
             toLaneTitle,
             entityToMove.data.titleRaw
-          );
+          ).then(() => {
+            updateBoardState();
+          });
+          return;
         }
 
-        return stateManager.setState((board) => {
-          const entity = getEntityFromPath(board, dragPath);
-          const newBoard: Board = moveEntity(
-            board,
-            dragPath,
-            dropPath,
-            (entity) => {
-              if (entity.type === DataTypes.Item) {
-                const { next } = maybeCompleteForMove(
-                  stateManager,
-                  board,
-                  dragPath,
-                  stateManager,
-                  board,
-                  dropPath,
-                  entity
-                );
-                if (fromLaneTitle && toLaneTitle && dragPath[0] !== dropPath[0]) {
-                  const cardTitle = extractCardTitle(next.data.titleRaw);
-                  if (!cardTitle) return next;
+        updateBoardState();
+        return;
+
+        function updateBoardState() {
+          stateManager.setState((board) => {
+            const entity = getEntityFromPath(board, dragPath);
+            const newBoard: Board = moveEntity(
+              board,
+              dragPath,
+              dropPath,
+              (entity) => {
+                if (entity.type === DataTypes.Item) {
+                  const { next } = maybeCompleteForMove(
+                    stateManager,
+                    board,
+                    dragPath,
+                    stateManager,
+                    board,
+                    dropPath,
+                    entity
+                  );
+                  if (fromLaneTitle && toLaneTitle && dragPath[0] !== dropPath[0]) {
+                    const cardTitle = extractCardTitle(next.data.titleRaw);
+                    if (!cardTitle) return next;
+                  }
+                  return next;
                 }
-                return next;
-              }
-              return entity;
-            },
-            (entity) => {
-              if (entity.type === DataTypes.Item) {
-                const { replacement } = maybeCompleteForMove(
-                  stateManager,
-                  board,
-                  dragPath,
-                  stateManager,
-                  board,
-                  dropPath,
-                  entity
-                );
-                return replacement;
-              }
-            }
-          );
-
-          if (entity.type === DataTypes.Lane) {
-            const from = dragPath.last();
-            let to = dropPath.last();
-
-            if (from < to) to -= 1;
-
-            const collapsedState = view.getViewState('list-collapse');
-            const op = (collapsedState: boolean[]) => {
-              const newState = [...collapsedState];
-              newState.splice(to, 0, newState.splice(from, 1)[0]);
-              return newState;
-            };
-
-            view.setViewState('list-collapse', undefined, op);
-
-            return update<Board>(newBoard, {
-              data: { settings: { 'list-collapse': { $set: op(collapsedState) } } },
-            });
-          }
-
-          // Remove sorting in the destination lane
-          const destinationParentPath = dropPath.slice(0, -1);
-          const destinationParent = getEntityFromPath(board, destinationParentPath);
-
-          if (destinationParent?.data?.sorted !== undefined) {
-            return updateEntity(newBoard, destinationParentPath, {
-              data: {
-                $unset: ['sorted'],
+                return entity;
               },
-            });
-          }
+              (entity) => {
+                if (entity.type === DataTypes.Item) {
+                  const { replacement } = maybeCompleteForMove(
+                    stateManager,
+                    board,
+                    dragPath,
+                    stateManager,
+                    board,
+                    dropPath,
+                    entity
+                  );
+                  return replacement;
+                }
+              }
+            );
 
-          return newBoard;
-        });
+            if (entity.type === DataTypes.Lane) {
+              const from = dragPath.last();
+              let to = dropPath.last();
+
+              if (from < to) to -= 1;
+
+              const collapsedState = view.getViewState('list-collapse');
+              const op = (collapsedState: boolean[]) => {
+                const newState = [...collapsedState];
+                newState.splice(to, 0, newState.splice(from, 1)[0]);
+                return newState;
+              };
+
+              view.setViewState('list-collapse', undefined, op);
+
+              return update<Board>(newBoard, {
+                data: { settings: { 'list-collapse': { $set: op(collapsedState) } } },
+              });
+            }
+
+            // Remove sorting in the destination lane
+            const destinationParentPath = dropPath.slice(0, -1);
+            const destinationParent = getEntityFromPath(board, destinationParentPath);
+
+            if (destinationParent?.data?.sorted !== undefined) {
+              return updateEntity(newBoard, destinationParentPath, {
+                data: {
+                  $unset: ['sorted'],
+                },
+              });
+            }
+
+            return newBoard;
+          });
+        }
       }
 
       const sourceView = plugin.getKanbanView(dragEntity.scopeId, dragEntityData.win);

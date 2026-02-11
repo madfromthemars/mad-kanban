@@ -105,9 +105,9 @@ export function getDateFromObj(v: any, stateManager: StateManager) {
 export function getLinkFromObj(v: any, view: KanbanView) {
   if (typeof v !== 'object' || !v.path) return null;
 
-  const file = app.vault.getAbstractFileByPath(v.path);
+  const file = view.app.vault.getAbstractFileByPath(v.path);
   if (file && file instanceof TFile) {
-    const link = app.fileManager.generateMarkdownLink(file, view.file.path, v.subpath, v.display);
+    const link = view.app.fileManager.generateMarkdownLink(file, view.file.path, v.subpath, v.display);
     return `${v.embed && link[0] !== '!' ? '!' : ''}${link}`;
   }
 

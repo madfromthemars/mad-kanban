@@ -56,7 +56,7 @@ export function hasFrontmatterKeyRaw(data: string) {
   return true;
 }
 
-export function hasFrontmatterKey(file: TFile) {
+export function hasFrontmatterKey(app: App, file: TFile) {
   if (!file) return false;
   const cache = app.metadataCache.getFileCache(file);
   return !!cache?.frontmatter?.[frontmatterKey];

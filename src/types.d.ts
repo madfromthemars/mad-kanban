@@ -1,3 +1,5 @@
+declare const app: import('obsidian').App;
+
 type HTMLAttributes<T extends EventTarget> = import('preact/compat').HTMLAttributes<T> &
   AriaAttributes;
 

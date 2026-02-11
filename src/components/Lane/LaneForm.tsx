@@ -96,7 +96,9 @@ export function LaneForm({ onNewLane, closeLaneForm }: LaneFormProps) {
     [createLane]
   );
   const onSubmit = useCallback(
-    (cm: EditorView) => void createLane(cm, cm.state.doc.toString()),
+    (cm: EditorView): void => {
+      void createLane(cm, cm.state.doc.toString());
+    },
     [createLane]
   );
 

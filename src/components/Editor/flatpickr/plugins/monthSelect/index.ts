@@ -253,7 +253,7 @@ function monthSelectPlugin(pluginConfig?: Partial<Config>): Plugin {
 
       if (index === -1) {
         const target = currentlySelected || self.monthsContainer.firstElementChild;
-        target.focus();
+        (target as HTMLElement).focus();
         index = (target as MonthElement).$i;
       }
 
