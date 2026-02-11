@@ -236,8 +236,10 @@ export const ItemContent = memo(function ItemContent({
     [stateManager.state, path]
   );
   const [cardFilePath, setCardFilePath] = useState<string>('');
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const lastCardFilePathRef = useRef<string>('');
   const lastExternalBodyRef = useRef<string>('');
+  const lastLaneTitleRef = useRef<string>(laneTitle);
 
   useEffect(() => {
     if (editState === EditingState.complete) {
@@ -318,10 +320,19 @@ export const ItemContent = memo(function ItemContent({
     if (!laneTitle || !cardTitle) {
       setCardFilePath('');
       setExternalBody(null);
+      setIsTransitioning(false);
       lastCardFilePathRef.current = '';
       lastExternalBodyRef.current = '';
+      lastLaneTitleRef.current = '';
       return;
     }
+
+    // Detect lane change - mark as transitioning to preserve content
+    const laneChanged = lastLaneTitleRef.current && lastLaneTitleRef.current !== laneTitle;
+    if (laneChanged) {
+      setIsTransitioning(true);
+    }
+    lastLaneTitleRef.current = laneTitle;
 
     if (lastCardFilePathRef.current) {
       const basename = lastCardFilePathRef.current.split('/').pop() || '';
@@ -333,22 +344,34 @@ export const ItemContent = memo(function ItemContent({
 
     const listFilePath = getListFilePath(stateManager.file, laneTitle);
     const listFolderPath = getListFolderPath(stateManager.file, laneTitle);
-    void findCardFilePathInListFile(stateManager.app, listFilePath, cardTitle).then((path) => {
-      if (cancelled) return;
-      if (path) {
-        setCardFilePath(path);
-        return;
+
+    const findFile = async () => {
+      // Try to find in list file first
+      let foundPath = await findCardFilePathInListFile(stateManager.app, listFilePath, cardTitle);
+
+      // Fallback to folder search
+      if (!foundPath) {
+        foundPath = await findCardFilePathInListFolder(stateManager.app, listFolderPath, cardTitle);
       }
 
-      void findCardFilePathInListFolder(stateManager.app, listFolderPath, cardTitle).then(
-        (fallbackPath) => {
-          if (cancelled) return;
-          if (fallbackPath) {
-            setCardFilePath(fallbackPath);
-          }
+      // If still not found and transitioning, retry after a delay (file might still be moving)
+      if (!foundPath && laneChanged) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        foundPath = await findCardFilePathInListFile(stateManager.app, listFilePath, cardTitle);
+        if (!foundPath) {
+          foundPath = await findCardFilePathInListFolder(stateManager.app, listFolderPath, cardTitle);
         }
-      );
-    });
+      }
+
+      if (cancelled) return;
+
+      if (foundPath) {
+        setCardFilePath(foundPath);
+      }
+      setIsTransitioning(false);
+    };
+
+    void findFile();
 
     return () => {
       cancelled = true;
@@ -403,15 +426,20 @@ export const ItemContent = memo(function ItemContent({
   }
 
   const cachedBody = cacheKey ? cardBodyCache.get(cacheKey) : undefined;
-  const displayBody = externalBody ?? cachedBody ?? body;
+  // During transition, prefer the last known content to avoid flicker
+  const transitionBody = isTransitioning ? lastExternalBodyRef.current : null;
+  const displayBody = externalBody ?? transitionBody ?? cachedBody ?? body;
+  // Always render content area - show displayBody if available, otherwise empty string
+  const contentToRender = displayBody ?? '';
+  const shouldShowContent = contentToRender || !titleLine;
   return (
     <div onClick={onWrapperClick} className={c('item-title')}>
-      {(displayBody || !titleLine) &&
+      {shouldShowContent &&
         (isStatic ? (
           <MarkdownClonedPreviewRenderer
             entityId={item.id}
             className={c('item-markdown')}
-            markdownString={displayBody || ''}
+            markdownString={contentToRender}
             searchQuery={searchQuery}
             onPointerUp={onCheckboxContainerClick}
           />
@@ -419,7 +447,7 @@ export const ItemContent = memo(function ItemContent({
           <MarkdownRenderer
             entityId={item.id}
             className={c('item-markdown')}
-            markdownString={displayBody || ''}
+            markdownString={contentToRender}
             searchQuery={searchQuery}
             onPointerUp={onCheckboxContainerClick}
           />
