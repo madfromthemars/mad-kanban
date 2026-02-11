@@ -15,6 +15,25 @@ export interface KanbanContextProps {
 
 export const KanbanContext = createContext<KanbanContextProps>(null);
 
+export type DateFilterType = 'all' | 'today' | 'week' | 'overdue' | 'no-date';
+export type StatusFilterType = 'all' | 'complete' | 'incomplete';
+
+export interface FilterState {
+  tags: string[];
+  dateFilter: DateFilterType;
+  statusFilter: StatusFilterType;
+}
+
+export interface FilterContextProps {
+  filters: FilterState;
+  availableTags: string[];
+  setTagFilter: (tags: string[]) => void;
+  setDateFilter: (filter: DateFilterType) => void;
+  setStatusFilter: (filter: StatusFilterType) => void;
+  clearFilters: () => void;
+  hasActiveFilters: boolean;
+}
+
 export interface SearchContextProps {
   query: string;
   items: Set<Item>;
@@ -23,6 +42,7 @@ export interface SearchContextProps {
 }
 
 export const SearchContext = createContext<SearchContextProps | null>(null);
+export const FilterContext = createContext<FilterContextProps | null>(null);
 export const SortContext = createContext<LaneSort | string | null>(null);
 export const IntersectionObserverContext = createContext<{
   registerHandler: (el: HTMLElement, handler: IntersectionObserverHandler) => void;

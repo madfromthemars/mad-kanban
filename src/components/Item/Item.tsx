@@ -14,8 +14,8 @@ import { DndManagerContext } from 'src/dnd/components/context';
 import { useDragHandle } from 'src/dnd/managers/DragManager';
 import { frontmatterKey } from 'src/parsers/common';
 
-import { KanbanContext, SearchContext } from '../context';
-import { c } from '../helpers';
+import { FilterContext, KanbanContext, SearchContext } from '../context';
+import { c, itemMatchesFilters } from '../helpers';
 import { EditState, EditingState, Item, isEditing } from '../types';
 import { ItemCheckbox } from './ItemCheckbox';
 import { ItemContent } from './ItemContent';
@@ -148,6 +148,7 @@ export const DraggableItem = memo(function DraggableItem(props: DraggableItemPro
   const elementRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const search = useContext(SearchContext);
+  const filterContext = useContext(FilterContext);
 
   const { itemIndex, ...innerProps } = props;
 
@@ -155,6 +156,16 @@ export const DraggableItem = memo(function DraggableItem(props: DraggableItemPro
 
   const isMatch = search?.query ? innerProps.item.data.titleSearch.includes(search.query) : false;
   const classModifiers: string[] = getItemClassModifiers(innerProps.item);
+
+  // Check if item matches filters
+  const matchesFilter = filterContext?.hasActiveFilters
+    ? itemMatchesFilters(innerProps.item, filterContext.filters)
+    : true;
+
+  // Hide item if it doesn't match filters
+  if (!matchesFilter) {
+    return null;
+  }
 
   return (
     <div

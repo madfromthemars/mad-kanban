@@ -17,9 +17,10 @@ import { frontmatterKey } from '../parsers/common';
 import { Icon } from './Icon/Icon';
 import { Lanes } from './Lane/Lane';
 import { LaneForm } from './Lane/LaneForm';
+import { QuickFilters } from './QuickFilters/QuickFilters';
 import { TableView } from './Table/Table';
-import { KanbanContext, SearchContext } from './context';
-import { baseClassName, c, useSearchValue } from './helpers';
+import { FilterContext, KanbanContext, SearchContext } from './context';
+import { baseClassName, c, useFilterValue, useSearchValue } from './helpers';
 import { DataTypes } from './types';
 
 const boardScrollTiggers = [DataTypes.Item, DataTypes.Lane];
@@ -55,6 +56,7 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>('');
   const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [isFiltering, setIsFiltering] = useState<boolean>(false);
 
   const [isLaneFormVisible, setIsLaneFormVisible] = useState<boolean>(
     boardData?.children.length === 0
@@ -209,27 +211,49 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     setDebouncedSearchQuery,
     setIsSearching
   );
+  const filterValue = useFilterValue(boardData);
 
   return (
     <DndScope id={view.id}>
       <KanbanContext.Provider value={kanbanContext}>
         <SearchContext.Provider value={searchValue}>
-          <div
-            ref={rootRef}
-            className={classcat([
-              baseClassName,
-              {
-                'something-is-dragging': isAnythingDragging,
-              },
-              ...getCSSClass(boardData.data.frontmatter),
-            ])}
-            {...html5DragHandlers}
-          >
-            {(isLaneFormVisible || boardData.children.length === 0) && (
-              <LaneForm onNewLane={onNewLane} closeLaneForm={closeLaneForm} />
-            )}
-            {isSearching && (
-              <div className={c('search-wrapper')}>
+          <FilterContext.Provider value={filterValue}>
+            <div
+              ref={rootRef}
+              className={classcat([
+                baseClassName,
+                {
+                  'something-is-dragging': isAnythingDragging,
+                },
+                ...getCSSClass(boardData.data.frontmatter),
+              ])}
+              {...html5DragHandlers}
+            >
+              {(isLaneFormVisible || boardData.children.length === 0) && (
+                <LaneForm onNewLane={onNewLane} closeLaneForm={closeLaneForm} />
+              )}
+              {/* Filter toggle button */}
+              <div className={c('toolbar')}>
+                <button
+                  className={`${c('toolbar-button')} ${isFiltering ? c('toolbar-button-active') : ''} ${filterValue.hasActiveFilters ? c('toolbar-button-has-filters') : ''}`}
+                  onClick={() => setIsFiltering(!isFiltering)}
+                  title="Quick filters"
+                >
+                  <Icon name="lucide-filter" />
+                  {filterValue.hasActiveFilters && <span className={c('filter-badge')} />}
+                </button>
+                <button
+                  className={`${c('toolbar-button')} ${isSearching ? c('toolbar-button-active') : ''}`}
+                  onClick={() => setIsSearching(!isSearching)}
+                  title="Search"
+                >
+                  <Icon name="lucide-search" />
+                </button>
+              </div>
+              {/* Quick filters */}
+              {isFiltering && <QuickFilters />}
+              {isSearching && (
+                <div className={c('search-wrapper')}>
                 <input
                   ref={searchRef}
                   value={searchQuery}
@@ -287,8 +311,9 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                   </Sortable>
                 </div>
               </ScrollContainer>
-            )}
-          </div>
+              )}
+            </div>
+          </FilterContext.Provider>
         </SearchContext.Provider>
       </KanbanContext.Provider>
     </DndScope>

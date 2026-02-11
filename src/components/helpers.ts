@@ -1,6 +1,6 @@
 import update from 'immutability-helper';
 import { App, MarkdownView, TFile, moment } from 'obsidian';
-import Preact, { Dispatch, RefObject, useEffect } from 'preact/compat';
+import Preact, { Dispatch, RefObject, useCallback, useEffect, useState } from 'preact/compat';
 import { StateUpdater, useMemo } from 'preact/hooks';
 import { StateManager } from 'src/StateManager';
 import { Path } from 'src/dnd/types';
@@ -12,7 +12,7 @@ import {
   toggleTask,
 } from 'src/parsers/helpers/inlineMetadata';
 
-import { SearchContextProps } from './context';
+import { DateFilterType, FilterContextProps, FilterState, SearchContextProps, StatusFilterType } from './context';
 import { Board, DataKey, DateColor, Item, Lane, PageData, TagColor } from './types';
 
 export const baseClassName = 'kanban-plugin';
@@ -400,4 +400,113 @@ export function useSearchValue(
       },
     };
   }, [board, query, setSearchQuery, setDebouncedSearchQuery]);
+}
+
+// Extract all unique tags from the board
+export function extractAllTags(board: Board): string[] {
+  const tagSet = new Set<string>();
+  board.children.forEach((lane) => {
+    lane.children.forEach((item) => {
+      const tags = item.data.metadata?.tags;
+      if (tags && Array.isArray(tags)) {
+        tags.forEach((tag) => tagSet.add(tag.replace(/^#/, '')));
+      }
+    });
+  });
+  return Array.from(tagSet).sort();
+}
+
+// Check if an item matches the current filters
+export function itemMatchesFilters(item: Item, filters: FilterState): boolean {
+  // Status filter
+  if (filters.statusFilter === 'complete' && !item.data.checked) {
+    return false;
+  }
+  if (filters.statusFilter === 'incomplete' && item.data.checked) {
+    return false;
+  }
+
+  // Tag filter
+  if (filters.tags.length > 0) {
+    const itemTags = item.data.metadata?.tags?.map((t) => t.replace(/^#/, '')) || [];
+    const hasMatchingTag = filters.tags.some((tag) => itemTags.includes(tag));
+    if (!hasMatchingTag) {
+      return false;
+    }
+  }
+
+  // Date filter
+  if (filters.dateFilter !== 'all') {
+    const itemDate = item.data.metadata?.date;
+    const today = moment().startOf('day');
+
+    switch (filters.dateFilter) {
+      case 'today':
+        if (!itemDate || !itemDate.isSame(today, 'day')) {
+          return false;
+        }
+        break;
+      case 'week':
+        if (!itemDate || !itemDate.isBetween(today, moment().add(7, 'days'), 'day', '[]')) {
+          return false;
+        }
+        break;
+      case 'overdue':
+        if (!itemDate || !itemDate.isBefore(today, 'day')) {
+          return false;
+        }
+        break;
+      case 'no-date':
+        if (itemDate) {
+          return false;
+        }
+        break;
+    }
+  }
+
+  return true;
+}
+
+// Hook to manage filter state
+export function useFilterValue(board: Board): FilterContextProps {
+  const [filters, setFilters] = useState<FilterState>({
+    tags: [],
+    dateFilter: 'all',
+    statusFilter: 'all',
+  });
+
+  const availableTags = useMemo(() => extractAllTags(board), [board]);
+
+  const setTagFilter = useCallback((tags: string[]) => {
+    setFilters((prev) => ({ ...prev, tags }));
+  }, []);
+
+  const setDateFilter = useCallback((dateFilter: DateFilterType) => {
+    setFilters((prev) => ({ ...prev, dateFilter }));
+  }, []);
+
+  const setStatusFilter = useCallback((statusFilter: StatusFilterType) => {
+    setFilters((prev) => ({ ...prev, statusFilter }));
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setFilters({
+      tags: [],
+      dateFilter: 'all',
+      statusFilter: 'all',
+    });
+  }, []);
+
+  const hasActiveFilters =
+    filters.tags.length > 0 || filters.dateFilter !== 'all' || filters.statusFilter !== 'all';
+
+  return {
+    filters,
+    availableTags,
+    setTagFilter,
+    setDateFilter,
+    setStatusFilter,
+    clearFilters,
+    hasActiveFilters,
+  };
 }
