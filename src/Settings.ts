@@ -12,14 +12,9 @@ import { KanbanView } from './KanbanView';
 import {
   c,
   generateInstanceId,
-  getDefaultDateFormat,
-  getDefaultTimeFormat,
 } from './components/helpers';
 import {
   DataKey,
-  DateColor,
-  DateColorSetting,
-  DateColorSettingTemplate,
   MetadataSetting,
   MetadataSettingTemplate,
   TagColor,
@@ -35,12 +30,9 @@ import KanbanPlugin from './main';
 import { frontmatterKey } from './parsers/common';
 import {
   createSearchSelect,
-  defaultDateTrigger,
   defaultMetadataPosition,
-  defaultTimeTrigger,
   getListOptions,
 } from './settingHelpers';
-import { cleanUpDateSettings, renderDateSettings } from './settings/DateColorSettings';
 import { cleanupMetadataSettings, renderMetadataSettings } from './settings/MetadataSettings';
 import { cleanUpTagSettings, renderTagSettings } from './settings/TagColorSettings';
 import { cleanUpTagSortSettings, renderTagSortSettings } from './settings/TagSortSettings';
@@ -51,25 +43,15 @@ export type KanbanFormat = 'basic' | 'board' | 'table' | 'list';
 
 export interface KanbanSettings {
   [frontmatterKey]?: KanbanFormat;
-  'append-archive-date'?: boolean;
-  'archive-date-format'?: string;
-  'archive-date-separator'?: string;
-  'archive-with-date'?: boolean;
-  'date-colors'?: DateColor[];
-  'date-display-format'?: string;
   'date-format'?: string;
-  'date-picker-week-start'?: number;
-  'date-time-display-format'?: string;
   'date-trigger'?: string;
   'full-list-lane-width'?: boolean;
   'hide-card-count'?: boolean;
   'inline-metadata-position'?: 'body' | 'footer' | 'metadata-table';
   'lane-width'?: number;
-  'link-date-to-daily-note'?: boolean;
   'list-collapse'?: boolean[];
   'max-archive-size'?: number;
   'metadata-keys'?: DataKey[];
-  'move-dates'?: boolean;
   'move-tags'?: boolean;
   'move-task-metadata'?: boolean;
   'new-card-insertion-method'?: 'prepend' | 'prepend-compact' | 'append';
@@ -80,7 +62,6 @@ export interface KanbanSettings {
   'show-archive-all'?: boolean;
   'show-board-settings'?: boolean;
   'show-checkboxes'?: boolean;
-  'show-relative-date'?: boolean;
   'show-search'?: boolean;
   'show-set-view'?: boolean;
   'show-view-as-markdown'?: boolean;
@@ -88,8 +69,6 @@ export interface KanbanSettings {
   'tag-action'?: 'kanban' | 'obsidian';
   'tag-colors'?: TagColor[];
   'tag-sort'?: TagSort[];
-  'time-format'?: string;
-  'time-trigger'?: string;
 }
 
 export interface KanbanViewSettings {
@@ -99,25 +78,15 @@ export interface KanbanViewSettings {
 
 export const settingKeyLookup: Set<keyof KanbanSettings> = new Set([
   frontmatterKey,
-  'append-archive-date',
-  'archive-date-format',
-  'archive-date-separator',
-  'archive-with-date',
-  'date-colors',
-  'date-display-format',
   'date-format',
-  'date-picker-week-start',
-  'date-time-display-format',
   'date-trigger',
   'full-list-lane-width',
   'hide-card-count',
   'inline-metadata-position',
   'lane-width',
-  'link-date-to-daily-note',
   'list-collapse',
   'max-archive-size',
   'metadata-keys',
-  'move-dates',
   'move-tags',
   'move-task-metadata',
   'new-card-insertion-method',
@@ -128,7 +97,6 @@ export const settingKeyLookup: Set<keyof KanbanSettings> = new Set([
   'show-archive-all',
   'show-board-settings',
   'show-checkboxes',
-  'show-relative-date',
   'show-search',
   'show-set-view',
   'show-view-as-markdown',
@@ -136,8 +104,6 @@ export const settingKeyLookup: Set<keyof KanbanSettings> = new Set([
   'tag-action',
   'tag-colors',
   'tag-sort',
-  'time-format',
-  'time-trigger',
 ]);
 
 export type SettingRetriever = <K extends keyof KanbanSettings>(
@@ -588,574 +554,6 @@ export class SettingsManager {
         }
       });
     });
-
-    contentEl.createEl('h4', { text: t('Date & Time') });
-
-    new Setting(contentEl)
-      .setName(t('Move dates to card footer'))
-      .setDesc(
-        t("When toggled, dates will be displayed in the card's footer instead of the card's body.")
-      )
-      .then((setting) => {
-        let toggleComponent: ToggleComponent;
-
-        setting
-          .addToggle((toggle) => {
-            toggleComponent = toggle;
-
-            const [value, globalValue] = this.getSetting('move-dates', local);
-
-            if (value !== undefined) {
-              toggle.setValue(value as boolean);
-            } else if (globalValue !== undefined) {
-              toggle.setValue(globalValue as boolean);
-            }
-
-            toggle.onChange((newValue) => {
-              this.applySettingsUpdate({
-                'move-dates': {
-                  $set: newValue,
-                },
-              });
-            });
-          })
-          .addExtraButton((b) => {
-            b.setIcon('lucide-rotate-ccw')
-              .setTooltip(t('Reset to default'))
-              .onClick(() => {
-                const [, globalValue] = this.getSetting('move-dates', local);
-                toggleComponent.setValue((globalValue as boolean) ?? true);
-
-                this.applySettingsUpdate({
-                  $unset: ['move-dates'],
-                });
-              });
-          });
-      });
-
-    new Setting(contentEl)
-      .setName(t('Date trigger'))
-      .setDesc(t('When this is typed, it will trigger the date selector'))
-      .addText((text) => {
-        const [value, globalValue] = this.getSetting('date-trigger', local);
-
-        if (value || globalValue) {
-          text.setValue((value || globalValue) as string);
-        }
-
-        text.setPlaceholder((globalValue as string) || defaultDateTrigger);
-
-        text.onChange((newValue) => {
-          if (newValue) {
-            this.applySettingsUpdate({
-              'date-trigger': {
-                $set: newValue,
-              },
-            });
-          } else {
-            this.applySettingsUpdate({
-              $unset: ['date-trigger'],
-            });
-          }
-        });
-      });
-
-    new Setting(contentEl)
-      .setName(t('Time trigger'))
-      .setDesc(t('When this is typed, it will trigger the time selector'))
-      .addText((text) => {
-        const [value, globalValue] = this.getSetting('time-trigger', local);
-
-        if (value || globalValue) {
-          text.setValue((value || globalValue) as string);
-        }
-
-        text.setPlaceholder((globalValue as string) || defaultTimeTrigger);
-
-        text.onChange((newValue) => {
-          if (newValue) {
-            this.applySettingsUpdate({
-              'time-trigger': {
-                $set: newValue,
-              },
-            });
-          } else {
-            this.applySettingsUpdate({
-              $unset: ['time-trigger'],
-            });
-          }
-        });
-      });
-
-    new Setting(contentEl).setName(t('Date format')).then((setting) => {
-      setting.addMomentFormat((mf) => {
-        setting.descEl.appendChild(
-          createFragment((frag) => {
-            frag.appendText(t('This format will be used when saving dates in markdown.'));
-            frag.createEl('br');
-            frag.appendText(t('For more syntax, refer to') + ' ');
-            frag.createEl(
-              'a',
-              {
-                text: t('format reference'),
-                href: 'https://momentjs.com/docs/#/displaying/format/',
-              },
-              (a) => {
-                a.setAttr('target', '_blank');
-              }
-            );
-            frag.createEl('br');
-            frag.appendText(t('Your current syntax looks like this') + ': ');
-            mf.setSampleEl(frag.createEl('b', { cls: 'u-pop' }));
-            frag.createEl('br');
-          })
-        );
-
-        const [value, globalValue] = this.getSetting('date-format', local);
-        const defaultFormat = getDefaultDateFormat(this.app);
-
-        mf.setPlaceholder(defaultFormat);
-        mf.setDefaultFormat(defaultFormat);
-
-        if (value || globalValue) {
-          mf.setValue((value || globalValue) as string);
-        }
-
-        mf.onChange((newValue) => {
-          if (newValue) {
-            this.applySettingsUpdate({
-              'date-format': {
-                $set: newValue,
-              },
-            });
-          } else {
-            this.applySettingsUpdate({
-              $unset: ['date-format'],
-            });
-          }
-        });
-      });
-    });
-
-    new Setting(contentEl).setName(t('Time format')).then((setting) => {
-      setting.addMomentFormat((mf) => {
-        setting.descEl.appendChild(
-          createFragment((frag) => {
-            frag.appendText(t('For more syntax, refer to') + ' ');
-            frag.createEl(
-              'a',
-              {
-                text: t('format reference'),
-                href: 'https://momentjs.com/docs/#/displaying/format/',
-              },
-              (a) => {
-                a.setAttr('target', '_blank');
-              }
-            );
-            frag.createEl('br');
-            frag.appendText(t('Your current syntax looks like this') + ': ');
-            mf.setSampleEl(frag.createEl('b', { cls: 'u-pop' }));
-            frag.createEl('br');
-          })
-        );
-
-        const [value, globalValue] = this.getSetting('time-format', local);
-        const defaultFormat = getDefaultTimeFormat(this.app);
-
-        mf.setPlaceholder(defaultFormat);
-        mf.setDefaultFormat(defaultFormat);
-
-        if (value || globalValue) {
-          mf.setValue((value || globalValue) as string);
-        }
-
-        mf.onChange((newValue) => {
-          if (newValue) {
-            this.applySettingsUpdate({
-              'time-format': {
-                $set: newValue,
-              },
-            });
-          } else {
-            this.applySettingsUpdate({
-              $unset: ['time-format'],
-            });
-          }
-        });
-      });
-    });
-
-    new Setting(contentEl).setName(t('Date display format')).then((setting) => {
-      setting.addMomentFormat((mf) => {
-        setting.descEl.appendChild(
-          createFragment((frag) => {
-            frag.appendText(t('This format will be used when displaying dates in Kanban cards.'));
-            frag.createEl('br');
-            frag.appendText(t('For more syntax, refer to') + ' ');
-            frag.createEl(
-              'a',
-              {
-                text: t('format reference'),
-                href: 'https://momentjs.com/docs/#/displaying/format/',
-              },
-              (a) => {
-                a.setAttr('target', '_blank');
-              }
-            );
-            frag.createEl('br');
-            frag.appendText(t('Your current syntax looks like this') + ': ');
-            mf.setSampleEl(frag.createEl('b', { cls: 'u-pop' }));
-            frag.createEl('br');
-          })
-        );
-
-        const [value, globalValue] = this.getSetting('date-display-format', local);
-        const defaultFormat = getDefaultDateFormat(this.app);
-
-        mf.setPlaceholder(defaultFormat);
-        mf.setDefaultFormat(defaultFormat);
-
-        if (value || globalValue) {
-          mf.setValue((value || globalValue) as string);
-        }
-
-        mf.onChange((newValue) => {
-          if (newValue) {
-            this.applySettingsUpdate({
-              'date-display-format': {
-                $set: newValue,
-              },
-            });
-          } else {
-            this.applySettingsUpdate({
-              $unset: ['date-display-format'],
-            });
-          }
-        });
-      });
-    });
-
-    new Setting(contentEl)
-      .setName(t('Show relative date'))
-      .setDesc(
-        t(
-          "When toggled, cards will display the distance between today and the card's date. eg. 'In 3 days', 'A month ago'. Relative dates will not be shown for dates from the Tasks and Dataview plugins."
-        )
-      )
-      .then((setting) => {
-        let toggleComponent: ToggleComponent;
-
-        setting
-          .addToggle((toggle) => {
-            toggleComponent = toggle;
-
-            const [value, globalValue] = this.getSetting('show-relative-date', local);
-
-            if (value !== undefined) {
-              toggle.setValue(value as boolean);
-            } else if (globalValue !== undefined) {
-              toggle.setValue(globalValue as boolean);
-            }
-
-            toggle.onChange((newValue) => {
-              this.applySettingsUpdate({
-                'show-relative-date': {
-                  $set: newValue,
-                },
-              });
-            });
-          })
-          .addExtraButton((b) => {
-            b.setIcon('lucide-rotate-ccw')
-              .setTooltip(t('Reset to default'))
-              .onClick(() => {
-                const [, globalValue] = this.getSetting('show-relative-date', local);
-                toggleComponent.setValue(!!globalValue);
-
-                this.applySettingsUpdate({
-                  $unset: ['show-relative-date'],
-                });
-              });
-          });
-      });
-
-    new Setting(contentEl)
-      .setName(t('Link dates to daily notes'))
-      .setDesc(t('When toggled, dates will link to daily notes. Eg. [[2021-04-26]]'))
-      .then((setting) => {
-        let toggleComponent: ToggleComponent;
-
-        setting
-          .addToggle((toggle) => {
-            toggleComponent = toggle;
-
-            const [value, globalValue] = this.getSetting('link-date-to-daily-note', local);
-
-            if (value !== undefined) {
-              toggle.setValue(value as boolean);
-            } else if (globalValue !== undefined) {
-              toggle.setValue(globalValue as boolean);
-            }
-
-            toggle.onChange((newValue) => {
-              this.applySettingsUpdate({
-                'link-date-to-daily-note': {
-                  $set: newValue,
-                },
-              });
-            });
-          })
-          .addExtraButton((b) => {
-            b.setIcon('lucide-rotate-ccw')
-              .setTooltip(t('Reset to default'))
-              .onClick(() => {
-                const [, globalValue] = this.getSetting('link-date-to-daily-note', local);
-                toggleComponent.setValue(!!globalValue);
-
-                this.applySettingsUpdate({
-                  $unset: ['link-date-to-daily-note'],
-                });
-              });
-          });
-      });
-
-    new Setting(contentEl).then((setting) => {
-      const [value] = this.getSetting('date-colors', local);
-
-      const keys: DateColorSetting[] = ((value || []) as DateColor[]).map((k) => {
-        return {
-          ...DateColorSettingTemplate,
-          id: generateInstanceId(),
-          data: k,
-        };
-      });
-
-      renderDateSettings(
-        setting.settingEl,
-        keys,
-        (keys: DateColorSetting[]) =>
-          this.applySettingsUpdate({
-            'date-colors': {
-              $set: keys.map((k) => k.data),
-            },
-          }),
-        () => {
-          const [value, globalValue] = this.getSetting('date-display-format', local);
-          const defaultFormat = getDefaultDateFormat(this.app);
-          return value || globalValue || defaultFormat;
-        },
-        () => {
-          const [value, globalValue] = this.getSetting('time-format', local);
-          const defaultFormat = getDefaultTimeFormat(this.app);
-          return value || globalValue || defaultFormat;
-        }
-      );
-
-      this.cleanupFns.push(() => {
-        if (setting.settingEl) {
-          cleanUpDateSettings(setting.settingEl);
-        }
-      });
-    });
-
-    new Setting(contentEl)
-      .setName(t('Add date and time to archived cards'))
-      .setDesc(
-        t(
-          'When toggled, the current date and time will be added to the card title when it is archived. Eg. - [ ] 2021-05-14 10:00am My card title'
-        )
-      )
-      .then((setting) => {
-        let toggleComponent: ToggleComponent;
-
-        setting
-          .addToggle((toggle) => {
-            toggleComponent = toggle;
-
-            const [value, globalValue] = this.getSetting('archive-with-date', local);
-
-            if (value !== undefined) {
-              toggle.setValue(value as boolean);
-            } else if (globalValue !== undefined) {
-              toggle.setValue(globalValue as boolean);
-            }
-
-            toggle.onChange((newValue) => {
-              this.applySettingsUpdate({
-                'archive-with-date': {
-                  $set: newValue,
-                },
-              });
-            });
-          })
-          .addExtraButton((b) => {
-            b.setIcon('lucide-rotate-ccw')
-              .setTooltip(t('Reset to default'))
-              .onClick(() => {
-                const [, globalValue] = this.getSetting('archive-with-date', local);
-                toggleComponent.setValue(!!globalValue);
-
-                this.applySettingsUpdate({
-                  $unset: ['archive-with-date'],
-                });
-              });
-          });
-      });
-
-    new Setting(contentEl)
-      .setName(t('Add archive date/time after card title'))
-      .setDesc(
-        t(
-          'When toggled, the archived date/time will be added after the card title, e.g.- [ ] My card title 2021-05-14 10:00am. By default, it is inserted before the title.'
-        )
-      )
-      .then((setting) => {
-        let toggleComponent: ToggleComponent;
-
-        setting
-          .addToggle((toggle) => {
-            toggleComponent = toggle;
-
-            const [value, globalValue] = this.getSetting('append-archive-date', local);
-
-            if (value !== undefined) {
-              toggle.setValue(value as boolean);
-            } else if (globalValue !== undefined) {
-              toggle.setValue(globalValue as boolean);
-            }
-
-            toggle.onChange((newValue) => {
-              this.applySettingsUpdate({
-                'append-archive-date': {
-                  $set: newValue,
-                },
-              });
-            });
-          })
-          .addExtraButton((b) => {
-            b.setIcon('lucide-rotate-ccw')
-              .setTooltip(t('Reset to default'))
-              .onClick(() => {
-                const [, globalValue] = this.getSetting('append-archive-date', local);
-                toggleComponent.setValue(!!globalValue);
-
-                this.applySettingsUpdate({
-                  $unset: ['append-archive-date'],
-                });
-              });
-          });
-      });
-
-    new Setting(contentEl)
-      .setName(t('Archive date/time separator'))
-      .setDesc(t('This will be used to separate the archived date/time from the title'))
-      .addText((text) => {
-        const [value, globalValue] = this.getSetting('archive-date-separator', local);
-
-        text.inputEl.placeholder = globalValue ? `${globalValue} (default)` : '';
-        text.inputEl.value = value ? (value as string) : '';
-
-        text.onChange((val) => {
-          if (val) {
-            this.applySettingsUpdate({
-              'archive-date-separator': {
-                $set: val,
-              },
-            });
-
-            return;
-          }
-
-          this.applySettingsUpdate({
-            $unset: ['archive-date-separator'],
-          });
-        });
-      });
-
-    new Setting(contentEl).setName(t('Archive date/time format')).then((setting) => {
-      setting.addMomentFormat((mf) => {
-        setting.descEl.appendChild(
-          createFragment((frag) => {
-            frag.appendText(t('For more syntax, refer to') + ' ');
-            frag.createEl(
-              'a',
-              {
-                text: t('format reference'),
-                href: 'https://momentjs.com/docs/#/displaying/format/',
-              },
-              (a) => {
-                a.setAttr('target', '_blank');
-              }
-            );
-            frag.createEl('br');
-            frag.appendText(t('Your current syntax looks like this') + ': ');
-            mf.setSampleEl(frag.createEl('b', { cls: 'u-pop' }));
-            frag.createEl('br');
-          })
-        );
-
-        const [value, globalValue] = this.getSetting('archive-date-format', local);
-
-        const [dateFmt, globalDateFmt] = this.getSetting('date-format', local);
-        const defaultDateFmt = dateFmt || globalDateFmt || getDefaultDateFormat(this.app);
-        const [timeFmt, globalTimeFmt] = this.getSetting('time-format', local);
-        const defaultTimeFmt = timeFmt || globalTimeFmt || getDefaultTimeFormat(this.app);
-
-        const defaultFormat = `${defaultDateFmt} ${defaultTimeFmt}`;
-
-        mf.setPlaceholder(defaultFormat);
-        mf.setDefaultFormat(defaultFormat);
-
-        if (value || globalValue) {
-          mf.setValue((value || globalValue) as string);
-        }
-
-        mf.onChange((newValue) => {
-          if (newValue) {
-            this.applySettingsUpdate({
-              'archive-date-format': {
-                $set: newValue,
-              },
-            });
-          } else {
-            this.applySettingsUpdate({
-              $unset: ['archive-date-format'],
-            });
-          }
-        });
-      });
-    });
-
-    new Setting(contentEl)
-      .setName(t('Calendar: first day of week'))
-      .setDesc(t('Override which day is used as the start of the week'))
-      .addDropdown((dropdown) => {
-        dropdown.addOption('', t('default'));
-        dropdown.addOption('0', t('Sunday'));
-        dropdown.addOption('1', t('Monday'));
-        dropdown.addOption('2', t('Tuesday'));
-        dropdown.addOption('3', t('Wednesday'));
-        dropdown.addOption('4', t('Thursday'));
-        dropdown.addOption('5', t('Friday'));
-        dropdown.addOption('6', t('Saturday'));
-
-        const [value, globalValue] = this.getSetting('date-picker-week-start', local);
-
-        dropdown.setValue(value?.toString() || globalValue?.toString() || '');
-        dropdown.onChange((value) => {
-          if (value) {
-            this.applySettingsUpdate({
-              'date-picker-week-start': {
-                $set: Number(value),
-              },
-            });
-          } else {
-            this.applySettingsUpdate({
-              $unset: ['date-picker-week-start'],
-            });
-          }
-        });
-      });
 
     contentEl.createEl('br');
     contentEl.createEl('h4', { text: t('Inline Metadata') });

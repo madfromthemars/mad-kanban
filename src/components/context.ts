@@ -17,11 +17,13 @@ export const KanbanContext = createContext<KanbanContextProps>(null);
 
 export type DateFilterType = 'all' | 'today' | 'week' | 'overdue' | 'no-date';
 export type StatusFilterType = 'all' | 'complete' | 'incomplete';
+export type PriorityFilterType = 'all' | 'highest' | 'high' | 'medium' | 'low' | 'none';
 
 export interface FilterState {
   tags: string[];
   dateFilter: DateFilterType;
   statusFilter: StatusFilterType;
+  priorityFilter: PriorityFilterType;
 }
 
 export interface FilterContextProps {
@@ -30,8 +32,16 @@ export interface FilterContextProps {
   setTagFilter: (tags: string[]) => void;
   setDateFilter: (filter: DateFilterType) => void;
   setStatusFilter: (filter: StatusFilterType) => void;
+  setPriorityFilter: (filter: PriorityFilterType) => void;
   clearFilters: () => void;
   hasActiveFilters: boolean;
+  cardBodyCache?: Map<string, string>;
+  boardPath?: string;
+  // Tag grouping
+  isGroupingByTag: boolean;
+  setGroupingByTag: (enabled: boolean) => void;
+  collapsedGroups: Set<string>;
+  toggleGroupCollapse: (tag: string) => void;
 }
 
 export interface SearchContextProps {

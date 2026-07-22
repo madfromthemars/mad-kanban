@@ -332,7 +332,7 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
       addSortOptions(menu);
     } else {
       menu.addItem((item) => {
-        const submenu = (item as any).setTitle(t('Sort by')).setIcon('arrow-down-up').setSubmenu();
+        const submenu = item.setTitle(t('Sort by')).setIcon('arrow-down-up').setSubmenu();
 
         addSortOptions(submenu);
       });

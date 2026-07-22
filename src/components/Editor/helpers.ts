@@ -5,7 +5,7 @@ export function getDropAction(stateManager: StateManager, transfer: DataTransfer
   if (transfer.types.includes('text/uri-list')) return 'link';
   if (
     ['file', 'files', 'link', 'folder'].includes(
-      (stateManager.app as any).dragManager.draggable?.type
+      stateManager.app.dragManager.draggable?.type
     )
   )
     return 'link';

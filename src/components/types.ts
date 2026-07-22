@@ -39,17 +39,6 @@ export interface TagSort {
   tag: string;
 }
 
-export interface DateColor {
-  isToday?: boolean;
-  isBefore?: boolean;
-  isAfter?: boolean;
-  distance?: number;
-  unit?: 'hours' | 'days' | 'weeks' | 'months';
-  direction?: 'before' | 'after';
-  color?: string;
-  backgroundColor?: string;
-}
-
 export type PageDataValue =
   | string
   | number
@@ -75,6 +64,7 @@ export interface ItemMetadata {
   fileMetadata?: FileMetadata;
   fileMetadataOrder?: string[];
   inlineMetadata?: InlineField[];
+  priority?: string;
 }
 
 export interface ItemData {
@@ -102,14 +92,12 @@ export interface BoardData {
   errors: ErrorReport[];
 }
 
-export type Item = Nestable<ItemData>;
+export type Item = Nestable<ItemData, Item>;
 export type Lane = Nestable<LaneData, Item>;
 export type Board = Nestable<BoardData, Lane>;
-export type MetadataSetting = Nestable<DataKey>;
-export type TagColorSetting = Nestable<TagColor>;
-export type TagSortSetting = Nestable<TagSort>;
-export type DateColorSetting = Nestable<DateColor>;
-
+export type MetadataSetting = Nestable<DataKey, MetadataSetting>;
+export type TagColorSetting = Nestable<TagColor, TagColorSetting>;
+export type TagSortSetting = Nestable<TagSort, TagSortSetting>;
 export const DataTypes = {
   Item: 'item',
   Lane: 'lane',
@@ -117,13 +105,12 @@ export const DataTypes = {
   MetadataSetting: 'metadata-setting',
   TagColorSetting: 'tag-color',
   TagSortSetting: 'tag-sort',
-  DateColorSetting: 'date-color',
 };
 
 export const ItemTemplate = {
   accepts: [DataTypes.Item],
   type: DataTypes.Item,
-  children: [] as any[],
+  children: [] as Item[],
 };
 
 export const LaneTemplate = {
@@ -139,27 +126,19 @@ export const BoardTemplate = {
 export const MetadataSettingTemplate = {
   accepts: [DataTypes.MetadataSetting],
   type: DataTypes.MetadataSetting,
-  children: [] as any[],
+  children: [] as MetadataSetting[],
 };
 
 export const TagSortSettingTemplate = {
   accepts: [DataTypes.TagSortSetting],
   type: DataTypes.TagSortSetting,
-  children: [] as any[],
+  children: [] as TagSortSetting[],
 };
 
-// TODO: all this is unecessary because these aren't sortable
 export const TagColorSettingTemplate = {
   accepts: [] as string[],
   type: DataTypes.TagColorSetting,
-  children: [] as any[],
-};
-
-// TODO: all this is unecessary because these aren't sortable
-export const DateColorSettingTemplate = {
-  accepts: [] as string[],
-  type: DataTypes.DateColorSetting,
-  children: [] as any[],
+  children: [] as TagColorSetting[],
 };
 
 export interface EditCoordinates {

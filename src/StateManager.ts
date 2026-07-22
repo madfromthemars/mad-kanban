@@ -1,15 +1,14 @@
 import update from 'immutability-helper';
-import { App, TFile, moment } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
 import { useEffect, useState } from 'preact/compat';
 
 import { KanbanView } from './KanbanView';
 import { KanbanSettings, SettingRetrievers } from './Settings';
-import { getDefaultDateFormat, getDefaultTimeFormat } from './components/helpers';
 import { Board, BoardTemplate, Item } from './components/types';
 import { ListFormat } from './parsers/List';
 import { BaseFormat, frontmatterKey, shouldRefreshBoard } from './parsers/common';
 import { getTaskStatusDone } from './parsers/helpers/inlineMetadata';
-import { defaultDateTrigger, defaultMetadataPosition, defaultTimeTrigger } from './settingHelpers';
+import { defaultMetadataPosition } from './settingHelpers';
 
 export class StateManager {
   onEmpty: () => void;
@@ -130,6 +129,7 @@ export class StateManager {
         this.viewSet.forEach((view) => view.initHeaderButtons());
       } catch (e) {
         console.error(e);
+        new Notice('Kanban: Failed to refresh board' + (e instanceof Error ? ': ' + e.message : ''));
         this.setError(e);
       }
     }
@@ -176,6 +176,7 @@ export class StateManager {
       }
     } catch (e) {
       console.error(e);
+      new Notice('Kanban: Failed to update board' + (e instanceof Error ? ': ' + e.message : ''));
       this.setError(e);
     }
   }
@@ -219,34 +220,15 @@ export class StateManager {
     const localKeys = this.getSettingRaw('metadata-keys', suppliedSettings) || [];
     const metadataKeys = Array.from(new Set([...globalKeys, ...localKeys]));
 
-    const dateFormat =
-      this.getSettingRaw('date-format', suppliedSettings) || getDefaultDateFormat(this.app);
-    const dateDisplayFormat =
-      this.getSettingRaw('date-display-format', suppliedSettings) || dateFormat;
-
-    const timeFormat =
-      this.getSettingRaw('time-format', suppliedSettings) || getDefaultTimeFormat(this.app);
-
-    const archiveDateFormat =
-      this.getSettingRaw('archive-date-format', suppliedSettings) || `${dateFormat} ${timeFormat}`;
-
     this.compiledSettings = {
       [frontmatterKey]: this.getSettingRaw(frontmatterKey, suppliedSettings) || 'board',
-      'date-format': dateFormat,
-      'date-display-format': dateDisplayFormat,
-      'date-time-display-format': dateDisplayFormat + ' ' + timeFormat,
-      'date-trigger': this.getSettingRaw('date-trigger', suppliedSettings) || defaultDateTrigger,
+      'date-format': this.getSettingRaw('date-format', suppliedSettings) || 'YYYY-MM-DD',
+      'date-trigger': this.getSettingRaw('date-trigger', suppliedSettings) || '@',
       'inline-metadata-position':
         this.getSettingRaw('inline-metadata-position', suppliedSettings) || defaultMetadataPosition,
-      'time-format': timeFormat,
-      'time-trigger': this.getSettingRaw('time-trigger', suppliedSettings) || defaultTimeTrigger,
-      'link-date-to-daily-note': this.getSettingRaw('link-date-to-daily-note', suppliedSettings),
-      'move-dates': this.getSettingRaw('move-dates', suppliedSettings),
       'move-tags': this.getSettingRaw('move-tags', suppliedSettings),
       'move-task-metadata': this.getSettingRaw('move-task-metadata', suppliedSettings),
       'metadata-keys': metadataKeys,
-      'archive-date-separator': this.getSettingRaw('archive-date-separator') || '',
-      'archive-date-format': archiveDateFormat,
       'show-add-list': this.getSettingRaw('show-add-list', suppliedSettings) ?? true,
       'show-archive-all': this.getSettingRaw('show-archive-all', suppliedSettings) ?? true,
       'show-view-as-markdown':
@@ -256,7 +238,6 @@ export class StateManager {
       'show-set-view': this.getSettingRaw('show-set-view', suppliedSettings) ?? true,
       'tag-colors': this.getSettingRaw('tag-colors', suppliedSettings) ?? [],
       'tag-sort': this.getSettingRaw('tag-sort', suppliedSettings) ?? [],
-      'date-colors': this.getSettingRaw('date-colors', suppliedSettings) ?? [],
       'tag-action': this.getSettingRaw('tag-action', suppliedSettings) ?? 'obsidian',
     };
   }
@@ -323,6 +304,7 @@ export class StateManager {
       }
     } catch (e) {
       console.error(e);
+      new Notice('Kanban: Failed to parse board' + (e instanceof Error ? ': ' + e.message : ''));
 
       board = update(board, {
         data: {
@@ -358,6 +340,7 @@ export class StateManager {
       this.setState(this.getParsedBoard(this.getAView().data), false);
     } catch (e) {
       console.error(e);
+      new Notice('Kanban: Failed to reparse board' + (e instanceof Error ? ': ' + e.message : ''));
       this.setError(e);
     }
   }
@@ -366,24 +349,6 @@ export class StateManager {
     const board = this.state;
 
     const archived: Item[] = [];
-    const shouldAppendArchiveDate = !!this.getSetting('archive-with-date');
-    const archiveDateSeparator = this.getSetting('archive-date-separator');
-    const archiveDateFormat = this.getSetting('archive-date-format');
-    const archiveDateAfterTitle = this.getSetting('append-archive-date');
-
-    const appendArchiveDate = (item: Item) => {
-      const newTitle = [moment().format(archiveDateFormat)];
-
-      if (archiveDateSeparator) newTitle.push(archiveDateSeparator);
-
-      newTitle.push(item.data.titleRaw);
-
-      if (archiveDateAfterTitle) newTitle.reverse();
-
-      const titleRaw = newTitle.join(' ');
-
-      return this.parser.updateItemContent(item, titleRaw);
-    };
 
     const lanes = board.children.map((lane) => {
       return update(lane, {
@@ -408,9 +373,7 @@ export class StateManager {
           },
           data: {
             archive: {
-              $push: shouldAppendArchiveDate
-                ? await Promise.all(archived.map((item) => appendArchiveDate(item)))
-                : archived,
+              $push: archived,
             },
           },
         })

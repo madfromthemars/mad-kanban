@@ -26,7 +26,7 @@ import { getTaskStatusDone } from 'src/parsers/helpers/inlineMetadata';
 
 import { Items } from '../Item/Item';
 import { ItemForm } from '../Item/ItemForm';
-import { KanbanContext, SearchContext, SortContext } from '../context';
+import { FilterContext, KanbanContext, SearchContext, SortContext } from '../context';
 import { c, generateInstanceId } from '../helpers';
 import { DataTypes, EditState, EditingState, Item, Lane } from '../types';
 import { LaneHeader } from './LaneHeader';
@@ -53,6 +53,7 @@ function DraggableLaneRaw({
 
   const { stateManager, boardModifiers, view } = useContext(KanbanContext);
   const search = useContext(SearchContext);
+  const filterContext = useContext(FilterContext);
 
   const boardView = view.useViewState(frontmatterKey);
   const path = useNestedEntityPath(laneIndex);
@@ -151,7 +152,7 @@ function DraggableLaneRaw({
   const SortableComponent = isStatic ? StaticSortable : Sortable;
   const CollapsedDropArea = !isCollapsed || isStatic ? Fragment : Droppable;
   const dropAreaProps: DraggableProps = useMemo(() => {
-    if (!isCollapsed || isStatic) return {} as any;
+    if (!isCollapsed || isStatic) return {} as DraggableProps;
     const data = {
       id: generateInstanceId(),
       type: 'lane',
@@ -185,6 +186,7 @@ function DraggableLaneRaw({
           data-count={lane.children.length}
           ref={elementRef}
           className={classcat([c('lane'), { 'will-prepend': shouldPrepend }])}
+          onClick={isCollapsed ? toggleIsCollapsed : undefined}
         >
           <CollapsedDropArea {...dropAreaProps}>
             <LaneHeader
@@ -235,6 +237,8 @@ function DraggableLaneRaw({
                         items={lane.children}
                         isStatic={isStatic}
                         shouldMarkItemsComplete={shouldMarkItemsComplete}
+                        laneId={lane.id}
+                        isGroupingByTag={filterContext?.isGroupingByTag}
                       />
                       <SortPlaceholder
                         accepts={laneAccepts}

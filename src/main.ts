@@ -2,7 +2,9 @@ import { around } from 'monkey-around';
 import {
   App,
   MarkdownView,
+  Menu,
   Modal,
+  Notice,
   Platform,
   Plugin,
   TFile,
@@ -17,11 +19,13 @@ import { createApp } from './DragDropApp';
 import { KanbanView, kanbanIcon, kanbanViewType } from './KanbanView';
 import { KanbanSettings, KanbanSettingsTab } from './Settings';
 import { StateManager } from './StateManager';
-import { DateSuggest, TimeSuggest } from './components/Editor/suggest';
+
 import { getParentWindow } from './dnd/util/getWindow';
 import { hasFrontmatterKey } from './helpers';
 import { t } from './lang/helpers';
 import { basicFrontmatter, frontmatterKey } from './parsers/common';
+import { migrateBoardFolder } from './kanbanFileHelpers';
+import { clearCardCaches } from './components/Item/ItemContent';
 
 interface WindowRegistry {
   viewMap: Map<string, KanbanView>;
@@ -29,7 +33,7 @@ interface WindowRegistry {
   appRoot: HTMLElement;
 }
 
-function getEditorClass(app: any) {
+function getEditorClass(app: App) {
   const md = app.embedRegistry.embedByExtension.md(
     { app: app, containerEl: createDiv(), state: {} },
     null,
@@ -133,7 +137,7 @@ export default class KanbanPlugin extends Plugin {
     super.unload();
     Promise.all(
       this.app.workspace.getLeavesOfType(kanbanViewType).map((leaf) => {
-        this.kanbanFileModes[(leaf as any).id] = 'markdown';
+        this.kanbanFileModes[leaf.id] = 'markdown';
         return this.setMarkdownView(leaf);
       })
     );
@@ -152,7 +156,7 @@ export default class KanbanPlugin extends Plugin {
     this.windowRegistry.clear();
     this.kanbanFileModes = {};
 
-    (this.app.workspace as any).unregisterHoverLinkSource(frontmatterKey);
+    this.app.workspace.unregisterHoverLinkSource(frontmatterKey);
   }
 
   MarkdownEditor: any;
@@ -162,17 +166,14 @@ export default class KanbanPlugin extends Plugin {
 
     this.MarkdownEditor = getEditorClass(this.app);
 
-    this.registerEditorSuggest(new TimeSuggest(this.app, this));
-    this.registerEditorSuggest(new DateSuggest(this.app, this));
-
     this.registerEvent(
-      this.app.workspace.on('window-open', (_: any, win: Window) => {
+      this.app.workspace.on('window-open', (_: unknown, win: Window) => {
         this.mount(win);
       })
     );
 
     this.registerEvent(
-      this.app.workspace.on('window-close', (_: any, win: Window) => {
+      this.app.workspace.on('window-close', (_: unknown, win: Window) => {
         this.unmount(win);
       })
     );
@@ -199,7 +200,7 @@ export default class KanbanPlugin extends Plugin {
     // Mount an empty component to start; views will be added as we go
     this.mount(window);
 
-    (this.app.workspace as any).floatingSplit?.children?.forEach((c: any) => {
+    this.app.workspace.floatingSplit?.children?.forEach((c) => {
       this.mount(c.win);
     });
 
@@ -327,7 +328,7 @@ export default class KanbanPlugin extends Plugin {
     }
 
     const reg = this.windowRegistry.get(win);
-    const oldId = `${(view.leaf as any).id}:::${oldPath}`;
+    const oldId = `${view.leaf.id}:::${oldPath}`;
 
     if (reg.viewMap.has(oldId)) {
       reg.viewMap.delete(oldId);
@@ -337,7 +338,28 @@ export default class KanbanPlugin extends Plugin {
       reg.viewMap.set(view.id, view);
     }
 
-    if (view.isPrimary) {
+    // Check if the board moved to a different directory
+    const oldParent = oldPath.split('/').slice(0, -1).join('/');
+    const newParent = view.file.parent?.path || '';
+
+    if (oldParent !== newParent) {
+      // Clear stale caches immediately
+      clearCardCaches();
+
+      // Delay slightly to let Obsidian finish all rename operations,
+      // then migrate the _folder structure and update links
+      setTimeout(async () => {
+        try {
+          await migrateBoardFolder(this.app, view.file, oldPath);
+        } catch (e) {
+          console.error('[Kanban] Board folder migration failed:', e);
+          new Notice('Kanban: Board folder migration failed' + (e instanceof Error ? ': ' + e.message : ''));
+        }
+        if (view.isPrimary) {
+          this.getStateManager(view.file).forceRefresh();
+        }
+      }, 500);
+    } else if (view.isPrimary) {
       this.getStateManager(view.file).softRefresh();
     }
   }
@@ -415,7 +437,7 @@ export default class KanbanPlugin extends Plugin {
       if (requestedName === null) return;
       const name = requestedName.trim() || t('Untitled Kanban');
 
-      const kanban: TFile = await (this.app.fileManager as any).createNewMarkdownFile(
+      const kanban = await this.app.fileManager.createNewMarkdownFile(
         targetFolder,
         name
       );
@@ -437,7 +459,21 @@ export default class KanbanPlugin extends Plugin {
       });
     } catch (e) {
       console.error('Error creating kanban board:', e);
+      new Notice('Kanban: Error creating board' + (e instanceof Error ? ': ' + e.message : ''));
     }
+  }
+
+  private addOpenAsKanbanMenuItem(menu: Menu, leaf: WorkspaceLeaf, file: TFile) {
+    menu.addItem((item) => {
+      item
+        .setTitle(t('Open as kanban board'))
+        .setIcon(kanbanIcon)
+        .setSection('pane')
+        .onClick(() => {
+          this.kanbanFileModes[leaf.id || file.path] = kanbanViewType;
+          this.setKanbanView(leaf);
+        });
+    });
   }
 
   registerEvents() {
@@ -481,17 +517,7 @@ export default class KanbanPlugin extends Plugin {
           }
 
           if (!haveKanbanView) {
-            menu.addItem((item) => {
-              item
-                .setTitle(t('Open as kanban board'))
-                .setIcon(kanbanIcon)
-                .setSection('pane')
-                .onClick(() => {
-                  this.kanbanFileModes[(leaf as any).id || file.path] = kanbanViewType;
-                  this.setKanbanView(leaf);
-                });
-            });
-
+            this.addOpenAsKanbanMenuItem(menu, leaf, file as TFile);
             return;
           }
         }
@@ -502,16 +528,7 @@ export default class KanbanPlugin extends Plugin {
           ['more-options', 'pane-more-options', 'tab-header'].includes(source) &&
           hasFrontmatterKey(this.app, file)
         ) {
-          menu.addItem((item) => {
-            item
-              .setTitle(t('Open as kanban board'))
-              .setIcon(kanbanIcon)
-              .setSection('pane')
-              .onClick(() => {
-                this.kanbanFileModes[(leaf as any).id || file.path] = kanbanViewType;
-                this.setKanbanView(leaf);
-              });
-          });
+          this.addOpenAsKanbanMenuItem(menu, leaf, file as TFile);
         }
 
         if (fileIsFile && leafIsKanban) {
@@ -522,7 +539,7 @@ export default class KanbanPlugin extends Plugin {
                 .setIcon(kanbanIcon)
                 .setSection('pane')
                 .onClick(() => {
-                  this.kanbanFileModes[(leaf as any).id || file.path] = 'markdown';
+                  this.kanbanFileModes[leaf.id || file.path] = 'markdown';
                   this.setMarkdownView(leaf);
                 });
             });
@@ -550,16 +567,6 @@ export default class KanbanPlugin extends Plugin {
                   .setIcon('lucide-archive')
                   .setSection('pane')
                   .onClick(() => {
-                    stateManager.archiveCompletedCards();
-                  });
-              })
-              .addItem((item) => {
-                item
-                  .setTitle(t('Archive completed cards'))
-                  .setIcon('lucide-archive')
-                  .setSection('pane')
-                  .onClick(() => {
-                    const stateManager = this.stateManagers.get(file);
                     stateManager.archiveCompletedCards();
                   });
               })
@@ -636,20 +643,20 @@ export default class KanbanPlugin extends Plugin {
     );
 
     this.registerEvent(
-      (this.app as any).metadataCache.on('dataview:metadata-change', (_: any, file: TFile) => {
+      this.app.metadataCache.on('dataview:metadata-change', (_: unknown, file: TFile) => {
         notifyFileChange(file);
       })
     );
 
     this.registerEvent(
-      (this.app as any).metadataCache.on('dataview:api-ready', () => {
+      this.app.metadataCache.on('dataview:api-ready', () => {
         this.stateManagers.forEach((manager) => {
           manager.forceRefresh();
         });
       })
     );
 
-    (this.app.workspace as any).registerHoverLinkSource(frontmatterKey, {
+    this.app.workspace.registerHoverLinkSource(frontmatterKey, {
       display: 'Kanban',
       defaultMod: true,
     });
@@ -693,13 +700,13 @@ export default class KanbanPlugin extends Plugin {
         const activeView = this.app.workspace.getActiveViewOfType(KanbanView);
 
         if (activeView) {
-          this.kanbanFileModes[(activeView.leaf as any).id || activeFile.path] = 'markdown';
+          this.kanbanFileModes[activeView.leaf.id || activeFile.path] = 'markdown';
           this.setMarkdownView(activeView.leaf);
         } else if (fileIsKanban) {
           const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 
           if (activeView) {
-            this.kanbanFileModes[(activeView.leaf as any).id || activeFile.path] = kanbanViewType;
+            this.kanbanFileModes[activeView.leaf.id || activeFile.path] = kanbanViewType;
             this.setKanbanView(activeView.leaf);
           }
         }
@@ -723,7 +730,7 @@ export default class KanbanPlugin extends Plugin {
             .then(() => {
               this.setKanbanView(activeView.leaf);
             })
-            .catch((e: Error) => console.error(e));
+            .catch((e: Error) => { console.error(e); new Notice('Kanban: Error converting note' + (e instanceof Error ? ': ' + e.message : '')); });
         }
       },
     });
@@ -811,9 +818,9 @@ export default class KanbanPlugin extends Plugin {
 
     this.app.workspace.onLayoutReady(() => {
       this.register(
-        around((this.app as any).commands, {
+        around(this.app.commands, {
           executeCommand(next) {
-            return function (command: any) {
+            return function (command: { id: string }) {
               const view = self.app.workspace.getActiveViewOfType(KanbanView);
 
               if (view && command?.id) {
@@ -829,8 +836,6 @@ export default class KanbanPlugin extends Plugin {
 
     this.register(
       around(this.app.workspace, {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
         setActiveLeaf(next) {
           return function (...args) {
             next.apply(this, args);

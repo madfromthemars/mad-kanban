@@ -26,26 +26,26 @@ function tokenizeTasklistCheck(effects: Effects, ok: State, nok: State) {
       return nok(code);
     }
 
-    effects.enter('taskListCheck' as any);
-    effects.enter('taskListCheckMarker' as any);
+    effects.enter('taskListCheck');
+    effects.enter('taskListCheckMarker');
     effects.consume(code);
-    effects.exit('taskListCheckMarker' as any);
+    effects.exit('taskListCheckMarker');
     return inside;
   }
 
   /** @type {State} */
   function inside(code: number) {
     if (markdownSpace(code)) {
-      effects.enter('taskListCheckValueUnchecked' as any);
+      effects.enter('taskListCheckValueUnchecked');
       effects.consume(code);
-      effects.exit('taskListCheckValueUnchecked' as any);
+      effects.exit('taskListCheckValueUnchecked');
       return close;
     }
 
     if (code !== codes.rightSquareBracket) {
-      effects.enter('taskListCheckValueChecked' as any);
+      effects.enter('taskListCheckValueChecked');
       effects.consume(code);
-      effects.exit('taskListCheckValueChecked' as any);
+      effects.exit('taskListCheckValueChecked');
       return close;
     }
 
@@ -55,10 +55,10 @@ function tokenizeTasklistCheck(effects: Effects, ok: State, nok: State) {
   /** @type {State} */
   function close(code: number) {
     if (code === codes.rightSquareBracket) {
-      effects.enter('taskListCheckMarker' as any);
+      effects.enter('taskListCheckMarker');
       effects.consume(code);
-      effects.exit('taskListCheckMarker' as any);
-      effects.exit('taskListCheck' as any);
+      effects.exit('taskListCheckMarker');
+      effects.exit('taskListCheck');
       return effects.check({ tokenize: spaceThenNonSpace }, ok, nok);
     }
 
@@ -98,7 +98,7 @@ export const gfmTaskListItemFromMarkdown = {
 function exitCheck(token: Token) {
   const node = /** @type {ListItem} */ this.stack[this.stack.length - 2];
   // We’re always in a paragraph, in a list item.
-  node.checked = token.type === ('taskListCheckValueChecked' as any);
+  node.checked = token.type === 'taskListCheckValueChecked';
   node.checkChar = this.sliceSerialize(token);
 }
 

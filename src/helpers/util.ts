@@ -1,3 +1,5 @@
+import { Notice } from 'obsidian';
+
 const { compare } = new Intl.Collator(undefined, {
   usage: 'sort',
   sensitivity: 'base',
@@ -63,6 +65,7 @@ export class PromiseQueue {
         await Promise.all(item.map((item) => item()));
       } catch (e) {
         console.error(e);
+        new Notice('Kanban: Background task failed' + (e instanceof Error ? ': ' + e.message : ''));
       }
 
       if (!this.isRunning) return;

@@ -101,9 +101,7 @@ export function TableView({
     getColumnCanGlobalFilter: () => true,
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    columnResizeDirection: stateManager.app.vault.getConfig('rightToLeft') ? 'rtl' : 'ltr',
+    columnResizeDirection: (stateManager.app.vault.getConfig('rightToLeft') ? 'rtl' : 'ltr') as 'rtl' | 'ltr',
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -204,7 +202,7 @@ export function TableView({
                       className={classcat({
                         'mod-has-icon': cell.column.id === 'lane',
                         'mod-search-match': row.columnFiltersMeta[cell.column.id]
-                          ? (row.columnFiltersMeta[cell.column.id] as any).itemRank.passed
+                          ? (row.columnFiltersMeta[cell.column.id] as { itemRank?: { passed?: boolean } })?.itemRank?.passed
                           : false,
                       })}
                     >

@@ -1,6 +1,7 @@
 import animateScrollTo from 'animated-scroll-to';
 import classcat from 'classcat';
 import update from 'immutability-helper';
+import { Notice } from 'obsidian';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/compat';
 import { KanbanView } from 'src/KanbanView';
 import { StateManager } from 'src/StateManager';
@@ -15,6 +16,8 @@ import { DndScope } from '../dnd/components/Scope';
 import { getBoardModifiers } from '../helpers/boardModifiers';
 import { frontmatterKey } from '../parsers/common';
 import { Icon } from './Icon/Icon';
+import { cardBodyCache, clearCardCaches } from './Item/ItemContent';
+import { findOrphanedBoardFolder, migrateBoardFolder } from '../kanbanFileHelpers';
 import { Lanes } from './Lane/Lane';
 import { LaneForm } from './Lane/LaneForm';
 import { QuickFilters } from './QuickFilters/QuickFilters';
@@ -64,7 +67,6 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
 
   const filePath = stateManager.file.path;
   const maxArchiveLength = stateManager.useSetting('max-archive-size');
-  const dateColors = stateManager.useSetting('date-colors');
   const tagColors = stateManager.useSetting('tag-colors');
   const boardView = view.useViewState(frontmatterKey);
 
@@ -147,6 +149,20 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     };
   }, [searchQuery, view]);
 
+  // On load: detect and migrate orphaned _folder from a previous board move
+  useEffect(() => {
+    const oldBoardPath = findOrphanedBoardFolder(stateManager.app, stateManager.file);
+    if (oldBoardPath) {
+      migrateBoardFolder(stateManager.app, stateManager.file, oldBoardPath).then(() => {
+        clearCardCaches();
+        stateManager.forceRefresh();
+      }).catch((e) => {
+        console.error('[Kanban] Load-time folder migration failed:', e);
+        new Notice('Kanban: Failed to migrate board folder' + (e instanceof Error ? ': ' + e.message : ''));
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (maxArchiveLength === undefined || maxArchiveLength === -1) {
       return;
@@ -176,7 +192,7 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
       boardModifiers,
       filePath,
     };
-  }, [view, stateManager, boardModifiers, filePath, dateColors, tagColors]);
+  }, [view, stateManager, boardModifiers, filePath, tagColors]);
 
   const html5DragHandlers = createHTMLDndHandlers(stateManager);
 
@@ -189,16 +205,28 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
 
   if (boardData.data.errors.length > 0) {
     return (
-      <div>
-        <div>Error:</div>
-        {boardData.data.errors.map((e, i) => {
-          return (
-            <div key={i}>
-              <div>{e.description}</div>
-              <pre>{e.stack}</pre>
-            </div>
-          );
-        })}
+      <div className={c('error-container')}>
+        <div className={c('error-header')}>
+          <span>{t('Error')}</span>
+          <button
+            className={c('error-dismiss-button')}
+            onClick={() => {
+              stateManager.setState((board) =>
+                update(board, {
+                  data: { errors: { $set: [] } },
+                })
+              );
+            }}
+          >
+            {t('Dismiss')}
+          </button>
+        </div>
+        {boardData.data.errors.map((e, i) => (
+          <div key={i} className={c('error-item')}>
+            <div className={c('error-description')}>{e.description}</div>
+            <pre className={c('error-stack')}>{e.stack}</pre>
+          </div>
+        ))}
       </div>
     );
   }
@@ -211,7 +239,7 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     setDebouncedSearchQuery,
     setIsSearching
   );
-  const filterValue = useFilterValue(boardData);
+  const filterValue = useFilterValue(boardData, cardBodyCache, filePath);
 
   return (
     <DndScope id={view.id}>

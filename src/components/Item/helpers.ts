@@ -1,295 +1,22 @@
 import { FileWithPath, fromEvent } from 'file-selector';
-import { Platform, TFile, TFolder, htmlToMarkdown, moment, parseLinktext, setIcon } from 'obsidian';
+import { DataAdapter, Platform, TFile, TFolder, htmlToMarkdown, moment, parseLinktext, setIcon } from 'obsidian';
 import { StateManager } from 'src/StateManager';
 import { Path } from 'src/dnd/types';
-import { buildLinkToDailyNote } from 'src/helpers';
-import { getTaskStatusDone } from 'src/parsers/helpers/inlineMetadata';
+import { Priority, getTaskStatusDone } from 'src/parsers/helpers/inlineMetadata';
 
 import { BoardModifiers } from '../../helpers/boardModifiers';
-import { getDefaultLocale } from '../Editor/datePickerLocale';
-import flatpickr from '../Editor/flatpickr';
-import { Instance } from '../Editor/flatpickr/types/instance';
 import { c, escapeRegExpStr } from '../helpers';
 import { Item } from '../types';
 
-export function constructDatePicker(
-  win: Window,
-  stateManager: StateManager,
-  coordinates: { x: number; y: number },
-  onChange: (dates: Date[]) => void,
-  date?: Date
-) {
-  return win.document.body.createDiv(
-    { cls: `${c('date-picker')} ${c('ignore-click-outside')}` },
-    (div) => {
-      div.style.left = `${coordinates.x || 0}px`;
-      div.style.top = `${coordinates.y || 0}px`;
-
-      div.createEl('input', { type: 'text' }, (input) => {
-        div.win.setTimeout(() => {
-          let picker: Instance | null = null;
-
-          const clickHandler = (e: MouseEvent) => {
-            if (
-              e.target instanceof (e.view as Window & typeof globalThis).HTMLElement &&
-              e.target.closest(`.${c('date-picker')}`) === null
-            ) {
-              selfDestruct();
-            }
-          };
-
-          const keyHandler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-              selfDestruct();
-            }
-          };
-
-          const selfDestruct = () => {
-            picker.destroy();
-            div.remove();
-            win.document.body.removeEventListener('click', clickHandler);
-            win.document.removeEventListener('keydown', keyHandler);
-          };
-
-          picker = flatpickr(input, {
-            locale: getDefaultLocale(stateManager),
-            defaultDate: date,
-            inline: true,
-            onChange: (dates) => {
-              onChange(dates);
-              selfDestruct();
-            },
-            win,
-          });
-
-          div.win.setTimeout(() => {
-            const height = div.clientHeight;
-            const width = div.clientWidth;
-
-            if (coordinates.y + height > win.innerHeight) {
-              div.style.top = `${(coordinates.y || 0) - height}px`;
-            }
-
-            if (coordinates.x + width > win.innerWidth) {
-              div.style.left = `${(coordinates.x || 0) - width}px`;
-            }
-          });
-
-          win.document.body.addEventListener('click', clickHandler);
-          win.document.addEventListener('keydown', keyHandler);
-        });
-      });
-    }
-  );
-}
-
-interface ConstructMenuDatePickerOnChangeParams {
-  stateManager: StateManager;
-  boardModifiers: BoardModifiers;
-  item: Item;
-  hasDate: boolean;
-  path: Path;
-}
-
-export function constructMenuDatePickerOnChange({
-  stateManager,
-  boardModifiers,
-  item,
-  hasDate,
-  path,
-}: ConstructMenuDatePickerOnChangeParams) {
-  const dateFormat = stateManager.getSetting('date-format');
-  const shouldLinkDates = stateManager.getSetting('link-date-to-daily-note');
-  const dateTrigger = stateManager.getSetting('date-trigger');
-  const contentMatch = shouldLinkDates
-    ? '(?:\\[[^\\]]+\\]\\([^)]+\\)|\\[\\[[^\\]]+\\]\\])'
-    : '{[^}]+}';
-  const dateRegEx = new RegExp(`(^|\\s)${escapeRegExpStr(dateTrigger as string)}${contentMatch}`);
-
-  return (dates: Date[]) => {
-    const date = dates[0];
-    const formattedDate = moment(date).format(dateFormat);
-    const wrappedDate = shouldLinkDates
-      ? buildLinkToDailyNote(stateManager.app, formattedDate)
-      : `{${formattedDate}}`;
-
-    let titleRaw = item.data.titleRaw;
-
-    if (hasDate) {
-      titleRaw = item.data.titleRaw.replace(dateRegEx, `$1${dateTrigger}${wrappedDate}`);
-    } else {
-      titleRaw = `${item.data.titleRaw} ${dateTrigger}${wrappedDate}`;
-    }
-
-    boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRaw));
-  };
-}
-
-export function buildTimeArray(stateManager: StateManager) {
-  const format = stateManager.getSetting('time-format');
-  const time: string[] = [];
-
-  for (let i = 0; i < 24; i++) {
-    time.push(moment({ hour: i }).format(format));
-    time.push(moment({ hour: i, minute: 15 }).format(format));
-    time.push(moment({ hour: i, minute: 30 }).format(format));
-    time.push(moment({ hour: i, minute: 45 }).format(format));
-  }
-
-  return time;
-}
-
-export function constructTimePicker(
-  win: Window,
-  stateManager: StateManager,
-  coordinates: { x: number; y: number },
-  onSelect: (opt: string) => void,
-  time?: moment.Moment
-) {
-  const pickerClassName = c('time-picker');
-  const timeFormat = stateManager.getSetting('time-format');
-  const selected = time?.format(timeFormat);
-
-  win.document.body.createDiv({ cls: `${pickerClassName} ${c('ignore-click-outside')}` }, (div) => {
-    const options = buildTimeArray(stateManager);
-
-    const clickHandler = (e: MouseEvent) => {
-      if (
-        e.target instanceof (e.view as Window & typeof globalThis).HTMLElement &&
-        e.target.hasClass(c('time-picker-item')) &&
-        e.target.dataset.value
-      ) {
-        onSelect(e.target.dataset.value);
-        selfDestruct();
-      }
-    };
-
-    const clickOutsideHandler = (e: MouseEvent) => {
-      if (
-        e.target instanceof (e.view as Window & typeof globalThis).HTMLElement &&
-        e.target.closest(`.${pickerClassName}`) === null
-      ) {
-        selfDestruct();
-      }
-    };
-
-    const escHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        selfDestruct();
-      }
-    };
-
-    const selfDestruct = () => {
-      div.remove();
-      div.removeEventListener('click', clickHandler);
-      win.document.body.removeEventListener('click', clickOutsideHandler);
-      win.document.removeEventListener('keydown', escHandler);
-    };
-
-    div.style.left = `${coordinates.x || 0}px`;
-    div.style.top = `${coordinates.y || 0}px`;
-
-    let selectedItem: HTMLDivElement = null;
-    let middleItem: HTMLDivElement = null;
-
-    options.forEach((opt, index) => {
-      const isSelected = opt === selected;
-      div.createDiv(
-        {
-          cls: `${c('time-picker-item')} ${isSelected ? 'is-selected' : ''}`,
-          text: opt,
-        },
-        (item) => {
-          item.createEl('span', { cls: c('time-picker-check'), prepend: true }, (span) => {
-            setIcon(span, 'lucide-check');
-          });
-
-          if (index % 4 === 0) {
-            item.addClass('is-hour');
-          }
-
-          item.dataset.value = opt;
-
-          if (isSelected) selectedItem = item;
-          if (index === Math.floor(options.length / 2)) {
-            middleItem = item;
-          }
-        }
-      );
-    });
-
-    div.win.setTimeout(() => {
-      const height = div.clientHeight;
-      const width = div.clientWidth;
-
-      if (coordinates.y + height > win.innerHeight) {
-        div.style.top = `${(coordinates.y || 0) - height}px`;
-      }
-
-      if (coordinates.x + width > win.innerWidth) {
-        div.style.left = `${(coordinates.x || 0) - width}px`;
-      }
-
-      (selectedItem || middleItem)?.scrollIntoView({
-        block: 'center',
-        inline: 'nearest',
-      });
-
-      div.addEventListener('click', clickHandler);
-      win.document.body.addEventListener('click', clickOutsideHandler);
-      win.document.addEventListener('keydown', escHandler);
-    });
-  });
-}
-
-interface ConstructMenuTimePickerOnChangeParams {
-  stateManager: StateManager;
-  boardModifiers: BoardModifiers;
-  item: Item;
-  hasTime: boolean;
-  path: Path;
-}
-
-export function constructMenuTimePickerOnChange({
-  stateManager,
-  boardModifiers,
-  item,
-  hasTime,
-  path,
-}: ConstructMenuTimePickerOnChangeParams) {
-  const timeTrigger = stateManager.getSetting('time-trigger');
-  const timeRegEx = new RegExp(`(^|\\s)${escapeRegExpStr(timeTrigger as string)}{([^}]+)}`);
-
-  return (time: string) => {
-    let titleRaw = item.data.titleRaw;
-
-    if (hasTime) {
-      titleRaw = item.data.titleRaw.replace(timeRegEx, `$1${timeTrigger}{${time}}`);
-    } else {
-      titleRaw = `${item.data.titleRaw} ${timeTrigger}{${time}}`;
-    }
-
-    boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRaw));
-  };
-}
+const priorityClassMap: Record<string, string> = {
+  [Priority.Highest]: 'priority-highest',
+  [Priority.High]: 'priority-high',
+  [Priority.Medium]: 'priority-medium',
+  [Priority.Low]: 'priority-low',
+};
 
 export function getItemClassModifiers(item: Item) {
-  const date = item.data.metadata.date;
   const classModifiers: string[] = [];
-
-  if (date) {
-    if (date.isSame(new Date(), 'day')) {
-      classModifiers.push('is-today');
-    }
-
-    if (date.isAfter(new Date(), 'day')) {
-      classModifiers.push('is-future');
-    }
-
-    if (date.isBefore(new Date(), 'day')) {
-      classModifiers.push('is-past');
-    }
-  }
 
   if (item.data.checked && item.data.checkChar === getTaskStatusDone()) {
     classModifiers.push('is-complete');
@@ -297,6 +24,11 @@ export function getItemClassModifiers(item: Item) {
 
   for (const tag of item.data.metadata.tags) {
     classModifiers.push(`has-tag-${tag.slice(1)}`);
+  }
+
+  const priority = item.data.metadata.priority;
+  if (priority && priorityClassMap[priority]) {
+    classModifiers.push(priorityClassMap[priority]);
   }
 
   return classModifiers;
@@ -328,6 +60,19 @@ interface FileData {
   originalName: string;
 }
 
+function readClipboardImage(clipboard: any): FileData[] | null {
+  const clipboardImage = clipboard.readImage('clipboard');
+  if (clipboardImage.isEmpty()) return null;
+  const png = clipboardImage.toPNG();
+  return [
+    {
+      buffer: png,
+      mimeType: 'image/png',
+      originalName: `Pasted image ${moment().format('YYYYMMDDHHmmss')}.png`,
+    },
+  ];
+}
+
 export function getFileListFromClipboard(win: Window & typeof globalThis) {
   const clipboard = win.require('electron').remote.clipboard;
 
@@ -339,22 +84,14 @@ export function getFileListFromClipboard(win: Window & typeof globalThis) {
           .match(/<string>.*<\/string>/g)
           ?.map((item) => item.replace(/<string>|<\/string>/g, '')) || []
       );
-    } else {
-      const clipboardImage = clipboard.readImage('clipboard');
-      if (!clipboardImage.isEmpty()) {
-        const png = clipboardImage.toPNG();
-        const fileInfo: FileData = {
-          buffer: png,
-          mimeType: 'image/png',
-          originalName: `Pasted image ${moment().format('YYYYMMDDHHmmss')}.png`,
-        };
-        return [fileInfo];
-      } else {
-        return [(clipboard.read('public.file-url') as string).replace('file://', '')].filter(
-          (item) => item
-        );
-      }
     }
+
+    return (
+      readClipboardImage(clipboard) ||
+      [(clipboard.read('public.file-url') as string).replace('file://', '')].filter(
+        (item) => item
+      )
+    );
   } else {
     // https://github.com/electron/electron/issues/9035#issuecomment-536135202
     // https://docs.microsoft.com/en-us/windows/win32/shell/clipboard#cf_hdrop
@@ -378,28 +115,18 @@ export function getFileListFromClipboard(win: Window & typeof globalThis) {
           .filter((item) => item)
           .map((item) => drivePrefix + item);
       }
-    } else {
-      const clipboardImage = clipboard.readImage('clipboard');
-      if (!clipboardImage.isEmpty()) {
-        const png = clipboardImage.toPNG();
-        const fileInfo: FileData = {
-          buffer: png,
-          mimeType: 'image/png',
-          originalName: `Pasted image ${moment().format('YYYYMMDDHHmmss')}.png`,
-        };
-        return [fileInfo];
-      } else {
-        return [
-          (clipboard.readBuffer('FileNameW').toString('ucs2') as string).replace(
-            RegExp(String.fromCharCode(0), 'g'),
-            ''
-          ),
-        ].filter((item) => item);
-      }
     }
-  }
 
-  return null;
+    return (
+      readClipboardImage(clipboard) ||
+      [
+        (clipboard.readBuffer('FileNameW').toString('ucs2') as string).replace(
+          RegExp(String.fromCharCode(0), 'g'),
+          ''
+        ),
+      ].filter((item) => item)
+    );
+  }
 }
 
 function getFileFromPath(file: string) {
@@ -412,11 +139,11 @@ async function linkFromBuffer(
   ext: string,
   buffer: ArrayBuffer
 ) {
-  const path = (await (stateManager.app.vault as any).getAvailablePathForAttachments(
+  const path = await stateManager.app.vault.getAvailablePathForAttachments(
     fileName,
     ext,
     stateManager.file
-  )) as string;
+  );
 
   const newFile = await stateManager.app.vault.createBinary(path, buffer);
 
@@ -441,13 +168,13 @@ async function handleElectronPaste(stateManager: StateManager, win: Window & typ
           const ext = splitFile.pop();
           const fileName = splitFile.join('.');
 
-          const path = (await (stateManager.app.vault as any).getAvailablePathForAttachments(
+          const path = await stateManager.app.vault.getAvailablePathForAttachments(
             fileName,
             ext,
             stateManager.file
-          )) as string;
+          );
 
-          const basePath = (stateManager.app.vault.adapter as any).basePath;
+          const basePath = (stateManager.app.vault.adapter as DataAdapter & { basePath?: string }).basePath;
 
           await fs.copyFile(file, nPath.join(basePath, path));
 
@@ -497,11 +224,11 @@ function handleFiles(stateManager: StateManager, files: FileWithPath[], isPaste?
         const reader = new FileReader();
         reader.onload = async (e) => {
           try {
-            const path = (await (stateManager.app.vault as any).getAvailablePathForAttachments(
+            const path = await stateManager.app.vault.getAvailablePathForAttachments(
               fileName,
               ext,
               stateManager.file
-            )) as string;
+            );
             const newFile = await stateManager.app.vault.createBinary(
               path,
               e.target.result as ArrayBuffer
@@ -576,7 +303,7 @@ export async function handleDragOrPaste(
   e: DragEvent | ClipboardEvent,
   win: Window & typeof globalThis
 ): Promise<string[]> {
-  const draggable = (stateManager.app as any).dragManager.draggable;
+  const draggable = stateManager.app.dragManager.draggable;
   const transfer = (e as DragEvent).view
     ? (e as DragEvent).dataTransfer
     : (e as ClipboardEvent).clipboardData;

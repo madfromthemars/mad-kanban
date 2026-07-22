@@ -67,7 +67,6 @@ function getExtensions(stateManager: StateManager) {
     gfmTaskListItem,
     genericWrappedExtension('date', `${stateManager.getSetting('date-trigger')}{`, '}'),
     genericWrappedExtension('dateLink', `${stateManager.getSetting('date-trigger')}[[`, ']]'),
-    genericWrappedExtension('time', `${stateManager.getSetting('time-trigger')}{`, '}'),
     genericWrappedExtension('embedWikilink', '![[', ']]'),
     genericWrappedExtension('wikilink', '[[', ']]'),
     tagExtension(),

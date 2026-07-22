@@ -6,46 +6,21 @@ import { ExplicitPathContext } from 'src/dnd/components/context';
 import { moveEntity } from 'src/dnd/util/data';
 
 import { Icon } from '../Icon/Icon';
-import { DateAndTime, RelativeDate } from '../Item/DateAndTime';
 import { ItemCheckbox } from '../Item/ItemCheckbox';
-import { ItemContent, useDatePickers } from '../Item/ItemContent';
+import { ItemContent } from '../Item/ItemContent';
 import { useItemMenu } from '../Item/ItemMenu';
 import { MarkdownRenderer } from '../MarkdownRenderer/MarkdownRenderer';
 import { KanbanContext, SearchContext } from '../context';
-import { c, useGetDateColorFn } from '../helpers';
+import { c } from '../helpers';
 import { EditState, Item, Lane, isEditing } from '../types';
 import { TableItem } from './types';
 
-export const DateCell = memo(function DateCell({
-  item,
-  hideDateDisplay,
-  shouldShowRelativeDate,
-}: {
+export const DateCell = memo(function DateCell(_props: {
   item: TableItem;
   hideDateDisplay: boolean;
   shouldShowRelativeDate: boolean;
 }) {
-  const { stateManager, filePath } = useContext(KanbanContext);
-  const { onEditDate, onEditTime } = useDatePickers(item.item, item.path);
-  const getDateColor = useGetDateColorFn(stateManager);
-
-  return (
-    <>
-      {shouldShowRelativeDate ? (
-        <RelativeDate item={item.item} stateManager={stateManager} />
-      ) : null}
-      {!hideDateDisplay ? (
-        <DateAndTime
-          item={item.item}
-          stateManager={stateManager}
-          filePath={filePath ?? ''}
-          onEditDate={onEditDate}
-          onEditTime={onEditTime}
-          getDateColor={getDateColor}
-        />
-      ) : null}
-    </>
-  );
+  return null;
 });
 
 export const ItemCell = memo(

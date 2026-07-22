@@ -26,12 +26,13 @@ import { TableData, TableItem } from './types';
 export const columnHelper = createColumnHelper<TableItem>();
 
 export const fuzzyAnyFilter: FilterFn<TableItem> = (row, columnId, search, addMeta) => {
-  const val = row.getValue(columnId) as any;
+  const val = row.getValue(columnId) as unknown;
 
   if (val === null) return false;
 
   const stateManager = row.original.stateManager;
-  const str = val.value ? anyToString(val.value, stateManager) : anyToString(val, stateManager);
+  const valObj = val as { value?: unknown };
+  const str = valObj.value ? anyToString(valObj.value, stateManager) : anyToString(val, stateManager);
   const itemRank = rankItem(str, search, {
     threshold: rankings.CONTAINS,
   });
@@ -39,14 +40,14 @@ export const fuzzyAnyFilter: FilterFn<TableItem> = (row, columnId, search, addMe
   return itemRank.passed;
 };
 
-export const fuzzySort: SortingFn<any> = (rowA, rowB, columnId) => {
+export const fuzzySort: SortingFn<TableItem> = (rowA, rowB, columnId) => {
   if (!rowA.columnFiltersMeta[columnId] && !rowB.columnFiltersMeta[columnId]) return null;
   if (!rowA.columnFiltersMeta[columnId]) return -1;
   if (!rowB.columnFiltersMeta[columnId]) return 1;
 
   return compareItems(
-    (rowA.columnFiltersMeta[columnId] as any)?.itemRank,
-    (rowB.columnFiltersMeta[columnId] as any)?.itemRank
+    (rowA.columnFiltersMeta[columnId] as { itemRank?: unknown })?.itemRank,
+    (rowB.columnFiltersMeta[columnId] as { itemRank?: unknown })?.itemRank
   );
 };
 
@@ -152,8 +153,6 @@ export function useTableColumns(boardData: Board, stateManager: StateManager) {
   const search = useContext(SearchContext);
 
   const [sorting, setSortingRaw] = useState<SortingState>([]);
-  const shouldShowRelativeDate = stateManager.useSetting('show-relative-date');
-  const moveDates = stateManager.useSetting('move-dates');
   const moveTags = stateManager.useSetting('move-tags');
   const moveInlineMetadata = stateManager.useSetting('inline-metadata-position') !== 'body';
   const moveTaskMetadata = stateManager.useSetting('move-task-metadata');
@@ -182,42 +181,6 @@ export function useTableColumns(boardData: Board, stateManager: StateManager) {
     for (const key of metadata) {
       switch (key) {
         case 'date':
-          if (shouldShowRelativeDate || moveDates) {
-            columns.push(
-              columnHelper.accessor((row) => row.item.data.metadata?.date || null, {
-                header: () => t('Date'),
-                id: 'date',
-                size: tableSizing.date,
-                cell: (info) => {
-                  const date = info.getValue();
-                  if (!date) return null;
-                  return (
-                    <DateCell
-                      item={info.row.original}
-                      shouldShowRelativeDate={shouldShowRelativeDate}
-                      hideDateDisplay={!moveDates}
-                    />
-                  );
-                },
-                sortUndefined: false,
-                sortingFn: (a, b, id) => {
-                  const sorted = fuzzySort(a, b, id);
-                  if (sorted === null) {
-                    const dateA = a.getValue(id) as moment.Moment;
-                    const dateB = b.getValue(id) as moment.Moment;
-
-                    if (!dateA && !dateB) return 0;
-                    if (!dateA) return desc.current ? -1 : 1;
-                    if (!dateB) return desc.current ? 1 : -1;
-
-                    return dateA.valueOf() - dateB.valueOf();
-                  }
-                  return sorted;
-                },
-                sortDescFirst: false,
-              })
-            );
-          }
           break;
         case 'tags':
           if (moveTags) {
@@ -268,7 +231,7 @@ export function useTableColumns(boardData: Board, stateManager: StateManager) {
     }
 
     return columns;
-  }, [shouldShowRelativeDate, moveDates, moveTags, ...metadata]);
+  }, [moveTags, ...metadata]);
 
   const withInlineMetadata = useMemo(() => {
     const columns = [...withMetadata];
@@ -327,8 +290,8 @@ export function useTableColumns(boardData: Board, stateManager: StateManager) {
             },
             sortDescFirst: false,
             sortingFn: (a, b, id) => {
-              const valA = a.getValue(id) as any;
-              const valB = b.getValue(id) as any;
+              const valA = a.getValue(id) as unknown as { value?: unknown } | null;
+              const valB = b.getValue(id) as unknown as { value?: unknown } | null;
 
               if (valA === null && valB === null) return 0;
               if (valA === null) return desc.current ? -1 : 1;
@@ -376,8 +339,8 @@ export function useTableColumns(boardData: Board, stateManager: StateManager) {
             },
             sortDescFirst: false,
             sortingFn: (a, b, id) => {
-              const valA = a.getValue(id) as any;
-              const valB = b.getValue(id) as any;
+              const valA = a.getValue(id) as unknown as { value?: unknown } | null;
+              const valB = b.getValue(id) as unknown as { value?: unknown } | null;
 
               if (!valA?.value && !valB?.value) return 0;
               if (!valA?.value) return desc.current ? -1 : 1;

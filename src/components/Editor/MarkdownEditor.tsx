@@ -1,5 +1,5 @@
 import { insertBlankLine } from '@codemirror/commands';
-import { EditorSelection, Extension, Prec } from '@codemirror/state';
+import { EditorSelection, Extension, Prec, StateField } from '@codemirror/state';
 import { EditorView, ViewUpdate, keymap, placeholder as placeholderExt } from '@codemirror/view';
 import classcat from 'classcat';
 import { EditorPosition, Editor as ObsidianEditor, Platform } from 'obsidian';
@@ -11,8 +11,15 @@ import { t } from 'src/lang/helpers';
 import { KanbanContext } from '../context';
 import { c, noop } from '../helpers';
 import { EditState, isEditing } from '../types';
-import { datePlugins, stateManagerField } from './dateWidget';
-import { matchDateTrigger, matchTimeTrigger } from './suggest';
+
+export const stateManagerField = StateField.define<StateManager | null>({
+  create() {
+    return null;
+  },
+  update(state) {
+    return state;
+  },
+});
 
 interface MarkdownEditorProps {
   editorRef?: MutableRefObject<EditorView>;
@@ -39,7 +46,7 @@ function getEditorAppProxy(view: KanbanView) {
         return new Proxy(view.app.vault, {
           get(target, prop, reveiver) {
             if (prop === 'config') {
-              return new Proxy((view.app.vault as any).config, {
+              return new Proxy(view.app.vault.config, {
                 get(target, prop, reveiver) {
                   if (['showLineNumber', 'foldHeading', 'foldIndent'].includes(prop as string)) {
                     return false;
@@ -60,7 +67,7 @@ function getEditorAppProxy(view: KanbanView) {
 function getMarkdownController(
   view: KanbanView,
   getEditor: () => ObsidianEditor
-): Record<any, any> {
+): Record<string, unknown> {
   return {
     app: view.app,
     showSearch: noop,
@@ -84,12 +91,12 @@ function getMarkdownController(
 function setInsertMode(cm: EditorView) {
   const vim = getVimPlugin(cm);
   if (vim) {
-    (window as any).CodeMirrorAdapter?.Vim?.enterInsertMode(vim);
+    window.CodeMirrorAdapter?.Vim?.enterInsertMode(vim);
   }
 }
 
 function getVimPlugin(cm: EditorView): string {
-  return (cm as any)?.plugins?.find((p: any) => {
+  return (cm as unknown as { plugins?: Array<{ value?: { useNextTextInput?: unknown; waitForCopy?: unknown; cm?: string } }> })?.plugins?.find((p) => {
     if (!p?.value) return false;
     return 'useNextTextInput' in p.value && 'waitForCopy' in p.value;
   })?.value?.cm;
@@ -120,8 +127,6 @@ export function MarkdownEditor({
         editor: ObsidianEditor,
         lineHasGlobalFilter: boolean
       ) {
-        if (matchTimeTrigger(stateManager.getSetting('time-trigger'), editor, cursor)) return false;
-        if (matchDateTrigger(stateManager.getSetting('date-trigger'), editor, cursor)) return false;
         if (lineHasGlobalFilter && cursor.line === 0) return true;
         return undefined;
       }
@@ -135,7 +140,6 @@ export function MarkdownEditor({
         const extensions = super.buildLocalExtensions();
 
         extensions.push(stateManagerField.init(() => stateManager));
-        extensions.push(datePlugins);
         extensions.push(
           Prec.highest(
             EditorView.domEventHandlers({
@@ -181,7 +185,7 @@ export function MarkdownEditor({
           if (this.app.vault.getConfig('smartIndentList')) {
             this.editor.newlineAndIndentContinueMarkdownList();
           } else {
-            insertBlankLine(cm as any);
+            insertBlankLine(cm);
           }
           return true;
         };
@@ -256,7 +260,7 @@ export function MarkdownEditor({
 
         if (app.workspace.activeEditor === controller) {
           app.workspace.activeEditor = null;
-          (app as any).mobileToolbar.update();
+          app.mobileToolbar?.update();
           view.contentEl.removeClass('is-mobile-editing');
         }
       }

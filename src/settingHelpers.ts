@@ -1,4 +1,3 @@
-import Choices, { Choices as IChoices } from 'choices.js';
 import update from 'immutability-helper';
 import { App, Setting, TFile, TFolder, Vault } from 'obsidian';
 
@@ -6,12 +5,18 @@ import { KanbanSettings, SettingsManager } from './Settings';
 import { getTemplatePlugins } from './components/helpers';
 import { t } from './lang/helpers';
 
-export const defaultDateTrigger = '@';
-export const defaultTimeTrigger = '@@';
 export const defaultMetadataPosition = 'body';
 
+export interface SelectChoice {
+  value: string;
+  label: string;
+  selected?: boolean;
+  disabled?: boolean;
+  placeholder?: boolean;
+}
+
 export function getFolderChoices(app: App) {
-  const folderList: IChoices.Choice[] = [];
+  const folderList: SelectChoice[] = [];
 
   Vault.recurseChildren(app.vault.getRoot(), (f) => {
     if (f instanceof TFolder) {
@@ -28,7 +33,7 @@ export function getFolderChoices(app: App) {
 }
 
 export function getTemplateChoices(app: App, folderStr?: string) {
-  const fileList: IChoices.Choice[] = [];
+  const fileList: SelectChoice[] = [];
 
   let folder = folderStr ? app.vault.getAbstractFileByPath(folderStr) : null;
 
@@ -70,7 +75,7 @@ export function getListOptions(app: App) {
 }
 
 interface CreateSearchSelectParams {
-  choices: IChoices.Choice[];
+  choices: SelectChoice[];
   key: keyof KanbanSettings;
   warningText?: string;
   local: boolean;
@@ -87,95 +92,132 @@ export function createSearchSelect({
   manager,
 }: CreateSearchSelectParams) {
   return (setting: Setting) => {
-    setting.controlEl.createEl('select', {}, (el) => {
-      // el must be in the dom, so we setTimeout
-      el.win.setTimeout(() => {
-        let list = choices;
+    const wrapper = setting.controlEl.createDiv({ cls: 'kanban-search-select' });
 
-        const [value, globalValue] = manager.getSetting(key, local);
+    const [value, globalValue] = manager.getSetting(key, local);
 
-        let didSetPlaceholder = false;
-        if (globalValue) {
-          const index = list.findIndex((f) => f.value === globalValue);
+    let list = choices;
 
-          if (index > -1) {
-            didSetPlaceholder = true;
-            const choice = choices[index];
+    let didSetPlaceholder = false;
+    if (globalValue) {
+      const index = list.findIndex((f) => f.value === globalValue);
 
-            list = update(list, {
-              $splice: [[index, 1]],
-              $unshift: [
-                update(choice, {
-                  placeholder: {
-                    $set: true,
-                  },
-                  value: {
-                    $set: '',
-                  },
-                  label: {
-                    $apply: (v) => `${v} (${t('default')})`,
-                  },
-                }),
-              ],
-            });
-          }
-        }
+      if (index > -1) {
+        didSetPlaceholder = true;
+        const choice = choices[index];
 
-        if (!didSetPlaceholder) {
-          list = update(list, {
-            $unshift: [
-              {
-                placeholder: true,
-                value: '',
-                label: placeHolderStr,
-                selected: false,
-                disabled: false,
+        list = update(list, {
+          $splice: [[index, 1]],
+          $unshift: [
+            update(choice, {
+              placeholder: {
+                $set: true,
               },
-            ],
-          });
-        }
-
-        const c = new Choices(el, {
-          placeholder: true,
-          position: 'bottom' as 'auto',
-          searchPlaceholderValue: t('Search...'),
-          searchEnabled: list.length > 10,
-          choices: list,
-        }).setChoiceByValue('');
-
-        if (value && typeof value === 'string' && list.findIndex((f) => f.value === value) > -1) {
-          c.setChoiceByValue(value);
-        }
-
-        const onChange = (e: CustomEvent) => {
-          const val = e.detail.value;
-
-          if (val) {
-            manager.applySettingsUpdate({
-              [key]: {
-                $set: val,
+              value: {
+                $set: '',
               },
-            });
-          } else {
-            manager.applySettingsUpdate({
-              $unset: [key],
-            });
-          }
-        };
-
-        el.addEventListener('change', onChange);
-
-        manager.cleanupFns.push(() => {
-          c.destroy();
-          el.removeEventListener('change', onChange);
-        });
-      });
-
-      if (warningText) {
-        setting.descEl.createDiv({}, (div) => {
-          div.createEl('strong', { text: warningText });
+              label: {
+                $apply: (v) => `${v} (${t('default')})`,
+              },
+            }),
+          ],
         });
       }
+    }
+
+    if (!didSetPlaceholder) {
+      list = update(list, {
+        $unshift: [
+          {
+            placeholder: true,
+            value: '',
+            label: placeHolderStr,
+            selected: false,
+            disabled: false,
+          },
+        ],
+      });
+    }
+
+    // Only show search input if the list is long enough
+    const showSearch = list.length > 10;
+    let searchInput: HTMLInputElement | null = null;
+
+    if (showSearch) {
+      searchInput = wrapper.createEl('input', {
+        type: 'text',
+        placeholder: t('Search...'),
+        cls: 'kanban-search-select-input',
+      });
+    }
+
+    const selectEl = wrapper.createEl('select', {
+      cls: 'dropdown kanban-search-select-dropdown',
     });
+
+    function populateOptions(filter?: string) {
+      selectEl.empty();
+      const lowerFilter = filter?.toLocaleLowerCase() || '';
+
+      for (const item of list) {
+        if (lowerFilter && !item.label.toLocaleLowerCase().contains(lowerFilter)) {
+          continue;
+        }
+        const opt = selectEl.createEl('option', {
+          text: item.label,
+          value: item.value,
+        });
+        if (item.disabled) opt.disabled = true;
+      }
+
+      // Restore selection after filtering
+      const currentValue = typeof value === 'string' ? value : '';
+      if (currentValue && list.findIndex((f) => f.value === currentValue) > -1) {
+        selectEl.value = currentValue;
+      } else {
+        selectEl.value = '';
+      }
+    }
+
+    populateOptions();
+
+    // Set the current value
+    if (value && typeof value === 'string' && list.findIndex((f) => f.value === value) > -1) {
+      selectEl.value = value;
+    }
+
+    if (searchInput) {
+      const onInput = () => populateOptions(searchInput.value);
+      searchInput.addEventListener('input', onInput);
+      manager.cleanupFns.push(() => searchInput.removeEventListener('input', onInput));
+    }
+
+    const onChange = () => {
+      const val = selectEl.value;
+
+      if (val) {
+        manager.applySettingsUpdate({
+          [key]: {
+            $set: val,
+          },
+        });
+      } else {
+        manager.applySettingsUpdate({
+          $unset: [key],
+        });
+      }
+    };
+
+    selectEl.addEventListener('change', onChange);
+
+    manager.cleanupFns.push(() => {
+      selectEl.removeEventListener('change', onChange);
+    });
+
+    if (warningText) {
+      setting.descEl.createDiv({}, (div) => {
+        div.createEl('strong', { text: warningText });
+      });
+    }
   };
 }

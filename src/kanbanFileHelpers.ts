@@ -3,6 +3,77 @@ import { App, TFile, TFolder, Vault } from 'obsidian';
 const illegalCharsRegEx = /[\\/:"*?<>|]+/g;
 const condenceWhiteSpaceRE = /\s+/g;
 
+// Date format for lastMoved: YYYY-MM-DD
+function formatDate(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+// Build initial card file content with frontmatter
+export function buildCardFileContent(body: string = ''): string {
+  const today = formatDate(new Date());
+  return `---
+lastMoved: ${today}
+---
+${body}`;
+}
+
+// Parse lastMoved date from card content
+export function parseLastMoved(content: string): Date | null {
+  const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!frontmatterMatch) return null;
+
+  const frontmatter = frontmatterMatch[1];
+  const lastMovedMatch = frontmatter.match(/lastMoved:\s*(\d{4}-\d{2}-\d{2})/);
+  if (!lastMovedMatch) return null;
+
+  const date = new Date(lastMovedMatch[1]);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+// Update lastMoved in card content
+export function updateLastMoved(content: string): string {
+  const today = formatDate(new Date());
+  const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+
+  if (frontmatterMatch) {
+    // Update existing frontmatter
+    const frontmatter = frontmatterMatch[1];
+    if (frontmatter.includes('lastMoved:')) {
+      const updatedFrontmatter = frontmatter.replace(
+        /lastMoved:\s*\d{4}-\d{2}-\d{2}/,
+        `lastMoved: ${today}`
+      );
+      return content.replace(frontmatterMatch[1], updatedFrontmatter);
+    } else {
+      // Add lastMoved to existing frontmatter
+      const updatedFrontmatter = `lastMoved: ${today}\n${frontmatter}`;
+      return content.replace(frontmatterMatch[1], updatedFrontmatter);
+    }
+  } else {
+    // No frontmatter, add it
+    return `---
+lastMoved: ${today}
+---
+${content}`;
+  }
+}
+
+// Calculate card age in days
+export function calculateCardAge(lastMoved: Date | null): number {
+  if (!lastMoved) return 0;
+  const now = new Date();
+  const diffMs = now.getTime() - lastMoved.getTime();
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+// Get age class based on days
+export function getCardAgeClass(ageDays: number): string {
+  if (ageDays >= 14) return 'card-age-old';
+  if (ageDays >= 7) return 'card-age-stale';
+  if (ageDays >= 3) return 'card-age-aging';
+  return '';
+}
+
 export function sanitizeName(rawTitle: string) {
   return rawTitle
     .replace(illegalCharsRegEx, ' ')
@@ -60,7 +131,17 @@ export function buildLink(path: string, alias?: string) {
 }
 
 export function buildCardContent(cardPath: string, cardTitle: string, description: string) {
-  return cardTitle.trim();
+  return buildLink(cardPath, cardTitle);
+}
+
+export function extractCardLinkPath(titleRaw: string): string | null {
+  const first = titleRaw.split(/\r?\n/)[0]?.trim() ?? '';
+  if (first.startsWith('[[')) {
+    const trimmed = first.endsWith(']]') ? first.slice(2, -2) : first.slice(2);
+    const [path] = trimmed.split('|');
+    return path?.trim() || null;
+  }
+  return null;
 }
 
 export function buildCardFilename(cardTitle: string, createdAt: Date) {
@@ -87,11 +168,20 @@ export async function findCardFilePathInListFile(
 
   while ((match = linkRe.exec(content))) {
     const raw = match[1];
-    const [path] = raw.split('|');
-    const parts = (path || '').split('/');
+    const [linkPath] = raw.split('|');
+    const parts = (linkPath || '').split('/');
     const file = parts[parts.length - 1] || '';
-    if (file.startsWith(`${titleSlug}_file_`)) {
-      return path.endsWith('.md') ? path : `${path}.md`;
+    const fileNoExt = file.replace(/\.md$/i, '');
+
+    // Match both _file_ timestamp pattern and exact name match
+    if (file.startsWith(`${titleSlug}_file_`) || fileNoExt === titleSlug) {
+      // Resolve to full vault path using Obsidian's link resolution
+      // (handles short links like [[filename]] that getAbstractFileByPath can't resolve)
+      const resolved = app.metadataCache.getFirstLinkpathDest(linkPath, listFilePath);
+      if (resolved) return resolved.path;
+
+      // Fallback to raw path if metadata cache can't resolve
+      return linkPath.endsWith('.md') ? linkPath : `${linkPath}.md`;
     }
   }
 
@@ -121,18 +211,20 @@ export async function findCardFilePathInListFolder(
   return null;
 }
 
+const priorityFieldRegex = /\s*\[priority::\s*[^\]]*\]/g;
+
 export function extractCardTitle(titleRaw: string) {
   const first = titleRaw.split(/\r?\n/)[0]?.trim() ?? '';
   if (first.startsWith('[[')) {
     const trimmed = first.endsWith(']]') ? first.slice(2, -2) : first.slice(2);
     const [path, alias] = trimmed.split('|');
-    if (alias) return alias.trim();
+    if (alias) return alias.trim().replace(priorityFieldRegex, '').trim();
     const parts = (path || '').split('/');
     const file = parts[parts.length - 1] || '';
     return file.replace(/\.md$/i, '').trim();
   }
 
-  return first;
+  return first.replace(priorityFieldRegex, '').trim();
 }
 
 export function updateCardContentLink(content: string, newPath: string, cardTitle: string) {
@@ -197,5 +289,108 @@ export async function removeCardLinkFromListFile(
 
   if (nextLines.join('\n') !== lines.join('\n')) {
     await vault.modify(listFile, `${nextLines.join('\n').trimEnd()}\n`);
+  }
+}
+
+/**
+ * Last-resort search: find a card file anywhere in the vault by filename pattern.
+ * Used when the _folder was moved before the migration fix was applied.
+ */
+export function findCardFileInVault(app: App, cardTitle: string): string | null {
+  const titleSlug = sanitizeName(cardTitle);
+  if (!titleSlug) return null;
+  const files = app.vault.getFiles();
+  for (const f of files) {
+    if (f.name.startsWith(`${titleSlug}_file_`)) {
+      return f.path;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find an orphaned board _folder that exists elsewhere in the vault.
+ * Returns the old board path (inferred) if an orphaned folder is found.
+ */
+export function findOrphanedBoardFolder(
+  app: App,
+  boardFile: TFile
+): string | null {
+  const expectedFolderPath = getBoardFolderPath(boardFile);
+  // If the expected folder already exists, nothing is orphaned
+  if (app.vault.getAbstractFileByPath(expectedFolderPath)) return null;
+
+  const folderName = `${boardFile.basename}_folder`;
+  const allFiles = app.vault.getAllLoadedFiles();
+  for (const f of allFiles) {
+    if (f instanceof TFolder && f.name === folderName && f.path !== expectedFolderPath) {
+      // Infer what the old board path was based on the orphaned folder's location
+      const oldParent = f.parent?.path || '';
+      return oldParent ? `${oldParent}/${boardFile.name}` : boardFile.name;
+    }
+  }
+  return null;
+}
+
+/**
+ * After a board file moves to a different directory, migrate the _folder
+ * structure and update all internal wiki-links in list files.
+ *
+ * Handles two scenarios:
+ *  1. Board file moved alone — the _folder stays at the old location and needs to be moved.
+ *  2. Parent directory moved — the _folder already moved but links inside list files are stale.
+ */
+export async function migrateBoardFolder(
+  app: App,
+  boardFile: TFile,
+  oldBoardPath: string
+) {
+  const vault = app.vault;
+
+  const oldParts = oldBoardPath.split('/');
+  const oldFileName = oldParts.pop() || '';
+  const oldBasename = oldFileName.replace(/\.md$/i, '');
+  const oldParent = oldParts.join('/');
+
+  const oldFolderPath = oldParent
+    ? `${oldParent}/${oldBasename}_folder`
+    : `${oldBasename}_folder`;
+  const newFolderPath = getBoardFolderPath(boardFile);
+
+  // If paths are the same (just renamed in place) nothing to migrate
+  if (oldFolderPath === newFolderPath) return;
+
+  // Scenario 1: old folder still at old location → move it
+  const oldFolder = vault.getAbstractFileByPath(oldFolderPath);
+  if (oldFolder && oldFolder instanceof TFolder) {
+    try {
+      await vault.rename(oldFolder, newFolderPath);
+    } catch (e) {
+      console.error('[Kanban] Failed to move board folder:', e);
+    }
+  }
+
+  // Update stale wiki-links inside list files
+  const boardFolder = vault.getAbstractFileByPath(newFolderPath);
+  if (boardFolder && boardFolder instanceof TFolder) {
+    for (const child of boardFolder.children) {
+      if (child instanceof TFile && child.extension === 'md') {
+        const content = await vault.read(child);
+        let updated = content;
+
+        // Replace old folder path prefix with new one in all links
+        updated = updated.replaceAll(oldFolderPath, newFolderPath);
+
+        // Update board back-link (with and without .md extension)
+        updated = updated.replaceAll(oldBoardPath, boardFile.path);
+        const oldBoardNoExt = oldBoardPath.replace(/\.md$/i, '');
+        const newBoardNoExt = boardFile.path.replace(/\.md$/i, '');
+        updated = updated.replaceAll(oldBoardNoExt, newBoardNoExt);
+
+        if (updated !== content) {
+          await vault.modify(child, updated);
+        }
+      }
+    }
   }
 }

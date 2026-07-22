@@ -1,7 +1,5 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import classcat from 'classcat';
-import Mark from 'mark.js';
-import moment from 'moment';
 import { Component, MarkdownRenderer as ObsidianRenderer, getLinkpath } from 'obsidian';
 import { CSSProperties, memo, useEffect, useRef } from 'preact/compat';
 import { useContext } from 'preact/hooks';
@@ -11,8 +9,49 @@ import { PromiseCapability } from 'src/helpers/util';
 
 import { applyCheckboxIndexes } from '../../helpers/renderMarkdown';
 import { IntersectionObserverContext, KanbanContext, SortContext } from '../context';
-import { c, useGetDateColorFn, useGetTagColorFn } from '../helpers';
-import { DateColor, TagColor } from '../types';
+import { c, useGetTagColorFn } from '../helpers';
+import { TagColor } from '../types';
+
+class TextHighlighter {
+  constructor(private container: HTMLElement) {}
+
+  mark(query: string) {
+    this.unmark();
+    if (!query) return;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'gi');
+    const walker = document.createTreeWalker(this.container, NodeFilter.SHOW_TEXT);
+    const matches: { node: Text; index: number; length: number }[] = [];
+
+    let node: Text;
+    while ((node = walker.nextNode() as Text)) {
+      let match: RegExpExecArray;
+      regex.lastIndex = 0;
+      while ((match = regex.exec(node.textContent)) !== null) {
+        matches.push({ node, index: match.index, length: match[0].length });
+      }
+    }
+
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const { node, index, length } = matches[i];
+      const range = document.createRange();
+      range.setStart(node, index);
+      range.setEnd(node, index + length);
+      const mark = document.createElement('mark');
+      range.surroundContents(mark);
+    }
+  }
+
+  unmark() {
+    this.container.querySelectorAll('mark').forEach((el) => {
+      const parent = el.parentNode;
+      if (!parent) return;
+      while (el.firstChild) parent.insertBefore(el.firstChild, el);
+      parent.removeChild(el);
+      parent.normalize();
+    });
+  }
+}
 
 interface MarkdownRendererProps extends HTMLAttributes<HTMLDivElement> {
   className?: string;
@@ -36,32 +75,13 @@ function colorizeTags(wrapperEl: HTMLElement, getTagColor: (tag: string) => TagC
   });
 }
 
-function colorizeDates(wrapperEl: HTMLElement, getDateColor: (date: moment.Moment) => DateColor) {
-  if (!wrapperEl) return;
-  const dateEls = wrapperEl.querySelectorAll<HTMLElement>('.' + c('date'));
-  if (!dateEls?.length) return;
-  dateEls.forEach((el) => {
-    const dateStr = el.dataset.date;
-    if (!dateStr) return;
-    const parsed = moment(dateStr);
-    if (!parsed.isValid()) return;
-    const color = getDateColor(parsed);
-    el.toggleClass('has-background', !!color?.backgroundColor);
-    if (!color) return;
-    el.setCssProps({
-      '--date-color': color.color,
-      '--date-background-color': color.backgroundColor,
-    });
-  });
-}
-
 export class BasicMarkdownRenderer extends Component {
   containerEl: HTMLElement;
   wrapperEl: HTMLElement;
   renderCapability: PromiseCapability;
   observer: ResizeObserver;
   isVisible: boolean = false;
-  mark: Mark;
+  mark: TextHighlighter;
 
   lastWidth = -1;
   lastHeight = -1;
@@ -76,7 +96,7 @@ export class BasicMarkdownRenderer extends Component {
     this.containerEl = createDiv(
       'markdown-preview-view markdown-rendered ' + c('markdown-preview-view')
     );
-    this.mark = new Mark(this.containerEl);
+    this.mark = new TextHighlighter(this.containerEl);
     this.renderCapability = new PromiseCapability<void>();
   }
 
@@ -97,7 +117,7 @@ export class BasicMarkdownRenderer extends Component {
     );
 
     this.renderCapability.resolve();
-    if (!(this.view as any)?._loaded || !(this as any)._loaded) return;
+    if (!(this.view as unknown as { _loaded?: boolean })?._loaded || !(this as unknown as { _loaded?: boolean })._loaded) return;
 
     const { containerEl } = this;
 
@@ -190,7 +210,7 @@ export class BasicMarkdownRenderer extends Component {
   }
 
   set(markdown: string) {
-    if ((this as any)._loaded) {
+    if ((this as unknown as { _loaded?: boolean })._loaded) {
       this.markdown = markdown;
       this.renderCapability = new PromiseCapability<void>();
       this.unload();
@@ -231,7 +251,6 @@ export const MarkdownRenderer = memo(function MarkdownPreviewRenderer({
   const sortContext = useContext(SortContext);
   const intersectionContext = useContext(IntersectionObserverContext);
   const getTagColor = useGetTagColorFn(stateManager);
-  const getDateColor = useGetDateColorFn(stateManager);
 
   const renderer = useRef<BasicMarkdownRenderer>();
   const elRef = useRef<HTMLDivElement>();
@@ -298,7 +317,6 @@ export const MarkdownRenderer = memo(function MarkdownPreviewRenderer({
     elRef.current.empty();
     elRef.current.append(preview.containerEl);
     colorizeTags(elRef.current, getTagColor);
-    colorizeDates(elRef.current, getDateColor);
 
     entityManager?.emitter.on('visibility-change', onVisibilityChange);
 
@@ -318,15 +336,13 @@ export const MarkdownRenderer = memo(function MarkdownPreviewRenderer({
     preview.set(markdownString);
     preview.renderCapability.promise.then(() => {
       colorizeTags(elRef.current, getTagColor);
-      colorizeDates(elRef.current, getDateColor);
     });
   }, [markdownString]);
 
   useEffect(() => {
     if (!renderer.current) return;
     colorizeTags(elRef.current, getTagColor);
-    colorizeDates(elRef.current, getDateColor);
-  }, [getTagColor, getDateColor]);
+  }, [getTagColor]);
 
   useEffect(() => {
     const preview = renderer.current;

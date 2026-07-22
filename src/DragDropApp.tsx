@@ -30,8 +30,10 @@ import {
   findCardFilePathInListFolder,
   sanitizeName,
   removeCardLinkFromListFile,
+  updateLastMoved,
 } from './kanbanFileHelpers';
 import KanbanPlugin from './main';
+import { StateManager } from './StateManager';
 import { frontmatterKey } from './parsers/common';
 import {
   getTaskStatusDone,
@@ -44,7 +46,7 @@ export function createApp(win: Window, plugin: KanbanPlugin) {
 }
 
 async function moveCardArtifacts(
-  stateManager: any,
+  stateManager: StateManager,
   fromListTitle: string,
   toListTitle: string,
   titleRaw: string
@@ -88,6 +90,14 @@ async function moveCardArtifacts(
     }
 
     await vault.rename(fromFile, toCardPath);
+
+    // Update lastMoved timestamp in the card file
+    const movedFile = vault.getAbstractFileByPath(toCardPath);
+    if (movedFile instanceof TFile) {
+      const content = await vault.read(movedFile);
+      const updatedContent = updateLastMoved(content);
+      await vault.modify(movedFile, updatedContent);
+    }
   }
 
   // Update list file links
@@ -149,6 +159,7 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
         } catch (e) {
           stateManager.setError(e);
           console.error(e);
+          new Notice('Kanban: Error during card drop' + (e instanceof Error ? ': ' + e.message : ''));
         }
 
         return;

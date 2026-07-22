@@ -2,7 +2,7 @@ import { App, TFile, moment } from 'obsidian';
 import { KanbanSettings } from 'src/Settings';
 import { StateManager } from 'src/StateManager';
 import { anyToString } from 'src/components/Item/MetadataTable';
-import { Board, FileMetadata, Item } from 'src/components/types';
+import { Board, FileMetadata, Item, PageDataValue } from 'src/components/types';
 import { defaultSort } from 'src/helpers/util';
 import { t } from 'src/lang/helpers';
 
@@ -73,23 +73,23 @@ export function getSearchValue(item: Item, stateManager: StateManager) {
 
 export function getDataViewCache(app: App, linkedFile: TFile, sourceFile: TFile) {
   if (
-    (app as any).plugins.enabledPlugins.has('dataview') &&
-    (app as any).plugins?.plugins?.dataview?.api
+    app.plugins.enabledPlugins.has('dataview') &&
+    app.plugins?.plugins?.dataview?.api
   ) {
-    return (app as any).plugins.plugins.dataview.api.page(linkedFile.path, sourceFile.path);
+    return app.plugins.plugins.dataview.api.page(linkedFile.path, sourceFile.path);
   }
 }
 
-function getPageData(obj: any, path: string) {
+function getPageData(obj: Record<string, unknown> | null | undefined, path: string): unknown {
   if (!obj) return null;
   if (obj[path]) return obj[path];
 
   const split = path.split('.');
-  let ctx = obj;
+  let ctx: unknown = obj;
 
   for (const p of split) {
-    if (typeof ctx === 'object' && p in ctx) {
-      ctx = ctx[p];
+    if (typeof ctx === 'object' && ctx !== null && p in ctx) {
+      ctx = (ctx as Record<string, unknown>)[p];
     } else {
       ctx = null;
       break;
@@ -188,7 +188,7 @@ export function getLinkedPageMetadata(
           }
         }
       } else if (Array.isArray(cacheVal)) {
-        cacheVal = cacheVal.map<any>((v, i) => {
+        cacheVal = cacheVal.map<unknown>((v, i) => {
           if (typeof v === 'string' && /^\[\[[^\]]+\]\]$/.test(v)) {
             const link = (cache.frontmatterLinks || []).find(
               (l) => l.key === k.metadataKey + '.' + i.toString()
@@ -210,7 +210,7 @@ export function getLinkedPageMetadata(
       order.push(k.metadataKey);
       metadata[k.metadataKey] = {
         ...k,
-        value: cacheVal,
+        value: cacheVal as PageDataValue,
       };
       haveData = true;
     } else if (
@@ -224,7 +224,7 @@ export function getLinkedPageMetadata(
       order.push(k.metadataKey);
       metadata[k.metadataKey] = {
         ...k,
-        value: cachedValue,
+        value: cachedValue as PageDataValue,
       };
       haveData = true;
     }
@@ -244,17 +244,12 @@ export function shouldRefreshBoard(oldSettings: KanbanSettings, newSettings: Kan
   const toCompare: Array<keyof KanbanSettings> = [
     'metadata-keys',
     'date-trigger',
-    'time-trigger',
-    'link-date-to-daily-note',
     'date-format',
-    'time-format',
-    'move-dates',
     'move-tags',
     'inline-metadata-position',
     'move-task-metadata',
     'hide-card-count',
     'tag-colors',
-    'date-colors',
   ];
 
   return !toCompare.every((k) => {

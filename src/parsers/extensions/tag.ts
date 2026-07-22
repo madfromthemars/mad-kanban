@@ -3,6 +3,7 @@ import { markdownLineEndingOrSpace } from 'micromark-util-character';
 import { Effects, Extension, State } from 'micromark-util-types';
 
 import { getSelf } from './helpers';
+import { ValueNode } from './types';
 
 export function tagExtension(): Extension {
   const name = 'hashtag';
@@ -23,15 +24,15 @@ export function tagExtension(): Extension {
         return nok(code);
       }
 
-      effects.enter(name as any);
-      effects.enter(`${name}Marker` as any);
+      effects.enter(name);
+      effects.enter(`${name}Marker`);
 
       return consumeStart(code);
     }
 
     function consumeStart(code: number) {
       if (startMarkerCursor === 1) {
-        effects.exit(`${name}Marker` as any);
+        effects.exit(`${name}Marker`);
         return consumeData(code);
       }
 
@@ -46,8 +47,8 @@ export function tagExtension(): Extension {
     }
 
     function consumeData(code: number) {
-      effects.enter(`${name}Data` as any);
-      effects.enter(`${name}Target` as any);
+      effects.enter(`${name}Data`);
+      effects.enter(`${name}Target`);
       return consumeTarget(code);
     }
 
@@ -60,9 +61,9 @@ export function tagExtension(): Extension {
         )
       ) {
         if (!data) return nok(code);
-        effects.exit(`${name}Target` as any);
-        effects.exit(`${name}Data` as any);
-        effects.exit(name as any);
+        effects.exit(`${name}Target`);
+        effects.exit(`${name}Data`);
+        effects.exit(name);
 
         return ok(code);
       }
@@ -98,7 +99,7 @@ export function tagFromMarkdown(): FromMarkdownExtension {
     const target = this.sliceSerialize(token);
     const current = getSelf(this.stack);
 
-    (current as any).value = target;
+    (current as ValueNode).value = target;
   }
 
   function exitTag(token: Token) {

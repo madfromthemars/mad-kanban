@@ -1,4 +1,5 @@
 import { EditorView } from '@codemirror/view';
+import { Notice } from 'obsidian';
 import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'preact/compat';
 import useOnclickOutside from 'react-cool-onclickoutside';
 import { t } from 'src/lang/helpers';
@@ -58,6 +59,7 @@ export function LaneForm({ onNewLane, closeLaneForm }: LaneFormProps) {
           await addBoardLinkToListFile(stateManager.app, listFilePath, stateManager.file.path);
         } catch (e) {
           console.error('Error creating list artifacts:', e);
+          new Notice('Kanban: Error creating list folder' + (e instanceof Error ? ': ' + e.message : ''));
         }
       }
 

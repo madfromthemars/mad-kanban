@@ -1,5 +1,5 @@
 import update from 'immutability-helper';
-import { Menu, Platform, TFile, TFolder } from 'obsidian';
+import { Menu, Notice, Platform, TFolder } from 'obsidian';
 import { Dispatch, StateUpdater, useCallback } from 'preact/hooks';
 import { StateManager } from 'src/StateManager';
 import { Path } from 'src/dnd/types';
@@ -9,12 +9,6 @@ import { t } from 'src/lang/helpers';
 import { BoardModifiers } from '../../helpers/boardModifiers';
 import { applyTemplate, escapeRegExpStr, generateInstanceId } from '../helpers';
 import { EditState, Item } from '../types';
-import {
-  constructDatePicker,
-  constructMenuDatePickerOnChange,
-  constructMenuTimePickerOnChange,
-  constructTimePicker,
-} from './helpers';
 
 const illegalCharsRegEx = /[\\/:"*?<>|]+/g;
 const embedRegEx = /!?\[\[([^\]]*)\.[^\]]+\]\]/g;
@@ -41,8 +35,6 @@ export function useItemMenu({
   return useCallback(
     (e: MouseEvent) => {
       const coordinates = { x: e.clientX, y: e.clientY };
-      const hasDate = !!item.data.metadata.date;
-      const hasTime = !!item.data.metadata.time;
 
       const menu = new Menu().addItem((i) => {
         i.setIcon('lucide-edit')
@@ -72,10 +64,10 @@ export function useItemMenu({
                 ? (stateManager.app.vault.getAbstractFileByPath(newNoteFolder as string) as TFolder)
                 : stateManager.app.fileManager.getNewFileParent(stateManager.file.path);
 
-              const newFile = (await (stateManager.app.fileManager as any).createNewMarkdownFile(
+              const newFile = await stateManager.app.fileManager.createNewMarkdownFile(
                 targetFolder,
                 sanitizedTitle
-              )) as TFile;
+              );
 
               const newLeaf = stateManager.app.workspace.splitActiveLeaf();
 
@@ -99,7 +91,7 @@ export function useItemMenu({
             .onClick(() => {
               if (item.data.blockId) {
                 navigator.clipboard.writeText(
-                  `${this.app.fileManager.generateMarkdownLink(
+                  `${stateManager.app.fileManager.generateMarkdownLink(
                     stateManager.file,
                     '',
                     '#^' + item.data.blockId
@@ -109,7 +101,7 @@ export function useItemMenu({
                 const id = generateInstanceId(6);
 
                 navigator.clipboard.writeText(
-                  `${this.app.fileManager.generateMarkdownLink(stateManager.file, '', '#^' + id)}`
+                  `${stateManager.app.fileManager.generateMarkdownLink(stateManager.file, '', '#^' + id)}`
                 );
 
                 boardModifiers.updateItem(
@@ -121,8 +113,63 @@ export function useItemMenu({
                 );
               }
             });
-        })
-        .addSeparator();
+        });
+
+      try {
+        const currentPriority = item.data.metadata.priority;
+        const priorityRegex = /\[priority::\s*[^\]]*\]/g;
+
+        const priorityOptions: { label: string; value: string | null }[] = [
+          { label: '🔺 Highest', value: '0' },
+          { label: '⏫ High', value: '1' },
+          { label: '🔼 Medium', value: '2' },
+          { label: '🔽 Low', value: '4' },
+          { label: 'None', value: null },
+        ];
+
+        const addPriorityOptions = (targetMenu: Menu) => {
+          for (const opt of priorityOptions) {
+            targetMenu.addItem((mi) => {
+              mi.setTitle(opt.label);
+              const isChecked =
+                opt.value === null
+                  ? !currentPriority || currentPriority === '3'
+                  : currentPriority === opt.value;
+              mi.setChecked(isChecked);
+              mi.onClick(() => {
+                let newTitleRaw = item.data.titleRaw
+                  .replace(priorityRegex, '')
+                  .trim();
+                if (opt.value !== null) {
+                  newTitleRaw = `${newTitleRaw} [priority:: ${opt.value}]`;
+                }
+                boardModifiers.updateItem(
+                  path,
+                  stateManager.updateItemContent(item, newTitleRaw)
+                );
+              });
+            });
+          }
+        };
+
+        if (Platform.isPhone) {
+          addPriorityOptions(menu);
+        } else {
+          menu.addItem((mi) => {
+            const submenu = mi
+              .setTitle('Set priority')
+              .setIcon('lucide-signal')
+              .setSubmenu();
+
+            addPriorityOptions(submenu);
+          });
+        }
+      } catch (e) {
+        console.error('Kanban: Error building priority menu', e);
+        new Notice('Kanban: Error building menu' + (e instanceof Error ? ': ' + e.message : ''));
+      }
+
+      menu.addSeparator();
 
       if (/\n/.test(item.data.titleRaw)) {
         menu.addItem((i) => {
@@ -185,85 +232,7 @@ export function useItemMenu({
             .setTitle(t('Delete card'))
             .onClick(() => boardModifiers.deleteEntity(path));
         })
-        .addSeparator()
-        .addItem((i) => {
-          i.setIcon('lucide-calendar-check')
-            .setTitle(hasDate ? t('Edit date') : t('Add date'))
-            .onClick(() => {
-              constructDatePicker(
-                e.view,
-                stateManager,
-                coordinates,
-                constructMenuDatePickerOnChange({
-                  stateManager,
-                  boardModifiers,
-                  item,
-                  hasDate,
-                  path,
-                }),
-                item.data.metadata.date?.toDate()
-              );
-            });
-        });
-
-      if (hasDate) {
-        menu.addItem((i) => {
-          i.setIcon('lucide-x')
-            .setTitle(t('Remove date'))
-            .onClick(() => {
-              const shouldLinkDates = stateManager.getSetting('link-date-to-daily-note');
-              const dateTrigger = stateManager.getSetting('date-trigger');
-              const contentMatch = shouldLinkDates
-                ? '(?:\\[[^\\]]+\\]\\([^\\)]+\\)|\\[\\[[^\\]]+\\]\\])'
-                : '{[^}]+}';
-              const dateRegEx = new RegExp(
-                `(^|\\s)${escapeRegExpStr(dateTrigger as string)}${contentMatch}`
-              );
-
-              const titleRaw = item.data.titleRaw.replace(dateRegEx, '').trim();
-
-              boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRaw));
-            });
-        });
-
-        menu.addItem((i) => {
-          i.setIcon('lucide-clock')
-            .setTitle(hasTime ? t('Edit time') : t('Add time'))
-            .onClick(() => {
-              constructTimePicker(
-                e.view,
-                stateManager,
-                coordinates,
-                constructMenuTimePickerOnChange({
-                  stateManager,
-                  boardModifiers,
-                  item,
-                  hasTime,
-                  path,
-                }),
-                item.data.metadata.time
-              );
-            });
-        });
-
-        if (hasTime) {
-          menu.addItem((i) => {
-            i.setIcon('lucide-x')
-              .setTitle(t('Remove time'))
-              .onClick(() => {
-                const timeTrigger = stateManager.getSetting('time-trigger');
-                const timeRegEx = new RegExp(
-                  `(^|\\s)${escapeRegExpStr(timeTrigger as string)}{([^}]+)}`
-                );
-
-                const titleRaw = item.data.titleRaw.replace(timeRegEx, '').trim();
-                boardModifiers.updateItem(path, stateManager.updateItemContent(item, titleRaw));
-              });
-          });
-        }
-      }
-
-      menu.addSeparator();
+        .addSeparator();
 
       const addMoveToOptions = (menu: Menu) => {
         const lanes = stateManager.state.children;
@@ -288,7 +257,7 @@ export function useItemMenu({
         addMoveToOptions(menu);
       } else {
         menu.addItem((item) => {
-          const submenu = (item as any)
+          const submenu = item
             .setTitle(t('Move to list'))
             .setIcon('lucide-square-kanban')
             .setSubmenu();

@@ -5,6 +5,7 @@ import {
   addCardLinkToListFile,
   addBoardLinkToListFile,
   buildCardContent,
+  buildCardFileContent,
   buildCardFilename,
   ensureFolder,
   getListFilePath,
@@ -115,19 +116,11 @@ export function ItemForm({
 
     const cardFileName = buildCardFilename(trimmedName, new Date());
     const cardFilePath = `${listFolderPath}/${cardFileName}`;
-    if (vault.getAbstractFileByPath(cardFilePath)) {
-      new Notice(`Card "${trimmedName}" already exists in this list.`);
-      return;
-    }
 
-    await vault.create(cardFilePath, '');
     const descriptionBody = description.trim();
-    if (descriptionBody && descriptionBody !== trimmedName) {
-      const cardFile = vault.getAbstractFileByPath(cardFilePath);
-      if (cardFile && cardFile instanceof TFile) {
-        await vault.modify(cardFile, descriptionBody);
-      }
-    }
+    const bodyContent = descriptionBody && descriptionBody !== trimmedName ? descriptionBody : '';
+    const cardContent = buildCardFileContent(bodyContent);
+    await vault.create(cardFilePath, cardContent);
     const listFilePath = getListFilePath(stateManager.file, listTitle);
     await addBoardLinkToListFile(stateManager.app, listFilePath, stateManager.file.path);
     await addCardLinkToListFile(
@@ -144,7 +137,7 @@ export function ItemForm({
     if (!isEditing(editState) || isPromptingRef.current) return;
     isPromptingRef.current = true;
     void createItem('')
-      .catch((e) => console.error(e))
+      .catch((e) => { console.error(e); new Notice('Kanban: Error creating card' + (e instanceof Error ? ': ' + e.message : '')); })
       .finally(() => {
         isPromptingRef.current = false;
         setEditState(EditingState.cancel);

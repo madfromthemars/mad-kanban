@@ -6,10 +6,9 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'preact/compat';
-import { RgbaStringColorPicker } from 'react-colorful';
-import useOnclickOutside from 'react-cool-onclickoutside';
 
 import { Icon } from '../components/Icon/Icon';
 import { c, generateInstanceId } from '../components/helpers';
@@ -45,16 +44,19 @@ export interface ColorPickerInputProps {
 }
 
 export function ColorPickerInput({ color, setColor, defaultColor }: ColorPickerInputProps) {
-  const [localRGB, setLocalRGB] = useState(color || defaultColor);
-  const [localHEX, setLocalHEX] = useState(color || defaultColor);
+  const parsed = colord(color || defaultColor);
+  const rgba = parsed.isValid() ? parsed.toRgb() : { r: 0, g: 0, b: 0, a: 1 };
+  const [localHEX, setLocalHEX] = useState(parsed.isValid() ? parsed.toHex() : '#000000');
+  const [localAlpha, setLocalAlpha] = useState(rgba.a);
+  const wrapperRef = useRef<HTMLDivElement>();
   const [isPickerVisible, setIsPickerVisible] = useState(false);
-  const onChange = useCallback(
-    (newColor: string) => {
-      const normalized = colorToRgbaString(newColor || defaultColor);
-      if (normalized) {
-        setLocalHEX(normalized.hexa);
-        setLocalRGB(normalized.rgba);
-        setColor(normalized.rgba);
+
+  const applyColor = useCallback(
+    (hex: string, alpha: number) => {
+      const c = colord(hex).alpha(alpha);
+      if (c.isValid()) {
+        const rgb = c.toRgb();
+        setColor(`rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${rgb.a})`);
       }
     },
     [setColor]
@@ -62,29 +64,68 @@ export function ColorPickerInput({ color, setColor, defaultColor }: ColorPickerI
 
   useEffect(() => {
     if (!color || !defaultColor) return;
-
-    const normalized = colorToRgbaString(color || defaultColor);
-    if (normalized) {
-      setLocalRGB(normalized.rgba);
-      setLocalHEX(normalized.hexa);
+    const normalized = colord(color || defaultColor);
+    if (normalized.isValid()) {
+      setLocalHEX(normalized.toHex().slice(0, 7));
+      setLocalAlpha(normalized.toRgb().a);
     }
   }, []);
 
-  const clickOutsideRef = useOnclickOutside(() => {
-    setIsPickerVisible(false);
-  });
+  useEffect(() => {
+    if (!isPickerVisible) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsPickerVisible(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isPickerVisible]);
 
   return (
-    <div ref={clickOutsideRef} className={c('color-picker-wrapper')}>
+    <div ref={wrapperRef} className={c('color-picker-wrapper')}>
       {isPickerVisible && (
         <div className={c('color-picker')}>
-          <RgbaStringColorPicker color={localRGB} onChange={onChange} />
+          <input
+            type="color"
+            value={localHEX.slice(0, 7)}
+            className={c('color-input-native')}
+            onInput={(e) => {
+              const hex = (e.target as HTMLInputElement).value;
+              setLocalHEX(hex);
+              applyColor(hex, localAlpha);
+            }}
+          />
+          <div className={c('color-alpha-wrapper')}>
+            <label>Opacity</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={localAlpha}
+              className={c('color-alpha-slider')}
+              onInput={(e) => {
+                const alpha = parseFloat((e.target as HTMLInputElement).value);
+                setLocalAlpha(alpha);
+                applyColor(localHEX, alpha);
+              }}
+            />
+          </div>
         </div>
       )}
       <input
         type="text"
         value={localHEX}
-        onChange={(e) => onChange((e.target as HTMLInputElement).value)}
+        onChange={(e) => {
+          const val = (e.target as HTMLInputElement).value;
+          const normalized = colorToRgbaString(val || defaultColor);
+          if (normalized) {
+            setLocalHEX(normalized.hexa);
+            setLocalAlpha(colord(normalized.rgba).toRgb().a);
+            setColor(normalized.rgba);
+          }
+        }}
         onFocus={() => {
           setIsPickerVisible(true);
         }}

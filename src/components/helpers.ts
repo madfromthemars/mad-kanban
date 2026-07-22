@@ -1,23 +1,65 @@
 import update from 'immutability-helper';
-import { App, MarkdownView, TFile, moment } from 'obsidian';
-import Preact, { Dispatch, RefObject, useCallback, useEffect, useState } from 'preact/compat';
+import { App, MarkdownView, Notice, TFile, moment } from 'obsidian';
+import Preact, { Dispatch, RefObject, useCallback, useEffect, useRef, useState } from 'preact/compat';
 import { StateUpdater, useMemo } from 'preact/hooks';
 import { StateManager } from 'src/StateManager';
 import { Path } from 'src/dnd/types';
 import { getEntityFromPath } from 'src/dnd/util/data';
 import {
   InlineField,
+  Priority,
   getTaskStatusDone,
   getTaskStatusPreDone,
   toggleTask,
 } from 'src/parsers/helpers/inlineMetadata';
 
-import { DateFilterType, FilterContextProps, FilterState, SearchContextProps, StatusFilterType } from './context';
-import { Board, DataKey, DateColor, Item, Lane, PageData, TagColor } from './types';
+import { extractCardTitle } from 'src/kanbanFileHelpers';
+import { DateFilterType, FilterContextProps, FilterState, PriorityFilterType, SearchContextProps, StatusFilterType } from './context';
+import { Board, DataKey, Item, Lane, PageData, TagColor } from './types';
 
 export const baseClassName = 'kanban-plugin';
 
 export function noop() {}
+
+/** Shared regex for extracting #tags from text. Always reset lastIndex before use. */
+const TAG_REGEX = /#([a-zA-Z][a-zA-Z0-9_-]*)/g;
+
+/** Extract all tag names from a text string into the given set. */
+function extractTagsFromText(text: string, tagSet: Set<string>) {
+  if (!text) return;
+  TAG_REGEX.lastIndex = 0;
+  let match;
+  while ((match = TAG_REGEX.exec(text)) !== null) {
+    tagSet.add(match[1]);
+  }
+}
+
+/** Collect all tag names from an item's metadata, title fields, and optional card body cache. */
+export function collectItemTags(
+  item: Item,
+  tagSet: Set<string>,
+  cardBodyCache?: Map<string, string>,
+  boardPath?: string
+) {
+  const metaTags = item.data.metadata?.tags;
+  if (metaTags && Array.isArray(metaTags)) {
+    metaTags.forEach((tag) => tagSet.add(tag.replace(/^#/, '')));
+  }
+
+  extractTagsFromText(item.data.titleSearch, tagSet);
+  extractTagsFromText(item.data.titleRaw, tagSet);
+
+  if (cardBodyCache && boardPath) {
+    const cardTitle = extractCardTitle(item.data.titleRaw);
+    if (cardTitle) {
+      const cacheKey = `${boardPath}::${cardTitle}`;
+      const cardBody = cardBodyCache.get(cacheKey);
+      if (cardBody) {
+        extractTagsFromText(cardBody, tagSet);
+      }
+    }
+  }
+}
 
 const classCache = new Map<string, string>();
 export function c(className: string) {
@@ -162,34 +204,10 @@ export async function applyTemplate(stateManager: StateManager, templatePath?: s
       );
     } catch (e) {
       console.error(e);
+      new Notice('Kanban: Failed to apply template' + (e instanceof Error ? ': ' + e.message : ''));
       stateManager.setError(e);
     }
   }
-}
-
-export function getDefaultDateFormat(app: App) {
-  const internalPlugins = (app as any).internalPlugins.plugins;
-  const dailyNotesEnabled = internalPlugins['daily-notes']?.enabled;
-  const dailyNotesValue = internalPlugins['daily-notes']?.instance.options.format;
-  const nlDatesValue = (app as any).plugins.plugins['nldates-obsidian']?.settings.format;
-  const templatesEnabled = internalPlugins.templates?.enabled;
-  const templatesValue = internalPlugins.templates?.instance.options.dateFormat;
-
-  return (
-    (dailyNotesEnabled && dailyNotesValue) ||
-    nlDatesValue ||
-    (templatesEnabled && templatesValue) ||
-    'YYYY-MM-DD'
-  );
-}
-
-export function getDefaultTimeFormat(app: App) {
-  const internalPlugins = (app as any).internalPlugins.plugins;
-  const nlDatesValue = (app as any).plugins.plugins['nldates-obsidian']?.settings.timeFormat;
-  const templatesEnabled = internalPlugins.templates?.enabled;
-  const templatesValue = internalPlugins.templates?.instance.options.timeFormat;
-
-  return nlDatesValue || (templatesEnabled && templatesValue) || 'HH:mm';
 }
 
 const reRegExChar = /[\\^$.*+?()[\]{}|]/g;
@@ -200,13 +218,13 @@ export function escapeRegExpStr(str: string) {
 }
 
 export function getTemplatePlugins(app: App) {
-  const templatesPlugin = (app as any).internalPlugins.plugins.templates;
+  const templatesPlugin = app.internalPlugins.plugins.templates;
   const templatesEnabled = templatesPlugin.enabled;
-  const templaterPlugin = (app as any).plugins.plugins['templater-obsidian'];
-  const templaterEnabled = (app as any).plugins.enabledPlugins.has('templater-obsidian');
+  const templaterPlugin = app.plugins.plugins['templater-obsidian'];
+  const templaterEnabled = app.plugins.enabledPlugins.has('templater-obsidian');
   const templaterEmptyFileTemplate =
     templaterPlugin &&
-    (this.app as any).plugins.plugins['templater-obsidian'].settings?.empty_file_template;
+    app.plugins.plugins['templater-obsidian']?.settings?.empty_file_template;
 
   const templateFolder = templatesEnabled
     ? templatesPlugin.instance.options.folder
@@ -240,83 +258,6 @@ export function getTagColorFn(tagColors: TagColor[]) {
 export function useGetTagColorFn(stateManager: StateManager): (tag: string) => TagColor {
   const tagColors = stateManager.useSetting('tag-colors');
   return useMemo(() => getTagColorFn(tagColors), [tagColors]);
-}
-
-export function getDateColorFn(dateColors: DateColor[]) {
-  const orders = (dateColors || []).map<[moment.Moment | 'today' | 'before' | 'after', DateColor]>(
-    (c) => {
-      if (c.isToday) {
-        return ['today', c];
-      }
-
-      if (c.isBefore) {
-        return ['before', c];
-      }
-
-      if (c.isAfter) {
-        return ['after', c];
-      }
-
-      const modifier = c.direction === 'after' ? 1 : -1;
-      const date = moment();
-
-      date.add(c.distance * modifier, c.unit);
-
-      return [date, c];
-    }
-  );
-
-  const now = moment();
-  orders.sort((a, b) => {
-    if (a[0] === 'today') {
-      return typeof b[0] === 'string' ? -1 : b[0].isSame(now, 'day') ? 1 : -1;
-    }
-    if (b[0] === 'today') {
-      return typeof a[0] === 'string' ? 1 : a[0].isSame(now, 'day') ? -1 : 1;
-    }
-
-    if (a[0] === 'after') return 1;
-    if (a[0] === 'before') return 1;
-    if (b[0] === 'after') return -1;
-    if (b[0] === 'before') return -1;
-
-    return a[0].isBefore(b[0]) ? -1 : 1;
-  });
-
-  return (date: moment.Moment) => {
-    const now = moment();
-    const result = orders.find((o) => {
-      const key = o[1];
-      if (key.isToday) return date.isSame(now, 'day');
-      if (key.isAfter) return date.isAfter(now);
-      if (key.isBefore) return date.isBefore(now);
-
-      let granularity: moment.unitOfTime.StartOf = 'days';
-
-      if (key.unit === 'hours') {
-        granularity = 'hours';
-      }
-
-      if (key.direction === 'before') {
-        return date.isBetween(o[0], now, granularity, '[]');
-      }
-
-      return date.isBetween(now, o[0], granularity, '[]');
-    });
-
-    if (result) {
-      return result[1];
-    }
-
-    return null;
-  };
-}
-
-export function useGetDateColorFn(
-  stateManager: StateManager
-): (date: moment.Moment) => DateColor | null {
-  const dateColors = stateManager.useSetting('date-colors');
-  return useMemo(() => getDateColorFn(dateColors), [dateColors]);
 }
 
 export function parseMetadataWithOptions(data: InlineField, metadataKeys: DataKey[]): PageData {
@@ -403,21 +344,77 @@ export function useSearchValue(
 }
 
 // Extract all unique tags from the board
-export function extractAllTags(board: Board): string[] {
+export function extractAllTags(
+  board: Board,
+  cardBodyCache?: Map<string, string>,
+  boardPath?: string
+): string[] {
   const tagSet = new Set<string>();
+
   board.children.forEach((lane) => {
     lane.children.forEach((item) => {
-      const tags = item.data.metadata?.tags;
-      if (tags && Array.isArray(tags)) {
-        tags.forEach((tag) => tagSet.add(tag.replace(/^#/, '')));
-      }
+      collectItemTags(item, tagSet, cardBodyCache, boardPath);
     });
   });
+
   return Array.from(tagSet).sort();
 }
 
+// Get primary tag (first tag) from an item
+export function getPrimaryTag(
+  item: Item,
+  cardBodyCache?: Map<string, string>,
+  boardPath?: string
+): string | null {
+  const tagSet = new Set<string>();
+  collectItemTags(item, tagSet, cardBodyCache, boardPath);
+  if (tagSet.size > 0) {
+    return tagSet.values().next().value;
+  }
+  return null;
+}
+
+// Group items by their primary tag
+export function groupItemsByTag(
+  items: Item[],
+  cardBodyCache?: Map<string, string>,
+  boardPath?: string
+): { tag: string | null; items: Item[] }[] {
+  const groups = new Map<string | null, Item[]>();
+
+  items.forEach((item) => {
+    const tag = getPrimaryTag(item, cardBodyCache, boardPath);
+    if (!groups.has(tag)) {
+      groups.set(tag, []);
+    }
+    groups.get(tag)!.push(item);
+  });
+
+  // Convert to array and sort: tagged groups first (alphabetically), then ungrouped
+  const result: { tag: string | null; items: Item[] }[] = [];
+  const sortedTags = Array.from(groups.keys())
+    .filter((t) => t !== null)
+    .sort() as string[];
+
+  sortedTags.forEach((tag) => {
+    result.push({ tag, items: groups.get(tag)! });
+  });
+
+  // Add ungrouped items at the end
+  if (groups.has(null)) {
+    result.push({ tag: null, items: groups.get(null)! });
+  }
+
+  return result;
+}
+
 // Check if an item matches the current filters
-export function itemMatchesFilters(item: Item, filters: FilterState): boolean {
+export function itemMatchesFilters(
+  item: Item,
+  filters: FilterState,
+  cardBodyCache?: Map<string, string>,
+  boardPath?: string
+): boolean {
   // Status filter
   if (filters.statusFilter === 'complete' && !item.data.checked) {
     return false;
@@ -426,10 +423,34 @@ export function itemMatchesFilters(item: Item, filters: FilterState): boolean {
     return false;
   }
 
+  // Priority filter
+  if (filters.priorityFilter !== 'all') {
+    const itemPriority = item.data.metadata.priority;
+    const priorityFilterMap: Record<string, string> = {
+      highest: Priority.Highest,
+      high: Priority.High,
+      medium: Priority.Medium,
+      low: Priority.Low,
+    };
+
+    if (filters.priorityFilter === 'none') {
+      if (itemPriority && itemPriority !== Priority.None) {
+        return false;
+      }
+    } else {
+      const expectedValue = priorityFilterMap[filters.priorityFilter];
+      if (itemPriority !== expectedValue) {
+        return false;
+      }
+    }
+  }
+
   // Tag filter
   if (filters.tags.length > 0) {
-    const itemTags = item.data.metadata?.tags?.map((t) => t.replace(/^#/, '')) || [];
-    const hasMatchingTag = filters.tags.some((tag) => itemTags.includes(tag));
+    const allItemTags = new Set<string>();
+    collectItemTags(item, allItemTags, cardBodyCache, boardPath);
+
+    const hasMatchingTag = filters.tags.some((tag) => allItemTags.has(tag));
     if (!hasMatchingTag) {
       return false;
     }
@@ -468,14 +489,70 @@ export function itemMatchesFilters(item: Item, filters: FilterState): boolean {
 }
 
 // Hook to manage filter state
-export function useFilterValue(board: Board): FilterContextProps {
+export function useFilterValue(
+  board: Board,
+  cardBodyCache?: Map<string, string>,
+  boardPath?: string
+): FilterContextProps {
   const [filters, setFilters] = useState<FilterState>({
     tags: [],
     dateFilter: 'all',
     statusFilter: 'all',
+    priorityFilter: 'all',
   });
 
-  const availableTags = useMemo(() => extractAllTags(board), [board]);
+  // Track cache size to trigger re-extraction when items load their content
+  const [cacheSize, setCacheSize] = useState(cardBodyCache?.size || 0);
+
+  // Check for cache updates periodically until stable
+  useEffect(() => {
+    if (!cardBodyCache) return;
+
+    let timeoutId: number;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    const checkCache = () => {
+      const newSize = cardBodyCache.size;
+      if (newSize !== cacheSize) {
+        setCacheSize(newSize);
+      }
+      attempts++;
+      if (attempts < maxAttempts) {
+        timeoutId = window.setTimeout(checkCache, 500);
+      }
+    };
+
+    // Start checking after a short delay to allow items to load
+    timeoutId = window.setTimeout(checkCache, 300);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [cardBodyCache, board]);
+
+  const prevLanesRef = useRef<Lane[]>([]);
+  const prevTagsRef = useRef<string[]>([]);
+  const prevCacheSizeRef = useRef<number>(0);
+
+  const availableTags = useMemo(() => {
+    // Skip expensive re-extraction if lane children haven't changed by reference
+    const lanesChanged =
+      board.children.length !== prevLanesRef.current.length ||
+      board.children.some(
+        (lane, i) => lane.children !== prevLanesRef.current[i]?.children
+      );
+    const cacheSizeChanged = cacheSize !== prevCacheSizeRef.current;
+
+    if (!lanesChanged && !cacheSizeChanged && prevTagsRef.current.length > 0) {
+      return prevTagsRef.current;
+    }
+
+    prevLanesRef.current = board.children;
+    prevCacheSizeRef.current = cacheSize;
+    prevTagsRef.current = extractAllTags(board, cardBodyCache, boardPath);
+    return prevTagsRef.current;
+  }, [board, cardBodyCache, boardPath, cacheSize]);
 
   const setTagFilter = useCallback((tags: string[]) => {
     setFilters((prev) => ({ ...prev, tags }));
@@ -489,16 +566,37 @@ export function useFilterValue(board: Board): FilterContextProps {
     setFilters((prev) => ({ ...prev, statusFilter }));
   }, []);
 
+  const setPriorityFilter = useCallback((priorityFilter: PriorityFilterType) => {
+    setFilters((prev) => ({ ...prev, priorityFilter }));
+  }, []);
+
   const clearFilters = useCallback(() => {
     setFilters({
       tags: [],
       dateFilter: 'all',
       statusFilter: 'all',
+      priorityFilter: 'all',
     });
   }, []);
 
   const hasActiveFilters =
-    filters.tags.length > 0 || filters.dateFilter !== 'all' || filters.statusFilter !== 'all';
+    filters.tags.length > 0 || filters.dateFilter !== 'all' || filters.statusFilter !== 'all' || filters.priorityFilter !== 'all';
+
+  // Tag grouping state
+  const [isGroupingByTag, setGroupingByTag] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroupCollapse = useCallback((tag: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) {
+        next.delete(tag);
+      } else {
+        next.add(tag);
+      }
+      return next;
+    });
+  }, []);
 
   return {
     filters,
@@ -506,7 +604,14 @@ export function useFilterValue(board: Board): FilterContextProps {
     setTagFilter,
     setDateFilter,
     setStatusFilter,
+    setPriorityFilter,
     clearFilters,
     hasActiveFilters,
+    cardBodyCache,
+    boardPath,
+    isGroupingByTag,
+    setGroupingByTag,
+    collapsedGroups,
+    toggleGroupCollapse,
   };
 }

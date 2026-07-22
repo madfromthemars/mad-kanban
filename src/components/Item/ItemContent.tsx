@@ -1,4 +1,5 @@
 import { EditorView } from '@codemirror/view';
+import classcat from 'classcat';
 import { memo } from 'preact/compat';
 import {
   Dispatch,
@@ -16,11 +17,16 @@ import { useNestedEntityPath } from 'src/dnd/components/Droppable';
 import { Path } from 'src/dnd/types';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
 import {
+  calculateCardAge,
+  extractCardLinkPath,
   extractCardTitle,
+  findCardFileInVault,
   findCardFilePathInListFile,
   findCardFilePathInListFolder,
+  getCardAgeClass,
   getListFilePath,
   getListFolderPath,
+  parseLastMoved,
 } from 'src/kanbanFileHelpers';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
@@ -29,65 +35,24 @@ import {
   MarkdownRenderer,
 } from '../MarkdownRenderer/MarkdownRenderer';
 import { KanbanContext, SearchContext } from '../context';
-import { c, useGetDateColorFn, useGetTagColorFn } from '../helpers';
+import { c, useGetTagColorFn } from '../helpers';
 import { EditState, EditingState, Item, isEditing } from '../types';
-import { DateAndTime, RelativeDate } from './DateAndTime';
 import { InlineMetadata } from './InlineMetadata';
-import {
-  constructDatePicker,
-  constructMenuDatePickerOnChange,
-  constructMenuTimePickerOnChange,
-  constructTimePicker,
-} from './helpers';
 
-const cardBodyCache = new Map<string, string>();
+export const cardBodyCache = new Map<string, string>();
+export const cardAgeCache = new Map<string, string>();
 
-function getCardCacheKey(boardPath: string, cardTitle: string) {
+export function getCardCacheKey(boardPath: string, cardTitle: string) {
   return `${boardPath}::${cardTitle}`;
 }
 
-export function useDatePickers(item: Item, explicitPath?: Path) {
-  const { stateManager, boardModifiers } = useContext(KanbanContext);
-  const path = explicitPath || useNestedEntityPath();
+export function getCardAgeClassFromCache(cacheKey: string): string {
+  return cardAgeCache.get(cacheKey) || '';
+}
 
-  return useMemo(() => {
-    const onEditDate = (e: MouseEvent) => {
-      constructDatePicker(
-        e.view,
-        stateManager,
-        { x: e.clientX, y: e.clientY },
-        constructMenuDatePickerOnChange({
-          stateManager,
-          boardModifiers,
-          item,
-          hasDate: true,
-          path,
-        }),
-        item.data.metadata.date?.toDate()
-      );
-    };
-
-    const onEditTime = (e: MouseEvent) => {
-      constructTimePicker(
-        e.view, // Preact uses real events, so this is safe
-        stateManager,
-        { x: e.clientX, y: e.clientY },
-        constructMenuTimePickerOnChange({
-          stateManager,
-          boardModifiers,
-          item,
-          hasTime: true,
-          path,
-        }),
-        item.data.metadata.time
-      );
-    };
-
-    return {
-      onEditDate,
-      onEditTime,
-    };
-  }, [boardModifiers, path, item, stateManager]);
+export function clearCardCaches() {
+  cardBodyCache.clear();
+  cardAgeCache.clear();
 }
 
 export interface ItemContentProps {
@@ -97,6 +62,7 @@ export interface ItemContentProps {
   showMetadata?: boolean;
   editState: EditState;
   isStatic: boolean;
+  compact?: boolean;
 }
 
 function splitTitleAndBody(titleRaw: string) {
@@ -185,7 +151,7 @@ export function Tags({
                 return;
               }
 
-              (stateManager.app as any).internalPlugins
+              stateManager.app.internalPlugins
                 .getPluginById('global-search')
                 .instance.openGlobalSearch(`tag:${tag}`);
             }}
@@ -216,9 +182,9 @@ export const ItemContent = memo(function ItemContent({
   searchQuery,
   showMetadata = true,
   isStatic,
+  compact,
 }: ItemContentProps) {
   const { stateManager, filePath, boardModifiers } = useContext(KanbanContext);
-  const getDateColor = useGetDateColorFn(stateManager);
   const titleRef = useRef<string | null>(null);
   const [externalBody, setExternalBody] = useState<string | null>(null);
   const { titleLine, body } = useMemo(
@@ -227,9 +193,13 @@ export const ItemContent = memo(function ItemContent({
   );
   const path = useNestedEntityPath();
   const cardTitle = useMemo(() => extractCardTitle(item.data.titleRaw), [item.data.titleRaw]);
+  const cardLinkPath = useMemo(() => extractCardLinkPath(item.data.titleRaw), [item.data.titleRaw]);
   const cacheKey = useMemo(
-    () => (cardTitle ? getCardCacheKey(stateManager.file.path, cardTitle) : ''),
-    [stateManager.file.path, cardTitle]
+    () => {
+      const key = cardLinkPath || cardTitle;
+      return key ? getCardCacheKey(stateManager.file.path, key) : '';
+    },
+    [stateManager.file.path, cardLinkPath, cardTitle]
   );
   const laneTitle = useMemo(
     () => stateManager.state?.children?.[path[0]]?.data?.title || '',
@@ -265,7 +235,6 @@ export const ItemContent = memo(function ItemContent({
     }
   }, [editState, stateManager, item, cardFilePath, titleLine, boardModifiers, path]);
 
-  const { onEditDate, onEditTime } = useDatePickers(item);
   const onEnter = useCallback(
     (cm: EditorView, mod: boolean, shift: boolean) => {
       if (!allowNewLine(stateManager, mod, shift)) {
@@ -274,19 +243,6 @@ export const ItemContent = memo(function ItemContent({
       }
     },
     [stateManager]
-  );
-
-  const onWrapperClick = useCallback(
-    (e: MouseEvent) => {
-      if (e.targetNode.instanceOf(HTMLElement)) {
-        if (e.targetNode.hasClass(c('item-metadata-date'))) {
-          onEditDate(e);
-        } else if (e.targetNode.hasClass(c('item-metadata-time'))) {
-          onEditTime(e);
-        }
-      }
-    },
-    [onEditDate, onEditTime]
   );
 
   const onSubmit = useCallback(() => setEditState(EditingState.complete), []);
@@ -317,6 +273,30 @@ export const ItemContent = memo(function ItemContent({
 
   useEffect(() => {
     let cancelled = false;
+
+    // Direct path resolution for cards with [[path|title]] links
+    if (cardLinkPath) {
+      const file = stateManager.app.vault.getAbstractFileByPath(cardLinkPath);
+      if (file && file instanceof TFile) {
+        setCardFilePath(cardLinkPath);
+        setIsTransitioning(false);
+        lastCardFilePathRef.current = cardLinkPath;
+        lastLaneTitleRef.current = laneTitle;
+        return () => { cancelled = true; };
+      }
+      // Try without .md extension
+      const altPath = cardLinkPath.endsWith('.md') ? cardLinkPath.slice(0, -3) : `${cardLinkPath}.md`;
+      const altFile = stateManager.app.vault.getAbstractFileByPath(altPath);
+      if (altFile && altFile instanceof TFile) {
+        setCardFilePath(altPath);
+        setIsTransitioning(false);
+        lastCardFilePathRef.current = altPath;
+        lastLaneTitleRef.current = laneTitle;
+        return () => { cancelled = true; };
+      }
+    }
+
+    // Fallback: search by title (for cards without [[]] links or stale paths)
     if (!laneTitle || !cardTitle) {
       setCardFilePath('');
       setExternalBody(null);
@@ -349,9 +329,20 @@ export const ItemContent = memo(function ItemContent({
       // Try to find in list file first
       let foundPath = await findCardFilePathInListFile(stateManager.app, listFilePath, cardTitle);
 
+      // Verify the found path actually resolves to a file (links can be stale after board move)
+      if (foundPath && !stateManager.app.vault.getAbstractFileByPath(foundPath)) {
+        foundPath = null;
+      }
+
       // Fallback to folder search
       if (!foundPath) {
         foundPath = await findCardFilePathInListFolder(stateManager.app, listFolderPath, cardTitle);
+      }
+
+      // Last resort: search entire vault by card filename pattern
+      // (handles boards moved before the migration fix was applied)
+      if (!foundPath) {
+        foundPath = findCardFileInVault(stateManager.app, cardTitle);
       }
 
       // If still not found and transitioning, retry after a delay (file might still be moving)
@@ -360,6 +351,9 @@ export const ItemContent = memo(function ItemContent({
         foundPath = await findCardFilePathInListFile(stateManager.app, listFilePath, cardTitle);
         if (!foundPath) {
           foundPath = await findCardFilePathInListFolder(stateManager.app, listFolderPath, cardTitle);
+        }
+        if (!foundPath) {
+          foundPath = findCardFileInVault(stateManager.app, cardTitle);
         }
       }
 
@@ -376,7 +370,7 @@ export const ItemContent = memo(function ItemContent({
     return () => {
       cancelled = true;
     };
-  }, [laneTitle, cardTitle, stateManager.app, stateManager.file]);
+  }, [laneTitle, cardTitle, cardLinkPath, stateManager.app, filePath]);
 
   useEffect(() => {
     let cancelled = false;
@@ -395,6 +389,11 @@ export const ItemContent = memo(function ItemContent({
       lastExternalBodyRef.current = content;
       if (cacheKey) {
         cardBodyCache.set(cacheKey, content);
+        // Calculate and cache card age
+        const lastMoved = parseLastMoved(content);
+        const ageDays = calculateCardAge(lastMoved);
+        const ageClass = getCardAgeClass(ageDays);
+        cardAgeCache.set(cacheKey, ageClass);
       }
     });
 
@@ -433,7 +432,7 @@ export const ItemContent = memo(function ItemContent({
   const contentToRender = displayBody ?? '';
   const shouldShowContent = contentToRender || !titleLine;
   return (
-    <div onClick={onWrapperClick} className={c('item-title')}>
+    <div className={classcat([c('item-title'), { 'is-compact': compact }])}>
       {shouldShowContent &&
         (isStatic ? (
           <MarkdownClonedPreviewRenderer
@@ -454,15 +453,8 @@ export const ItemContent = memo(function ItemContent({
         ))}
       {showMetadata && (
         <div className={c('item-metadata')}>
-          <RelativeDate item={item} stateManager={stateManager} />
-          <DateAndTime
-            item={item}
-            stateManager={stateManager}
-            filePath={filePath}
-            getDateColor={getDateColor}
-          />
           <InlineMetadata item={item} stateManager={stateManager} />
-          <Tags tags={item.data.metadata.tags} searchQuery={searchQuery} />
+          <Tags tags={item.data.metadata.tags} searchQuery={searchQuery} alwaysShow={true} />
         </div>
       )}
     </div>
