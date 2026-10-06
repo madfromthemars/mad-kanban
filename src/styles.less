@@ -2442,3 +2442,25 @@ body:not(.native-scrollbars) .kanban-plugin__scroll-container::-webkit-scrollbar
   justify-content: space-between;
   align-items: center;
 }
+
+.kanban-plugin__card-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 4px 0;
+}
+
+.kanban-plugin__card-detail-edit-button {
+  font-size: 0.8em;
+  padding: 3px 10px;
+  height: auto;
+}
+
+.kanban-plugin__card-detail-body {
+  // Clickable room under images/videos so there's always somewhere to double-click.
+  padding-bottom: 28px;
+  cursor: text;
+
+  img {
+    cursor: zoom-in;
+  }
+}

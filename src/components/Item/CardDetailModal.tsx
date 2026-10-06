@@ -315,11 +315,21 @@ const CardDetailContent = memo(function CardDetailContent({
     [path, boardModifiers, stateManager, currentItem, cardFilePath, externalBody, cacheKey]
   );
 
+  const imageClickTimer = useRef<number | null>(null);
+
   const onDoubleClick = useCallback(
     (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.hasClass('task-list-item-checkbox') || target.closest('a')) return;
-      if (target.instanceOf(HTMLImageElement)) return;
+      if (target.hasClass('task-list-item-checkbox')) return;
+      if (target.closest('a') && !target.instanceOf(HTMLImageElement)) return;
+      if (target.instanceOf(HTMLImageElement) || target.closest('video')) {
+        // Media fills the line, so there is no text position under the pointer.
+        if (imageClickTimer.current != null) window.clearTimeout(imageClickTimer.current);
+        imageClickTimer.current = null;
+        setLightboxSrc(null);
+        setEditState({ x: -1, y: -1 });
+        return;
+      }
       setEditState({ x: e.clientX, y: e.clientY });
     },
     []
@@ -330,9 +340,24 @@ const CardDetailContent = memo(function CardDetailContent({
     if (target.instanceOf(HTMLImageElement)) {
       e.preventDefault();
       e.stopPropagation();
-      setLightboxSrc((target as HTMLImageElement).src);
+      const src = (target as HTMLImageElement).src;
+      // Wait briefly so a double-click (edit) doesn't also open the preview.
+      if (imageClickTimer.current != null) window.clearTimeout(imageClickTimer.current);
+      imageClickTimer.current = window.setTimeout(() => {
+        imageClickTimer.current = null;
+        setLightboxSrc(src);
+      }, 250);
     }
   }, []);
+
+  const editorValue = useMemo(() => {
+    const v = externalBody ?? body;
+    // Give media-only (or media-last) descriptions an empty line to type on.
+    const lastLine = v.trimEnd().split('\n').pop() || '';
+    return /(!\[[^\]]*\]\([^)]*\)|!\[\[[^\]]*\]\]|<\/video>|<video\b[^>]*\/?>)\s*$/i.test(lastLine)
+      ? `${v.trimEnd()}\n`
+      : v;
+  }, [externalBody, body]);
 
   useEffect(() => {
     if (!lightboxSrc) return;
@@ -393,6 +418,20 @@ const CardDetailContent = memo(function CardDetailContent({
         </div>
       )}
 
+      {!isEditing(editState) && (
+        <div className={c('card-detail-actions')}>
+          <button
+            className={c('card-detail-edit-button')}
+            onClick={(e) => {
+              e.preventDefault();
+              setEditState({ x: -1, y: -1 });
+            }}
+          >
+            ✏️ Edit description
+          </button>
+        </div>
+      )}
+
       {isEditing(editState) ? (
         <div className={c('card-detail-editor')}>
           <MarkdownEditor
@@ -401,7 +440,7 @@ const CardDetailContent = memo(function CardDetailContent({
             onEnter={onEnter}
             onEscape={onEscape}
             onSubmit={onSubmit}
-            value={externalBody ?? body}
+            value={editorValue}
             onChange={(update) => {
               if (update.docChanged) {
                 titleRef.current = update.state.doc.toString().trim();

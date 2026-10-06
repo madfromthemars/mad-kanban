@@ -234,7 +234,10 @@ export function MarkdownEditor({
     if (isEditing(editState)) {
       cm.dispatch({
         userEvent: 'select.pointer',
-        selection: EditorSelection.single(cm.posAtCoords(editState, false)),
+        // x/y < 0 means "no pointer position": put the cursor at the end.
+        selection: EditorSelection.single(
+          editState.x < 0 ? cm.state.doc.length : cm.posAtCoords(editState, false)
+        ),
       });
 
       cm.dom.win.setTimeout(() => {
