@@ -405,3 +405,27 @@ export async function migrateBoardFolder(
     }
   }
 }
+
+/**
+ * Set or clear `[priority:: x]`. It always goes on the first line: Obsidian
+ * only reads task fields from a card's first line, and multi-line (team)
+ * cards would otherwise show the raw marker in their description.
+ */
+export function setPriorityInTitle(titleRaw: string, value: string | null) {
+  const lines = titleRaw.split(/\r?\n/).map((l) => l.replace(/\s*\[priority::\s*[^\]]*\]/g, ''));
+  while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
+  if (value !== null) lines[0] = `${lines[0].trimEnd()} [priority:: ${value}]`;
+  return lines.join('\n');
+}
+
+/** Description as shown on a board card: tags and inline fields live in the footer/badges instead. */
+export function compactCardBody(md: string) {
+  return md
+    .replace(/(^|[ \t])#[^\s#\]\[)(]+/gm, '$1')
+    .replace(/[ \t]*\[[A-Za-z][\w-]*::[^\]]*\]/g, '')
+    .split('\n')
+    .map((l) => l.replace(/[ \t]+$/, ''))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}

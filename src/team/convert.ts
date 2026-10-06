@@ -6,6 +6,7 @@ import {
   calculateCardAge,
   extractCardTitle,
   getCardAgeClass,
+  setPriorityInTitle,
 } from 'src/kanbanFileHelpers';
 
 import { isTeamItem, isTeamLane, teamItemId, teamLaneId } from './ids';
@@ -14,7 +15,13 @@ import { TeamBoardSnapshot, TeamCard } from './types';
 /** Build a kanban Item from a server card, parsed with the board's own markdown parser. */
 export function cardToItem(stateManager: StateManager, boardId: string, card: TeamCard): Item {
   const checkChar = card.checked ? card.checkChar || 'x' : ' ';
-  const base = stateManager.parser.newItem(card.content || '', checkChar);
+  let content = card.content || '';
+  // Older team cards stored the priority on their last line; Obsidian only reads it on the first.
+  const prio = /\[priority::\s*([^\]]*)\]/.exec(content);
+  if (prio && !/\[priority::/.test(content.split('\n')[0])) {
+    content = setPriorityInTitle(content, prio[1].trim());
+  }
+  const base = stateManager.parser.newItem(content, checkChar);
   const item = update(base, {
     id: { $set: teamItemId(boardId, card.id) },
     data: {

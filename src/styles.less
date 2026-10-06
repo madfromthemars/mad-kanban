@@ -2464,3 +2464,90 @@ body:not(.native-scrollbars) .kanban-plugin__scroll-container::-webkit-scrollbar
     cursor: zoom-in;
   }
 }
+
+/* Compact card bottom: tags, checklist progress and assignees share one row. */
+.kanban-plugin__item-bottom {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 4px 8px 5px;
+  border-top: 1px solid var(--background-modifier-border);
+
+  &:empty {
+    display: none;
+  }
+
+  .kanban-plugin__item-footer {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+
+  .kanban-plugin__item-checkbox-progress {
+    flex: 1 1 80px;
+  }
+
+  .kanban-plugin__item-tags:not(:empty) {
+    padding: 0;
+    margin: 0;
+  }
+
+  .kanban-plugin__item-tags .kanban-plugin__item-tag {
+    margin-block: 0;
+  }
+
+  .kanban-plugin__team-extras {
+    padding: 0;
+    margin-left: auto;
+    flex: 0 0 auto;
+  }
+
+  .kanban-plugin__assignees {
+    margin-left: 0;
+  }
+
+  // Only the hover "+ assign" button: no extra row, float it over the card corner.
+  &:not(:has(.kanban-plugin__item-footer, .kanban-plugin__assignees, .kanban-plugin__team-badge, .kanban-plugin__comment-count)) {
+    position: relative;
+    height: 0;
+    padding: 0;
+    border-top: 0;
+
+    .kanban-plugin__team-extras {
+      position: absolute;
+      right: 6px;
+      bottom: 4px;
+    }
+  }
+}
+
+/* Tighter card header and body */
+.kanban-plugin__item-title-line-wrapper {
+  margin-bottom: 2px;
+  padding: 3px 6px;
+  border-radius: 5px;
+}
+
+.kanban-plugin__item-title-line-text {
+  font-size: 0.95em;
+  line-height: 1.3;
+}
+
+.kanban-plugin__item-title .kanban-plugin__item-markdown {
+  p,
+  ul,
+  ol {
+    margin-block: 0 4px;
+  }
+
+  > :last-child,
+  .markdown-preview-view > :last-child {
+    margin-bottom: 0;
+  }
+}

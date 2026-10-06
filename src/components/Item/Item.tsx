@@ -323,8 +323,10 @@ const ItemInner = memo(function ItemInner({
           <ItemMetadata searchQuery={isMatch ? searchQuery : undefined} item={item} />
         </>
       )}
-      <CardFooter item={item} />
-      <TeamCardExtras item={item} />
+      <div className={c('item-bottom')}>
+        <CardFooter item={item} />
+        <TeamCardExtras item={item} />
+      </div>
       <PriorityButton
         item={item}
         path={path}

@@ -8,6 +8,7 @@ import { t } from 'src/lang/helpers';
 
 import { BoardModifiers } from '../../helpers/boardModifiers';
 import { parseTeamItemId } from 'src/team/ids';
+import { setPriorityInTitle } from 'src/kanbanFileHelpers';
 import { AssigneeModal } from 'src/team/ui/modals';
 import { applyTemplate, escapeRegExpStr, generateInstanceId } from '../helpers';
 import { EditState, Item } from '../types';
@@ -144,7 +145,6 @@ export function useItemMenu({
 
       try {
         const currentPriority = item.data.metadata.priority;
-        const priorityRegex = /\[priority::\s*[^\]]*\]/g;
 
         const priorityOptions: { label: string; value: string | null }[] = [
           { label: '🔺 Highest', value: '0' },
@@ -164,12 +164,7 @@ export function useItemMenu({
                   : currentPriority === opt.value;
               mi.setChecked(isChecked);
               mi.onClick(() => {
-                let newTitleRaw = item.data.titleRaw
-                  .replace(priorityRegex, '')
-                  .trim();
-                if (opt.value !== null) {
-                  newTitleRaw = `${newTitleRaw} [priority:: ${opt.value}]`;
-                }
+                const newTitleRaw = setPriorityInTitle(item.data.titleRaw, opt.value);
                 boardModifiers.updateItem(
                   path,
                   stateManager.updateItemContent(item, newTitleRaw)

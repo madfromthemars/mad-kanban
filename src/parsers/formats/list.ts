@@ -225,6 +225,13 @@ export function listItemToItemData(stateManager: StateManager, md: string, item:
 
   itemData.metadata.tags?.sort(defaultSort);
 
+  // Read `[priority:: x]` from the first line ourselves; the inline-field
+  // parser above only finds it when the Dataview plugin is installed.
+  if (!itemData.metadata.priority) {
+    const m = /\[priority::\s*([0-5])\s*\]/.exec(itemData.titleRaw.split('\n')[0]);
+    if (m) itemData.metadata.priority = m[1];
+  }
+
   return itemData;
 }
 

@@ -19,6 +19,7 @@ import { Path } from 'src/dnd/types';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
 import {
   calculateCardAge,
+  compactCardBody,
   extractCardLinkPath,
   extractCardTitle,
   findCardFileInVault,
@@ -441,7 +442,7 @@ export const ItemContent = memo(function ItemContent({
   const transitionBody = isTransitioning ? lastExternalBodyRef.current : null;
   const displayBody = externalBody ?? transitionBody ?? cachedBody ?? body;
   // Always render content area - show displayBody if available, otherwise empty string
-  const contentToRender = displayBody ?? '';
+  const contentToRender = compactCardBody(displayBody ?? '');
   const shouldShowContent = contentToRender || !titleLine;
   return (
     <div className={classcat([c('item-title'), { 'is-compact': compact }])}>
@@ -466,7 +467,6 @@ export const ItemContent = memo(function ItemContent({
       {showMetadata && (
         <div className={c('item-metadata')}>
           <InlineMetadata item={item} stateManager={stateManager} />
-          <Tags tags={item.data.metadata.tags} searchQuery={searchQuery} alwaysShow={true} />
         </div>
       )}
     </div>

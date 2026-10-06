@@ -2,6 +2,7 @@ import Preact from 'preact/compat';
 import { Path } from 'src/dnd/types';
 import { BoardModifiers } from 'src/helpers/boardModifiers';
 import { StateManager } from 'src/StateManager';
+import { setPriorityInTitle } from 'src/kanbanFileHelpers';
 
 import { c } from '../helpers';
 import { Item } from '../types';
@@ -28,8 +29,6 @@ const priorityLabelMap: Record<string, string> = {
   '4': '\uD83D\uDD3D',
 };
 
-const priorityRegex = /\[priority::\s*[^\]]*\]/g;
-
 export const PriorityButton = Preact.memo(function PriorityButton({
   item,
   path,
@@ -55,10 +54,7 @@ export const PriorityButton = Preact.memo(function PriorityButton({
       const nextIndex = (currentIndex + 1) % priorityCycle.length;
       const next = priorityCycle[nextIndex];
 
-      let newTitleRaw = item.data.titleRaw.replace(priorityRegex, '').trim();
-      if (next.value !== null) {
-        newTitleRaw = `${newTitleRaw} [priority:: ${next.value}]`;
-      }
+      const newTitleRaw = setPriorityInTitle(item.data.titleRaw, next.value);
 
       boardModifiers.updateItem(
         path,
