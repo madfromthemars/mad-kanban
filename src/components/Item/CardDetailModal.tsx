@@ -16,6 +16,10 @@ import {
   getListFolderPath,
 } from 'src/kanbanFileHelpers';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
+import { isTeamItem } from 'src/team/ids';
+import { TeamCardExtras } from 'src/team/ui/TeamBadges';
+import { AttachButton, TeamComments } from 'src/team/ui/CardPanel';
+import { parseTeamItemId } from 'src/team/ids';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
 import { MarkdownRenderer } from '../MarkdownRenderer/MarkdownRenderer';
@@ -95,6 +99,54 @@ const CardDetailContent = memo(function CardDetailContent({
   const [cardFilePath, setCardFilePath] = useState<string>('');
   const [currentItem, setCurrentItem] = useState(item);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const isTeam = isTeamItem(currentItem);
+  const teamIds = isTeam ? parseTeamItemId(currentItem.id) : null;
+
+  // Team boards reload from the server while the modal is open, so the card's
+  // index can shift; always look it up by id before writing.
+  const resolvePath = useCallback((): Path => {
+    const board = stateManager.state;
+    if (board) {
+      for (let l = 0; l < board.children.length; l++) {
+        const i = board.children[l].children.findIndex((it) => it.id === currentItem.id);
+        if (i >= 0) return [l, i];
+      }
+    }
+    return path;
+  }, [stateManager, currentItem.id, path]);
+
+  const appendToCard = useCallback(
+    (md: string) => {
+      const latest = (() => {
+        const p = resolvePath();
+        return stateManager.state?.children?.[p[0]]?.children?.[p[1]] || currentItem;
+      })();
+      const raw = latest.data.titleRaw.replace(/\s+$/, '');
+      const newItem = stateManager.updateItemContent(latest, `${raw}\n${md}`);
+      boardModifiers.updateItem(resolvePath(), newItem);
+      setCurrentItem(newItem);
+      onItemUpdate?.(newItem);
+    },
+    [currentItem, stateManager, boardModifiers, resolvePath, onItemUpdate]
+  );
+
+  const renameCard = useCallback(
+    (newTitle: string) => {
+      const trimmed = newTitle.trim();
+      setIsRenaming(false);
+      if (!trimmed) return;
+      const oldTitle = extractCardTitle(currentItem.data.titleRaw);
+      if (trimmed === oldTitle) return;
+      const lines = currentItem.data.titleRaw.split(/\r?\n/);
+      lines[0] = oldTitle && lines[0].includes(oldTitle) ? lines[0].replace(oldTitle, trimmed) : trimmed;
+      const newItem = stateManager.updateItemContent(currentItem, lines.join('\n'));
+      boardModifiers.updateItem(resolvePath(), newItem);
+      setCurrentItem(newItem);
+      onItemUpdate?.(newItem);
+    },
+    [currentItem, stateManager, boardModifiers, resolvePath, onItemUpdate]
+  );
 
   const { titleLine, body } = useMemo(
     () => splitTitleAndBody(currentItem.data.titleRaw),
@@ -118,6 +170,11 @@ const CardDetailContent = memo(function CardDetailContent({
 
   useEffect(() => {
     let cancelled = false;
+
+    if (isTeam) {
+      setCardFilePath('');
+      return;
+    }
 
     if (cardLinkPath) {
       const file = stateManager.app.vault.getAbstractFileByPath(cardLinkPath);
@@ -201,7 +258,7 @@ const CardDetailContent = memo(function CardDetailContent({
         } else {
           const updated = combineTitleAndBody(titleLine, updatedBody);
           const newItem = stateManager.updateItemContent(currentItem, updated);
-          boardModifiers.updateItem(path, newItem);
+          boardModifiers.updateItem(resolvePath(), newItem);
           setCurrentItem(newItem);
           onItemUpdate?.(newItem);
         }
@@ -249,7 +306,7 @@ const CardDetailContent = memo(function CardDetailContent({
         } else {
           const checked = checkCheckbox(stateManager, currentItem.data.titleRaw, checkboxIndex);
           const newItem = stateManager.updateItemContent(currentItem, checked);
-          boardModifiers.updateItem(path, newItem);
+          boardModifiers.updateItem(resolvePath(), newItem);
           setCurrentItem(newItem);
           onItemUpdate?.(newItem);
         }
@@ -298,8 +355,43 @@ const CardDetailContent = memo(function CardDetailContent({
   return (
     <div className={c('card-detail-content')}>
       <div className={c('card-detail-title')}>
-        <h2>{cardTitle || titleLine}</h2>
+        {isTeam && isRenaming ? (
+          <input
+            type="text"
+            className={c('card-detail-title-input')}
+            defaultValue={cardTitle || titleLine}
+            ref={(el) => {
+              if (el) setTimeout(() => el.focus(), 0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                renameCard((e.target as HTMLInputElement).value);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setIsRenaming(false);
+              }
+            }}
+            onBlur={(e) => renameCard((e.target as HTMLInputElement).value)}
+          />
+        ) : (
+          <h2
+            className={isTeam ? c('card-detail-title-editable') : undefined}
+            title={isTeam ? 'Click to rename' : undefined}
+            onClick={isTeam ? () => setIsRenaming(true) : undefined}
+          >
+            {cardTitle || titleLine}
+          </h2>
+        )}
       </div>
+      {isTeam && (
+        <div className={c('card-detail-team')}>
+          <TeamCardExtras item={currentItem} detail={true} />
+          {teamIds && (
+            <AttachButton boardId={teamIds.boardId} onUploaded={appendToCard} label="Attach image / video" />
+          )}
+        </div>
+      )}
 
       {isEditing(editState) ? (
         <div className={c('card-detail-editor')}>
@@ -340,6 +432,8 @@ const CardDetailContent = memo(function CardDetailContent({
         <InlineMetadata item={currentItem} stateManager={stateManager} />
         <Tags tags={currentItem.data.metadata.tags} alwaysShow={true} />
       </div>
+
+      {teamIds && <TeamComments boardId={teamIds.boardId} cardId={teamIds.cardId} />}
 
       {lightboxSrc && (
         <div

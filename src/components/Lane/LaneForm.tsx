@@ -43,7 +43,7 @@ export function LaneForm({ onNewLane, closeLaneForm }: LaneFormProps) {
       const rawTitle = parsed.title.trim() ? parsed.title : t('Untitled');
       const sanitizedTitle = sanitizeName(rawTitle);
 
-      if (sanitizedTitle) {
+      if (sanitizedTitle && !stateManager.teamSync) {
         try {
           const vault = stateManager.app.vault;
           const boardFolderPath = getBoardFolderPath(stateManager.file);

@@ -1,0 +1,21 @@
+services:
+  kanban:
+    build: .
+    container_name: kanban-team
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Change this. It is only used to create and list users.
+      ADMIN_TOKEN: "change-me-admin-token"
+      # Public URL your teammates will use, baked into the join strings the CLI prints.
+      PUBLIC_URL: "http://localhost:8787"
+      PORT: "8787"
+      DATA_DIR: "/data"
+    volumes:
+      - kanban-data:/data
+      # Plugin releases (scripts/release-plugin.sh uploads here); no rebuild needed.
+      - ./public:/app/public:ro
+
+volumes:
+  kanban-data:

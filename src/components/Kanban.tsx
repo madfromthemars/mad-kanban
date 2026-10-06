@@ -21,6 +21,7 @@ import { findOrphanedBoardFolder, migrateBoardFolder } from '../kanbanFileHelper
 import { Lanes } from './Lane/Lane';
 import { LaneForm } from './Lane/LaneForm';
 import { QuickFilters } from './QuickFilters/QuickFilters';
+import { TeamSyncStatus } from 'src/team/ui/TeamBadges';
 import { TableView } from './Table/Table';
 import { FilterContext, KanbanContext, SearchContext } from './context';
 import { baseClassName, c, useFilterValue, useSearchValue } from './helpers';
@@ -277,6 +278,7 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                 >
                   <Icon name="lucide-search" />
                 </button>
+                <TeamSyncStatus />
               </div>
               {/* Quick filters */}
               {isFiltering && <QuickFilters />}

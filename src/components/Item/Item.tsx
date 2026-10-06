@@ -23,6 +23,8 @@ import { ItemCheckbox } from './ItemCheckbox';
 import { ItemContent, Tags, getCardCacheKey, getCardAgeClassFromCache, cardBodyCache } from './ItemContent';
 import { extractCardLinkPath, extractCardTitle, findCardFileInVault } from 'src/kanbanFileHelpers';
 import { TFile } from 'obsidian';
+import { isTeamItem } from 'src/team/ids';
+import { TeamCardExtras } from 'src/team/ui/TeamBadges';
 import { useItemMenu } from './ItemMenu';
 import { ItemMenuButton } from './ItemMenuButton';
 import { ItemMetadata } from './MetadataTable';
@@ -74,6 +76,7 @@ function extractTagsFromContent(content: string): string[] {
 }
 
 function resolveCardFile(stateManager: StateManager, item: Item): TFile | null {
+  if (isTeamItem(item)) return null;
   const cardLinkPath = extractCardLinkPath(item.data.titleRaw);
   const cardTitle = extractCardTitle(item.data.titleRaw);
 
@@ -240,7 +243,8 @@ const ItemInner = memo(function ItemInner({
         target.closest(`.${c('item-menu-button')}`) ||
         target.closest(`.${c('item-priority-button')}`) ||
         target.closest(`.${c('item-checkbox-wrapper')}`) ||
-        target.closest(`.${c('item-collapse-btn')}`)
+        target.closest(`.${c('item-collapse-btn')}`) ||
+        target.closest('video')
       ) {
         return;
       }
@@ -320,6 +324,7 @@ const ItemInner = memo(function ItemInner({
         </>
       )}
       <CardFooter item={item} />
+      <TeamCardExtras item={item} />
       <PriorityButton
         item={item}
         path={path}

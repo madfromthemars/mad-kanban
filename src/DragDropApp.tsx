@@ -34,6 +34,7 @@ import {
 } from './kanbanFileHelpers';
 import KanbanPlugin from './main';
 import { StateManager } from './StateManager';
+import { isTeamItem } from './team/ids';
 import { frontmatterKey } from './parsers/common';
 import {
   getTaskStatusDone,
@@ -190,6 +191,7 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
         const toLaneTitle = boardSnapshot?.children?.[dropPath[0]]?.data?.title;
         const needsMoveArtifacts =
           entityToMove?.type === DataTypes.Item &&
+          !isTeamItem(entityToMove) &&
           fromLaneTitle &&
           toLaneTitle &&
           dragPath[0] !== dropPath[0];
@@ -293,6 +295,16 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
       const sourceStateManager = plugin.stateManagers.get(sourceView.file);
       const destinationView = plugin.getKanbanView(dropEntity.scopeId, dropEntityData.win);
       const destinationStateManager = plugin.stateManagers.get(destinationView.file);
+
+      const dragged = getEntityFromPath(sourceStateManager.state, dragPath);
+      if (
+        isTeamItem(dragged) ||
+        sourceStateManager.teamSync ||
+        destinationStateManager.teamSync
+      ) {
+        new Notice('Kanban: team cards and lists can only be moved inside their own board');
+        return;
+      }
 
       sourceStateManager.setState((sourceBoard) => {
         const entity = getEntityFromPath(sourceBoard, dragPath);

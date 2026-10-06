@@ -15,3 +15,8 @@ dist
 test-vault/
 main.js
 styles.css
+server/node_modules
+server/data
+*.db
+*.db-*
+server/public/

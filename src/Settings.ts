@@ -36,6 +36,7 @@ import {
 import { cleanupMetadataSettings, renderMetadataSettings } from './settings/MetadataSettings';
 import { cleanUpTagSettings, renderTagSettings } from './settings/TagColorSettings';
 import { cleanUpTagSortSettings, renderTagSortSettings } from './settings/TagSortSettings';
+import { parseJoinString } from './team/TeamClient';
 
 const numberRegEx = /^\d+(?:\.\d+)?$/;
 
@@ -69,6 +70,12 @@ export interface KanbanSettings {
   'tag-action'?: 'kanban' | 'obsidian';
   'tag-colors'?: TagColor[];
   'tag-sort'?: TagSort[];
+  // Team (global only, never read from board frontmatter)
+  'team-server-url'?: string;
+  'team-token'?: string;
+  'team-client-id'?: string;
+  'team-mirror-lane'?: string;
+  'team-auto-update'?: boolean;
 }
 
 export interface KanbanViewSettings {
@@ -154,6 +161,114 @@ export class SettingsManager {
     return [this.settings[key], null];
   }
 
+  renderTeamSettings(contentEl: HTMLElement) {
+    contentEl.createEl('h4', { text: t('Team') });
+
+    let inputEl: HTMLInputElement | null = null;
+    const status = contentEl.createDiv({ cls: c('team-settings-status') });
+    const renderStatus = (text?: string) => {
+      const team = this.plugin.team;
+      if (text) {
+        status.setText(text);
+      } else if (!this.plugin.settings['team-token']) {
+        status.setText(t('Not connected'));
+      } else if (team?.user) {
+        status.setText(`${t('Connected as')} ${team.user.name} · ${this.plugin.settings['team-server-url']}`);
+      } else {
+        status.setText(`${t('Connecting to')} ${this.plugin.settings['team-server-url']}…`);
+      }
+    };
+
+    new Setting(contentEl)
+      .setName(t('Team server join string'))
+      .setDesc(
+        t(
+          'Paste the join string from your server admin, e.g. https://host:8787/#TOKEN. Leave empty to turn team boards off.'
+        )
+      )
+      .addText((text) => {
+        inputEl = text.inputEl;
+        const url = this.plugin.settings['team-server-url'];
+        const token = this.plugin.settings['team-token'];
+        text
+          .setPlaceholder('https://host:8787/#TOKEN')
+          .setValue(url && token ? `${url}/#${token}` : '')
+          .onChange((value) => {
+            const trimmed = value.trim();
+            if (!trimmed) {
+              this.applySettingsUpdate({ $unset: ['team-server-url', 'team-token'] });
+              renderStatus(t('Not connected'));
+              return;
+            }
+            const conn = parseJoinString(trimmed);
+            if (!conn) {
+              renderStatus(t('That does not look like a join string'));
+              return;
+            }
+            this.applySettingsUpdate({
+              'team-server-url': { $set: conn.url },
+              'team-token': { $set: conn.token },
+            });
+            renderStatus(`${t('Connecting to')} ${conn.url}…`);
+          });
+        text.inputEl.addClass(c('team-settings-input'));
+      })
+      .addButton((btn) =>
+        btn.setButtonText(t('Test connection')).onClick(async () => {
+          const value = inputEl?.value || '';
+          renderStatus(t('Testing…'));
+          try {
+            const user = await this.plugin.team.testConnection(value);
+            renderStatus(`${t('Connected as')} ${user.name}`);
+          } catch (e) {
+            renderStatus(`${t('Connection failed')}: ${e?.message || e}`);
+          }
+        })
+      );
+
+    // Move the status line under the setting row it describes.
+    contentEl.appendChild(status);
+    renderStatus();
+    const onUser = () => renderStatus();
+    this.plugin.team?.emitter.on('user', onUser);
+    this.cleanupFns.push(() => this.plugin.team?.emitter.off('user', onUser));
+
+    new Setting(contentEl)
+      .setName(t('Fallback list for team cards'))
+      .setDesc(
+        t(
+          'Team cards assigned to you appear in the personal list with the same name as their team list. Cards without a matching list go here.'
+        )
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder('Team')
+          .setValue(this.plugin.settings['team-mirror-lane'] || '')
+          .onChange((value) => {
+            const v = value.trim();
+            this.applySettingsUpdate(
+              v ? { 'team-mirror-lane': { $set: v } } : { $unset: ['team-mirror-lane'] }
+            );
+          });
+      });
+
+    new Setting(contentEl)
+      .setName(t('Update plugin from team server'))
+      .setDesc(
+        `${t('Install new versions of this plugin published on your team server.')} ${t('Installed version')}: ${this.plugin.manifest.version}`
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings['team-auto-update'] !== false).onChange((v) => {
+          this.applySettingsUpdate({ 'team-auto-update': { $set: v } });
+        })
+      )
+      .addButton((btn) =>
+        btn.setButtonText(t('Check now')).onClick(() => void this.plugin.updater?.check(true))
+      );
+
+    contentEl.createEl('h4', { text: t('Board defaults') });
+  }
+
   constructUI(contentEl: HTMLElement, heading: string, local: boolean) {
     this.win = contentEl.win;
 
@@ -171,6 +286,7 @@ export class SettingsManager {
           'Set the default Kanban board settings. Settings can be overridden on a board-by-board basis.'
         ),
       });
+      this.renderTeamSettings(contentEl);
     }
 
     new Setting(contentEl)

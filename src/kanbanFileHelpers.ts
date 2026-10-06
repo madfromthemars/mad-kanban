@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, Vault } from 'obsidian';
+import { App, TAbstractFile, TFile, TFolder, Vault, normalizePath } from 'obsidian';
 
 const illegalCharsRegEx = /[\\/:"*?<>|]+/g;
 const condenceWhiteSpaceRE = /\s+/g;
@@ -82,8 +82,14 @@ export function sanitizeName(rawTitle: string) {
     .replace(/[. ]+$/g, '');
 }
 
+/** Parent folder path, with the vault root as '' (Obsidian reports it as '/'). */
+export function parentDirPath(file: TAbstractFile | null | undefined) {
+  const p = file?.parent?.path || '';
+  return p === '/' ? '' : p;
+}
+
 export function getBoardFolderPath(kanbanFile: TFile) {
-  const parentPath = kanbanFile.parent?.path || '';
+  const parentPath = parentDirPath(kanbanFile);
   const folderName = `${kanbanFile.basename}_folder`;
   return parentPath ? `${parentPath}/${folderName}` : folderName;
 }
@@ -118,8 +124,13 @@ export function getCardFilePath(kanbanFile: TFile, listTitle: string, cardTitle:
 }
 
 export async function ensureFolder(vault: Vault, folderPath: string) {
-  if (!vault.getAbstractFileByPath(folderPath)) {
-    await vault.createFolder(folderPath);
+  const p = normalizePath(folderPath);
+  if (vault.getAbstractFileByPath(p)) return;
+  try {
+    await vault.createFolder(p);
+  } catch (e) {
+    // Another call may have created it in the meantime.
+    if (!(await vault.adapter.exists(p))) throw e;
   }
 }
 
@@ -325,7 +336,7 @@ export function findOrphanedBoardFolder(
   for (const f of allFiles) {
     if (f instanceof TFolder && f.name === folderName && f.path !== expectedFolderPath) {
       // Infer what the old board path was based on the orphaned folder's location
-      const oldParent = f.parent?.path || '';
+      const oldParent = parentDirPath(f);
       return oldParent ? `${oldParent}/${boardFile.name}` : boardFile.name;
     }
   }

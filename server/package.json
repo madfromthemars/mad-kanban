@@ -1,0 +1,18 @@
+{
+  "name": "kanban-team-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sync server for team boards in the Kanban Custom Obsidian plugin",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

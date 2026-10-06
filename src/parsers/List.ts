@@ -3,6 +3,7 @@ import { TFile } from 'obsidian';
 import { getAPI } from 'obsidian-dataview';
 import { StateManager } from 'src/StateManager';
 import { Board, Item } from 'src/components/types';
+import { stripMirrorEntities } from 'src/team/ids';
 
 import { diff, diffApply } from '../helpers/patch';
 import { BaseFormat } from './common';
@@ -41,7 +42,8 @@ export class ListFormat implements BaseFormat {
   }
 
   boardToMd(board: Board) {
-    return boardToMd(board);
+    // Personal boards never persist the team cards mirrored into them.
+    return boardToMd(this.stateManager.teamSync ? board : stripMirrorEntities(board));
   }
 
   mdToBoard(md: string) {

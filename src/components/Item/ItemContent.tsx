@@ -13,6 +13,7 @@ import {
 } from 'preact/hooks';
 import { StateManager } from 'src/StateManager';
 import { TFile } from 'obsidian';
+import { isTeamItem } from 'src/team/ids';
 import { useNestedEntityPath } from 'src/dnd/components/Droppable';
 import { Path } from 'src/dnd/types';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
@@ -274,6 +275,17 @@ export const ItemContent = memo(function ItemContent({
   useEffect(() => {
     let cancelled = false;
 
+    // Team cards keep their whole content inline; there is no note to look up.
+    if (isTeamItem(item)) {
+      setCardFilePath('');
+      setExternalBody(null);
+      setIsTransitioning(false);
+      lastCardFilePathRef.current = '';
+      lastExternalBodyRef.current = '';
+      lastLaneTitleRef.current = laneTitle;
+      return;
+    }
+
     // Direct path resolution for cards with [[path|title]] links
     if (cardLinkPath) {
       const file = stateManager.app.vault.getAbstractFileByPath(cardLinkPath);
@@ -370,7 +382,7 @@ export const ItemContent = memo(function ItemContent({
     return () => {
       cancelled = true;
     };
-  }, [laneTitle, cardTitle, cardLinkPath, stateManager.app, filePath]);
+  }, [laneTitle, cardTitle, cardLinkPath, stateManager.app, filePath, item.id]);
 
   useEffect(() => {
     let cancelled = false;

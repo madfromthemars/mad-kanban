@@ -24,8 +24,10 @@ import { getParentWindow } from './dnd/util/getWindow';
 import { hasFrontmatterKey } from './helpers';
 import { t } from './lang/helpers';
 import { basicFrontmatter, frontmatterKey } from './parsers/common';
-import { migrateBoardFolder } from './kanbanFileHelpers';
+import { migrateBoardFolder, parentDirPath } from './kanbanFileHelpers';
 import { clearCardCaches } from './components/Item/ItemContent';
+import { TeamManager } from './team/TeamManager';
+import { PluginUpdater } from './team/PluginUpdater';
 
 interface WindowRegistry {
   viewMap: Map<string, KanbanView>;
@@ -114,6 +116,8 @@ class NewKanbanModal extends Modal {
 export default class KanbanPlugin extends Plugin {
   settingsTab: KanbanSettingsTab;
   settings: KanbanSettings = {};
+  team: TeamManager;
+  updater: PluginUpdater;
 
   // leafid => view mode
   kanbanFileModes: Record<string, string> = {};
@@ -145,6 +149,8 @@ export default class KanbanPlugin extends Plugin {
 
   onunload() {
     this.MarkdownEditor = null;
+    this.team?.destroy();
+    this.updater?.destroy();
     this.windowRegistry.forEach((reg, win) => {
       reg.viewStateReceivers.forEach((fn) => fn([]));
       this.unmount(win);
@@ -165,6 +171,10 @@ export default class KanbanPlugin extends Plugin {
     await this.loadSettings();
 
     this.MarkdownEditor = getEditorClass(this.app);
+    this.team = new TeamManager(this);
+    void this.team.load();
+    this.updater = new PluginUpdater(this);
+    this.updater.start();
 
     this.registerEvent(
       this.app.workspace.on('window-open', (_: unknown, win: Window) => {
@@ -182,6 +192,7 @@ export default class KanbanPlugin extends Plugin {
       onSettingsChange: async (newSettings) => {
         this.settings = newSettings;
         await this.saveSettings();
+        void this.team.configureFromSettings();
 
         // Force a complete re-render when settings change
         this.stateManagers.forEach((stateManager) => {
@@ -293,7 +304,8 @@ export default class KanbanPlugin extends Plugin {
           view,
           data,
           () => this.stateManagers.delete(file),
-          () => this.settings
+          () => this.settings,
+          this
         )
       );
     }
@@ -340,7 +352,7 @@ export default class KanbanPlugin extends Plugin {
 
     // Check if the board moved to a different directory
     const oldParent = oldPath.split('/').slice(0, -1).join('/');
-    const newParent = view.file.parent?.path || '';
+    const newParent = parentDirPath(view.file);
 
     if (oldParent !== newParent) {
       // Clear stale caches immediately
@@ -444,7 +456,7 @@ export default class KanbanPlugin extends Plugin {
 
       await this.app.vault.modify(kanban, basicFrontmatter);
 
-      const parentPath = kanban.parent?.path || '';
+      const parentPath = parentDirPath(kanban);
       const folderPath = parentPath ? `${parentPath}/${kanban.basename}_folder` : `${kanban.basename}_folder`;
       if (!this.app.vault.getAbstractFileByPath(folderPath)) {
         await this.app.vault.createFolder(folderPath);
@@ -495,6 +507,15 @@ export default class KanbanPlugin extends Plugin {
               .setIcon(kanbanIcon)
               .onClick(() => this.newKanban(file));
           });
+          if (this.team?.isConfigured) {
+            menu.addItem((item) => {
+              item
+                .setSection('action-primary')
+                .setTitle(t('New team board'))
+                .setIcon('lucide-users')
+                .onClick(() => this.team.createTeamBoard(file));
+            });
+          }
           return;
         }
 
@@ -667,6 +688,33 @@ export default class KanbanPlugin extends Plugin {
       id: 'create-new-kanban-board',
       name: t('Create new board'),
       callback: () => this.newKanban(),
+    });
+
+    this.addCommand({
+      id: 'create-new-team-board',
+      name: t('Create new team board'),
+      callback: () => this.team.createTeamBoard(),
+    });
+
+    this.addCommand({
+      id: 'join-team-board',
+      name: t('Open a team board'),
+      callback: () => this.team.joinTeamBoard(),
+    });
+
+    this.addCommand({
+      id: 'check-plugin-updates',
+      name: t('Check for plugin updates'),
+      callback: () => void this.updater.check(true),
+    });
+
+    this.addCommand({
+      id: 'refresh-team-boards',
+      name: t('Refresh team boards'),
+      callback: () => {
+        this.team.syncs.forEach((s) => void s.load());
+        this.team.mirrors.forEach((m) => m.requestRefresh(0));
+      },
     });
 
     this.addCommand({

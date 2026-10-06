@@ -106,6 +106,16 @@ export function ItemForm({
     if (name === null) return;
 
     const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    if (stateManager.teamSync) {
+      // Team cards live on the server; no per-card note is created.
+      const body = description.trim();
+      const content = body && body !== trimmedName ? `${trimmedName}\n${body}` : trimmedName;
+      addItems([stateManager.getNewItem(content, ' ')]);
+      return;
+    }
+
     const sanitizedName = sanitizeName(trimmedName);
 
     if (!sanitizedName) return;

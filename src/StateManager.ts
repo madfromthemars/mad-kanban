@@ -5,6 +5,9 @@ import { useEffect, useState } from 'preact/compat';
 import { KanbanView } from './KanbanView';
 import { KanbanSettings, SettingRetrievers } from './Settings';
 import { Board, BoardTemplate, Item } from './components/types';
+import type KanbanPlugin from './main';
+import type { TeamMirror } from './team/TeamMirror';
+import type { TeamSync } from './team/TeamSync';
 import { ListFormat } from './parsers/List';
 import { BaseFormat, frontmatterKey, shouldRefreshBoard } from './parsers/common';
 import { getTaskStatusDone } from './parsers/helpers/inlineMetadata';
@@ -23,20 +26,31 @@ export class StateManager {
   app: App;
   state: Board;
   file: TFile;
+  plugin?: KanbanPlugin;
 
   parser: BaseFormat;
+
+  /** Set when this board is a team board (frontmatter `kanban-team-board`). */
+  teamSync?: TeamSync;
+  /** Set when this is a personal board that mirrors the user's team cards. */
+  teamMirror?: TeamMirror;
+  /** True while a state change comes from the server (or a re-parse), not from the user. */
+  applyingRemote = false;
+  private teamAttached = false;
 
   constructor(
     app: App,
     initialView: KanbanView,
     initialData: string,
     onEmpty: () => void,
-    getGlobalSettings: () => KanbanSettings
+    getGlobalSettings: () => KanbanSettings,
+    plugin?: KanbanPlugin
   ) {
     this.app = app;
     this.file = initialView.file;
     this.onEmpty = onEmpty;
     this.getGlobalSettings = getGlobalSettings;
+    this.plugin = plugin;
     this.parser = new ListFormat(this);
 
     this.registerView(initialView, initialData, true);
@@ -72,6 +86,7 @@ export class StateManager {
       this.viewSet.delete(view);
 
       if (this.viewSet.size === 0) {
+        this.plugin?.team?.detach(this);
         this.onEmpty();
       }
     }
@@ -87,11 +102,27 @@ export class StateManager {
 
   async newBoard(view: KanbanView, md: string) {
     try {
-      const board = this.getParsedBoard(md);
+      let board = this.getParsedBoard(md);
       await view.prerender(board);
-      this.setState(board, false);
+      if (this.teamMirror) board = this.teamMirror.inject(board);
+      this.setRemoteState(board, false);
+      if (!this.teamAttached && this.plugin?.team) {
+        this.teamAttached = true;
+        this.plugin.team.attach(this);
+      }
     } catch (e) {
       this.setError(e);
+    }
+  }
+
+  /** Apply a board that did not originate from a user edit (server snapshot, mirror, re-parse). */
+  setRemoteState(board: Board, shouldSave: boolean) {
+    const prev = this.applyingRemote;
+    this.applyingRemote = true;
+    try {
+      this.setState(board, shouldSave);
+    } finally {
+      this.applyingRemote = prev;
     }
   }
 
@@ -137,8 +168,12 @@ export class StateManager {
 
   setState(state: Board | ((board: Board) => Board), shouldSave: boolean = true) {
     try {
+      const prevState = this.state;
       const oldSettings = this.state?.data.settings;
-      const newState = typeof state === 'function' ? state(this.state) : state;
+      let newState = typeof state === 'function' ? state(this.state) : state;
+      if (this.teamSync?.ready && !this.applyingRemote && newState) {
+        newState = this.teamSync.assignIds(newState);
+      }
       const newSettings = newState?.data.settings;
 
       if (oldSettings && newSettings && shouldRefreshBoard(oldSettings, newSettings)) {
@@ -173,6 +208,11 @@ export class StateManager {
             notifiers.forEach((fn) => fn());
           }
         });
+      }
+
+      if (!this.applyingRemote && prevState && this.state) {
+        this.teamSync?.onLocalChange(prevState, this.state);
+        this.teamMirror?.onLocalChange(prevState, this.state);
       }
     } catch (e) {
       console.error(e);
@@ -302,6 +342,9 @@ export class StateManager {
       if (trimmedContent) {
         board = this.parser.mdToBoard(trimmedContent);
       }
+      if (this.teamSync) {
+        board = this.teamSync.normalizeParsed(board);
+      }
     } catch (e) {
       console.error(e);
       new Notice('Kanban: Failed to parse board' + (e instanceof Error ? ': ' + e.message : ''));
@@ -337,7 +380,9 @@ export class StateManager {
 
   async reparseBoardFromMd() {
     try {
-      this.setState(this.getParsedBoard(this.getAView().data), false);
+      let board = this.getParsedBoard(this.getAView().data);
+      if (this.teamMirror) board = this.teamMirror.inject(board);
+      this.setRemoteState(board, false);
     } catch (e) {
       console.error(e);
       new Notice('Kanban: Failed to reparse board' + (e instanceof Error ? ': ' + e.message : ''));

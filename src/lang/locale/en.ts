@@ -274,6 +274,36 @@ const en = {
 
   // components/Editor/MarkdownEditor.tsx
   Submit: 'Submit',
+
+  // team
+  Team: 'Team',
+  'Board defaults': 'Board defaults',
+  'Team server join string': 'Team server join string',
+  'Paste the join string from your server admin, e.g. https://host:8787/#TOKEN. Leave empty to turn team boards off.':
+    'Paste the join string from your server admin, e.g. https://host:8787/#TOKEN. Leave empty to turn team boards off.',
+  'Test connection': 'Test connection',
+  'Not connected': 'Not connected',
+  'Connected as': 'Connected as',
+  'Connecting to': 'Connecting to',
+  'Connection failed': 'Connection failed',
+  'Testing…': 'Testing…',
+  'That does not look like a join string': 'That does not look like a join string',
+  'Fallback list for team cards': 'Fallback list for team cards',
+  'Team cards assigned to you appear in the personal list with the same name as their team list. Cards without a matching list go here.':
+    'Team cards assigned to you appear in the personal list with the same name as their team list. Cards without a matching list go here.',
+  'New team board': 'New team board',
+  'Create new team board': 'Create new team board',
+  'Open a team board': 'Open a team board',
+  'Refresh team boards': 'Refresh team boards',
+  'Assign to...': 'Assign to...',
+  'Open team board': 'Open team board',
+  'Remove from my board': 'Remove from my board',
+  'Update plugin from team server': 'Update plugin from team server',
+  'Install new versions of this plugin published on your team server.':
+    'Install new versions of this plugin published on your team server.',
+  'Installed version': 'Installed version',
+  'Check now': 'Check now',
+  'Check for plugin updates': 'Check for plugin updates',
 };
 
 export type Lang = typeof en;

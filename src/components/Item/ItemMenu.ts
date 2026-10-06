@@ -7,6 +7,8 @@ import { moveEntity } from 'src/dnd/util/data';
 import { t } from 'src/lang/helpers';
 
 import { BoardModifiers } from '../../helpers/boardModifiers';
+import { parseTeamItemId } from 'src/team/ids';
+import { AssigneeModal } from 'src/team/ui/modals';
 import { applyTemplate, escapeRegExpStr, generateInstanceId } from '../helpers';
 import { EditState, Item } from '../types';
 
@@ -35,6 +37,10 @@ export function useItemMenu({
   return useCallback(
     (e: MouseEvent) => {
       const coordinates = { x: e.clientX, y: e.clientY };
+      const teamInfo = parseTeamItemId(item.id);
+      const team = stateManager.plugin?.team;
+      const isTeam = !!teamInfo && !!team;
+      const isMirror = isTeam && !stateManager.teamSync;
 
       const menu = new Menu().addItem((i) => {
         i.setIcon('lucide-edit')
@@ -42,7 +48,28 @@ export function useItemMenu({
           .onClick(() => setEditState(coordinates));
       });
 
-      menu
+      if (isTeam) {
+        menu.addItem((i) => {
+          i.setIcon('lucide-user-plus')
+            .setTitle(t('Assign to...'))
+            .onClick(() => {
+              const assignees = team.getCard(teamInfo.cardId)?.assignees || [];
+              new AssigneeModal(stateManager.app, team.users, assignees, (user) => {
+                void team.toggleAssignee(teamInfo.boardId, teamInfo.cardId, user.id);
+              }).open();
+            });
+        });
+      }
+
+      if (isMirror) {
+        menu.addItem((i) => {
+          i.setIcon('lucide-users')
+            .setTitle(t('Open team board'))
+            .onClick(() => void team.openBoard(teamInfo.boardId));
+        });
+      }
+
+      if (!isMirror) menu
         .addItem((i) => {
           i.setIcon('lucide-file-plus-2')
             .setTitle(t('New note from card'))
@@ -171,7 +198,27 @@ export function useItemMenu({
 
       menu.addSeparator();
 
-      if (/\n/.test(item.data.titleRaw)) {
+      if (isMirror) {
+        menu
+          .addItem((i) => {
+            i.setIcon('lucide-arrow-up')
+              .setTitle(t('Move to top'))
+              .onClick(() => boardModifiers.moveItemToTop(path));
+          })
+          .addItem((i) => {
+            i.setIcon('lucide-arrow-down')
+              .setTitle(t('Move to bottom'))
+              .onClick(() => boardModifiers.moveItemToBottom(path));
+          })
+          .addItem((i) => {
+            i.setIcon('lucide-user-minus')
+              .setTitle(t('Remove from my board'))
+              .onClick(() => boardModifiers.deleteEntity(path));
+          })
+          .addSeparator();
+      }
+
+      if (!isMirror && /\n/.test(item.data.titleRaw)) {
         menu.addItem((i) => {
           i.setIcon('lucide-wrap-text')
             .setTitle(t('Split card'))
@@ -188,7 +235,7 @@ export function useItemMenu({
         });
       }
 
-      menu
+      if (!isMirror) menu
         .addItem((i) => {
           i.setIcon('lucide-copy')
             .setTitle(t('Duplicate card'))
