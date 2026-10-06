@@ -2551,3 +2551,38 @@ body:not(.native-scrollbars) .kanban-plugin__scroll-container::-webkit-scrollbar
     margin-bottom: 0;
   }
 }
+
+/* Title-only cards: checkbox + title + menu in one header row */
+.kanban-plugin__item-title-line-wrapper {
+  margin-bottom: 0;
+  padding: 5px 4px 5px 8px;
+
+  .kanban-plugin__item-checkbox-wrapper {
+    margin: 0;
+  }
+
+  .kanban-plugin__item-title-line-text {
+    text-align: left;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .kanban-plugin__item-postfix-button,
+  .kanban-plugin__item-menu-button {
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 100ms ease;
+  }
+}
+
+.kanban-plugin__item:hover .kanban-plugin__item-title-line-wrapper {
+  .kanban-plugin__item-postfix-button,
+  .kanban-plugin__item-menu-button {
+    opacity: 1;
+  }
+}
+
+.kanban-plugin__item-title-line-wrapper:only-child,
+.kanban-plugin__item-title-line-wrapper:has(+ .kanban-plugin__item-bottom:empty) {
+  border: 0;
+}

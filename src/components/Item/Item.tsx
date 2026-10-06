@@ -185,7 +185,6 @@ const ItemInner = memo(function ItemInner({
   const kanbanContext = useContext(KanbanContext);
   const { stateManager, boardModifiers } = kanbanContext;
   const [editState, setEditState] = useState<EditState>(EditingState.cancel);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const titleLabel = useMemo(() => extractCardTitle(item.data.titleRaw), [item.data.titleRaw]);
 
   const dndManager = useContext(DndManagerContext);
@@ -273,12 +272,6 @@ const ItemInner = memo(function ItemInner({
     return {};
   }, [editState]);
 
-  const toggleCollapse = useCallback((e: MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setIsCollapsed((prev) => !prev);
-  }, []);
-
   return (
     <div
       onContextMenu={onContextMenu}
@@ -286,20 +279,23 @@ const ItemInner = memo(function ItemInner({
       className={c('item-content-wrapper')}
       {...ignoreAttr}
     >
-      {titleLabel && (
-        <div className={classcat([c('item-title-line-wrapper'), { 'is-collapsed': isCollapsed }])}>
-          <a
-            className={`${c('item-collapse-btn')} clickable-icon`}
-            onClick={toggleCollapse}
-            data-ignore-drag={true}
-            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
-          >
-            <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} />
-          </a>
-          <div className={c('item-title-line-text')}>{titleLabel}</div>
-        </div>
-      )}
-      {!isCollapsed && (
+      {titleLabel && !isEditing(editState) ? (
+        // Board cards show only the title; the description lives in the card window.
+        <>
+          <div className={c('item-title-line-wrapper')}>
+            <ItemCheckbox
+              boardModifiers={boardModifiers}
+              item={item}
+              path={path}
+              shouldMarkItemsComplete={shouldMarkItemsComplete}
+              stateManager={stateManager}
+            />
+            <div className={c('item-title-line-text')}>{titleLabel}</div>
+            <ItemMenuButton editState={editState} setEditState={setEditState} showMenu={showItemMenu} />
+          </div>
+          <ItemMetadata searchQuery={isMatch ? searchQuery : undefined} item={item} />
+        </>
+      ) : (
         <>
           {/* eslint-disable-next-line react/no-unknown-property */}
           <div className={c('item-title-wrapper')} {...ignoreAttr}>
