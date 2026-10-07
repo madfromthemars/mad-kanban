@@ -1,6 +1,6 @@
 {
   "name": "kanban-custom",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "Custom Kanban plugin based on Obsidian Kanban.",
   "main": "main.js",
   "scripts": {

@@ -2611,3 +2611,118 @@ body:not(.native-scrollbars) .kanban-plugin__scroll-container::-webkit-scrollbar
 .kanban-plugin__item-title-line-wrapper:has(+ .kanban-plugin__item-bottom:empty) {
   border: 0;
 }
+
+/* ---------------------------------------------------------------------------
+ * Card list view: one flat surface, title + footer, priority as a left stripe
+ * ------------------------------------------------------------------------- */
+
+.kanban-plugin__item {
+  overflow: hidden;
+  background: var(--background-primary);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+
+  &:hover {
+    border-color: var(--background-modifier-border-hover);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.kanban-plugin__item .kanban-plugin__item-title-line-wrapper,
+.kanban-plugin__item.priority-highest .kanban-plugin__item-title-line-wrapper,
+.kanban-plugin__item.priority-high .kanban-plugin__item-title-line-wrapper,
+.kanban-plugin__item.priority-medium .kanban-plugin__item-title-line-wrapper,
+.kanban-plugin__item.priority-low .kanban-plugin__item-title-line-wrapper {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 9px 30px 9px 11px;
+  gap: 6px;
+}
+
+.kanban-plugin__item .kanban-plugin__item-title-line-text {
+  font-size: 0.95em;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+
+// The title row gives up its bottom padding when a footer row follows.
+.kanban-plugin__item .kanban-plugin__item-title-line-wrapper:has(~ .kanban-plugin__item-bottom:not(:empty)) {
+  padding-bottom: 3px;
+}
+
+.kanban-plugin__item .kanban-plugin__item-bottom {
+  border-top: 0;
+  padding: 3px 10px 8px 11px;
+  gap: 4px 6px;
+}
+
+.kanban-plugin__item .kanban-plugin__item-bottom .kanban-plugin__item-tags .kanban-plugin__item-tag {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 0 7px;
+  margin: 0;
+}
+
+.kanban-plugin__item .kanban-plugin__item-bottom .kanban-plugin__item-tags:not(:empty) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.kanban-plugin__item .kanban-plugin__assignee {
+  width: 20px;
+  height: 20px;
+  font-size: 0.58em;
+  border-width: 1.5px;
+}
+
+.kanban-plugin__item .kanban-plugin__team-badge {
+  font-size: 0.68em;
+  padding: 0 6px;
+}
+
+// Priority: colored stripe on the left edge.
+.kanban-plugin__item.priority-highest {
+  border-left: 3px solid rgb(229, 72, 77);
+}
+.kanban-plugin__item.priority-high {
+  border-left: 3px solid rgb(247, 107, 21);
+}
+.kanban-plugin__item.priority-medium {
+  border-left: 3px solid rgb(62, 99, 221);
+}
+.kanban-plugin__item.priority-low {
+  border-left: 3px solid rgb(124, 133, 148);
+}
+
+// Priority badge sits inside the top-right corner instead of hanging off it.
+.kanban-plugin__item .kanban-plugin__priority-button,
+.kanban-plugin__item .kanban-plugin__priority-button:empty {
+  top: 7px;
+  right: 7px;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.kanban-plugin__item .kanban-plugin__priority-button:empty {
+  width: 14px;
+  height: 14px;
+  top: 10px;
+  right: 10px;
+  border: 1.5px dashed var(--text-faint);
+  background: transparent;
+}
+
+// Menu button sits left of the priority badge and only shows on hover.
+.kanban-plugin__item .kanban-plugin__item-title-line-wrapper .kanban-plugin__item-postfix-button-wrapper {
+  margin-right: -2px;
+}
