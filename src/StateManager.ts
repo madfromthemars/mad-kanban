@@ -12,6 +12,7 @@ import { ListFormat } from './parsers/List';
 import { BaseFormat, frontmatterKey, shouldRefreshBoard } from './parsers/common';
 import { getTaskStatusDone } from './parsers/helpers/inlineMetadata';
 import { defaultMetadataPosition } from './settingHelpers';
+import { mergeTagColors } from './tagColors';
 
 export class StateManager {
   onEmpty: () => void;
@@ -210,6 +211,15 @@ export class StateManager {
         });
       }
 
+      if (
+        !this.applyingRemote &&
+        oldSettings &&
+        newSettings &&
+        oldSettings['tag-colors'] !== newSettings['tag-colors']
+      ) {
+        this.plugin?.onBoardTagColorsEdited(oldSettings['tag-colors'], newSettings['tag-colors']);
+      }
+
       if (!this.applyingRemote && prevState && this.state) {
         this.teamSync?.onLocalChange(prevState, this.state);
         this.teamMirror?.onLocalChange(prevState, this.state);
@@ -276,7 +286,11 @@ export class StateManager {
       'show-board-settings': this.getSettingRaw('show-board-settings', suppliedSettings) ?? true,
       'show-search': this.getSettingRaw('show-search', suppliedSettings) ?? true,
       'show-set-view': this.getSettingRaw('show-set-view', suppliedSettings) ?? true,
-      'tag-colors': this.getSettingRaw('tag-colors', suppliedSettings) ?? [],
+      // Union: global colors plus this board's, the board winning on the same tag.
+      'tag-colors': mergeTagColors(
+        this.getGlobalSetting('tag-colors') || [],
+        suppliedSettings?.['tag-colors'] ?? this.state?.data?.settings?.['tag-colors'] ?? []
+      ),
       'tag-sort': this.getSettingRaw('tag-sort', suppliedSettings) ?? [],
       'tag-action': this.getSettingRaw('tag-action', suppliedSettings) ?? 'obsidian',
     };

@@ -27,6 +27,8 @@ import { basicFrontmatter, frontmatterKey } from './parsers/common';
 import { migrateBoardFolder, parentDirPath } from './kanbanFileHelpers';
 import { clearCardCaches } from './components/Item/ItemContent';
 import { TeamManager } from './team/TeamManager';
+import { TagColor } from './components/types';
+import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './tagColors';
 import { PluginUpdater } from './team/PluginUpdater';
 
 interface WindowRegistry {
@@ -218,9 +220,83 @@ export default class KanbanPlugin extends Plugin {
     this.registerDomEvent(window, 'keydown', this.handleShift);
     this.registerDomEvent(window, 'keyup', this.handleShift);
 
+    this.app.workspace.onLayoutReady(() => {
+      void this.collectTagColorsFromVault();
+    });
+
     this.addRibbonIcon(kanbanIcon, t('Create new board'), () => {
       this.newKanban();
     });
+  }
+
+  // ---------- shared tag colors ----------
+
+  /** Replace the global tag-color list and repaint every open board. */
+  setGlobalTagColors(list: TagColor[]) {
+    this.settings = { ...this.settings, 'tag-colors': list };
+    if (this.settingsTab?.settingsManager) this.settingsTab.settingsManager.settings = this.settings;
+    void this.saveSettings();
+    this.stateManagers.forEach((sm) => {
+      sm.compileSettings();
+      sm.settingsNotifiers.get('tag-colors')?.forEach((fn) => fn());
+    });
+  }
+
+  /** Add colors for tags that don't have one yet. */
+  addGlobalTagColors(colors: TagColor[] | undefined) {
+    const { list, added } = addMissingTagColors(this.settings['tag-colors'], colors);
+    if (added.length) this.setGlobalTagColors(list);
+  }
+
+  /** Set (override) colors for specific tags. */
+  overrideGlobalTagColors(colors: TagColor[]) {
+    if (!colors.length) return;
+    const m = byTag(this.settings['tag-colors']);
+    let changed = false;
+    for (const t of colors) {
+      if (!sameTagColor(m.get(t.tagKey), t)) {
+        m.set(t.tagKey, t);
+        changed = true;
+      }
+    }
+    if (changed) this.setGlobalTagColors([...m.values()]);
+  }
+
+  /** A user changed tag colors in a board's settings: mirror that into the global list. */
+  onBoardTagColorsEdited(prev: TagColor[] | undefined, next: TagColor[] | undefined) {
+    const before = byTag(prev);
+    const after = byTag(next);
+    const m = byTag(this.settings['tag-colors']);
+    let changed = false;
+    for (const [k, t] of after) {
+      if (!sameTagColor(before.get(k), t) && !sameTagColor(m.get(k), t)) {
+        m.set(k, t);
+        changed = true;
+      }
+    }
+    for (const k of before.keys()) {
+      if (!after.has(k) && m.has(k)) {
+        m.delete(k);
+        changed = true;
+      }
+    }
+    if (changed) this.setGlobalTagColors([...m.values()]);
+  }
+
+  /** One pass over all boards in the vault, collecting their tag colors into the global list. */
+  async collectTagColorsFromVault() {
+    const found: TagColor[] = [];
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!fm || !fm[frontmatterKey]) continue;
+      try {
+        const settings = readSettingsBlock(await this.app.vault.cachedRead(file));
+        if (Array.isArray(settings?.['tag-colors'])) found.push(...settings['tag-colors']);
+      } catch (e) {
+        console.error('[Kanban] could not read board settings', file.path, e);
+      }
+    }
+    this.addGlobalTagColors(found);
   }
 
   handleShift = (e: KeyboardEvent) => {

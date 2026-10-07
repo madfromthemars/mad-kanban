@@ -8,6 +8,9 @@ import { normalizeIds, snapshotToBoard } from './convert';
 import { isTeamItem, isTeamLane, newTeamId, teamItemId, teamLaneId } from './ids';
 import { TeamApiError } from './TeamClient';
 import { TeamBoardSnapshot, TeamOp, TeamServerEvent } from './types';
+import { PERSONAL_SETTING_KEYS, byTag, sameTagColor } from 'src/tagColors';
+import { KanbanSettings } from 'src/Settings';
+import update from 'immutability-helper';
 
 export type SyncState = 'loading' | 'synced' | 'syncing' | 'offline' | 'error';
 
@@ -84,7 +87,17 @@ export class TeamSync {
     return normalizeIds(board, this.boardId, this.snapshot);
   }
 
+  /** Shared (non-personal) part of a board's settings. */
+  static shared(settings: KanbanSettings | undefined) {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(settings || {})) {
+      if (!PERSONAL_SETTING_KEYS.has(k) && v !== undefined) out[k] = v;
+    }
+    return out;
+  }
+
   private applySnapshot(snapshot: TeamBoardSnapshot) {
+    const prevSnapshot = this.snapshot;
     this.snapshot = snapshot;
     this.versions.clear();
     for (const c of snapshot.cards) this.versions.set(c.id, c.version);
@@ -93,8 +106,44 @@ export class TeamSync {
 
     const base = this.stateManager.state;
     if (!base) return;
-    const board = snapshotToBoard(this.stateManager, snapshot, base);
+    let board = snapshotToBoard(this.stateManager, snapshot, base);
+
+    // Board settings: the server holds the shared part, the personal part stays local.
+    const serverShared = snapshot.board.settings || {};
+    const localShared = TeamSync.shared(base.data.settings);
+    const push: TeamOp[] = [];
+    if (!prevSnapshot && !Object.keys(serverShared).length && Object.keys(localShared).length) {
+      // First sync of a board that only had settings locally: publish them.
+      push.push({ type: 'board.settings', set: localShared });
+    } else {
+      const personal: Record<string, any> = {};
+      for (const [k, v] of Object.entries(base.data.settings || {})) {
+        if (PERSONAL_SETTING_KEYS.has(k)) personal[k] = v;
+      }
+      board = update(board, { data: { settings: { $set: { ...personal, ...serverShared } } } });
+    }
+
+    // Tag colors flow both ways. Down: teammates' colors fill my global list,
+    // and colors they changed since the last snapshot replace mine.
+    const plugin = this.manager.plugin;
+    const serverColors = (serverShared['tag-colors'] || []) as any[];
+    plugin.addGlobalTagColors(serverColors);
+    if (prevSnapshot) {
+      const before = byTag(prevSnapshot.board.settings?.['tag-colors']);
+      plugin.overrideGlobalTagColors(serverColors.filter((t) => before.has(t.tagKey) && !sameTagColor(before.get(t.tagKey), t)));
+    }
+    // Up: tags used on this board that I've colored but the team hasn't.
+    const used = new Set<string>();
+    for (const lane of board.children) for (const item of lane.children) for (const t of item.data.metadata.tags || []) used.add(t);
+    const teamHas = byTag(serverColors);
+    const mine = (plugin.settings['tag-colors'] || []).filter((t) => used.has(t.tagKey) && !teamHas.has(t.tagKey));
+    if (mine.length) push.push({ type: 'board.addTagColors', colors: mine });
+
     this.stateManager.setRemoteState(board, true);
+    if (push.length) {
+      this.queue.push(...push);
+      void this.flush();
+    }
   }
 
   async load(): Promise<void> {
@@ -154,6 +203,15 @@ export class TeamSync {
   onLocalChange(prev: Board, next: Board) {
     if (!this.ready || !prev || !next) return;
     const ops = diffTeamBoard(this.boardId, prev, next, this.versions);
+    if (prev.data.settings !== next.data.settings) {
+      const a = TeamSync.shared(prev.data.settings);
+      const b = TeamSync.shared(next.data.settings);
+      const set: Record<string, any> = {};
+      for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+        if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) set[k] = k in b ? b[k] : null;
+      }
+      if (Object.keys(set).length) ops.push({ type: 'board.settings', set });
+    }
     if (!ops.length) return;
     this.queue.push(...ops);
     void this.flush();
@@ -168,6 +226,10 @@ export class TeamSync {
       const res = await this.manager.client.applyOps(this.boardId, ops);
       for (const [id, v] of Object.entries(res.versions || {})) this.versions.set(id, v);
       if (this.snapshot) this.snapshot.board.version = res.version;
+      // Our own broadcasts are ignored, so refresh to learn the server's settings after a settings change.
+      if (ops.some((o) => o.type === 'board.settings' || o.type === 'board.addTagColors')) {
+        this.reloadRequested = true;
+      }
       if (!res.ok) {
         const errors = res.results.filter((r) => !r.ok && r.error !== 'conflict');
         if (res.conflicts.length) {

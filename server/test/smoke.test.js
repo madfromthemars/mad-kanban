@@ -252,6 +252,26 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   });
   assert.equal(badUp.status, 415);
 
+  // shared board settings + tag color union
+  const st = await api(
+    'POST',
+    `/api/boards/${boardId}/ops`,
+    {
+      ops: [
+        { type: 'board.settings', set: { 'tag-colors': [{ tagKey: '#docs', color: '#fff', backgroundColor: '#000' }], 'date-format': 'DD.MM' } },
+        { type: 'board.addTagColors', colors: [{ tagKey: '#docs', color: 'red', backgroundColor: 'red' }, { tagKey: '#ops', color: '#111', backgroundColor: '#eee' }] },
+      ],
+    },
+    B
+  );
+  assert.equal(st.json.ok, true, JSON.stringify(st.json));
+  snap = (await api('GET', `/api/boards/${boardId}`, null, A)).json.board;
+  assert.deepEqual(snap.board.settings['tag-colors'].map((t) => [t.tagKey, t.color]), [['#docs', '#fff'], ['#ops', '#111']]);
+  assert.equal(snap.board.settings['date-format'], 'DD.MM');
+  await api('POST', `/api/boards/${boardId}/ops`, { ops: [{ type: 'board.settings', set: { 'date-format': null } }] }, A);
+  snap = (await api('GET', `/api/boards/${boardId}`, null, A)).json.board;
+  assert.equal(snap.board.settings['date-format'], undefined);
+
   // default lanes
   const d = await api('POST', '/api/boards', { name: 'Defaults' }, A);
   assert.deepEqual(d.json.board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done']);

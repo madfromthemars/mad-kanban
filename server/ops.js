@@ -1,4 +1,4 @@
-import { newId, rowToCard, transaction } from './db.js';
+import { newId, parseSettings, rowToCard, transaction } from './db.js';
 import { laneKey } from './lanes.js';
 
 export class OpError extends Error {
@@ -77,6 +77,8 @@ export function applyOps(db, board, user, ops) {
     ),
     delCard: db.prepare('DELETE FROM cards WHERE id = ? AND board_id = ?'),
     bumpBoard: db.prepare('UPDATE boards SET version = version + 1 WHERE id = ?'),
+    boardSettings: db.prepare('SELECT settings FROM boards WHERE id = ?'),
+    setBoardSettings: db.prepare('UPDATE boards SET settings = ? WHERE id = ?'),
     boardVersion: db.prepare('SELECT version FROM boards WHERE id = ?'),
     maxArchivePos: db.prepare(
       'SELECT COALESCE(MAX(position), -1) AS p FROM cards WHERE board_id = ? AND archived = 1'
@@ -328,6 +330,48 @@ export function applyOps(db, board, user, ops) {
           touch(card);
           q.delCard.run(card.id, board.id);
           if (card.lane_id) renumberLane(card.lane_id);
+          break;
+        }
+        case 'board.settings': {
+          // Partial update: listed keys are replaced, null removes a key.
+          if (!op.set || typeof op.set !== 'object' || Array.isArray(op.set)) {
+            r.ok = false;
+            r.error = 'set must be an object';
+            break;
+          }
+          const cur = parseSettings(q.boardSettings.get(board.id)?.settings);
+          for (const [k, v] of Object.entries(op.set)) {
+            if (v === null) delete cur[k];
+            else cur[k] = v;
+          }
+          const json = JSON.stringify(cur);
+          if (json.length > 200000) {
+            r.ok = false;
+            r.error = 'settings too large';
+            break;
+          }
+          q.setBoardSettings.run(json, board.id);
+          r.settingsChanged = true;
+          break;
+        }
+        case 'board.addTagColors': {
+          // Union: only adds colors for tags that have none yet.
+          const cur = parseSettings(q.boardSettings.get(board.id)?.settings);
+          const list = Array.isArray(cur['tag-colors']) ? cur['tag-colors'] : [];
+          const have = new Set(list.map((t) => t && t.tagKey));
+          let added = 0;
+          for (const t of Array.isArray(op.colors) ? op.colors : []) {
+            if (!t || typeof t.tagKey !== 'string' || have.has(t.tagKey)) continue;
+            list.push({ tagKey: t.tagKey, color: String(t.color || ''), backgroundColor: String(t.backgroundColor || '') });
+            have.add(t.tagKey);
+            added++;
+          }
+          if (added) {
+            cur['tag-colors'] = list;
+            q.setBoardSettings.run(JSON.stringify(cur), board.id);
+            r.settingsChanged = true;
+          }
+          r.added = added;
           break;
         }
         default:

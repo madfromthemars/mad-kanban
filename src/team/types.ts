@@ -10,6 +10,7 @@ export interface TeamBoardMeta {
   created_at?: number;
   joined?: boolean;
   member_count?: number;
+  settings?: Record<string, any>;
 }
 
 export interface TeamLane {
@@ -104,6 +105,8 @@ export type TeamOp =
       checked?: boolean;
       checkChar?: string;
     }
+  | { type: 'board.settings'; set: Record<string, any> }
+  | { type: 'board.addTagColors'; colors: Array<{ tagKey: string; color: string; backgroundColor: string }> }
   | { type: 'card.archive'; id: string }
   | { type: 'card.delete'; id: string };
 

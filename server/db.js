@@ -114,6 +114,19 @@ function migrate(db) {
       created_at INTEGER NOT NULL
     );
   `);
+  const boardCols = db.prepare('PRAGMA table_info(boards)').all().map((c) => c.name);
+  if (!boardCols.includes('settings')) {
+    db.exec("ALTER TABLE boards ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'");
+  }
+}
+
+export function parseSettings(str) {
+  try {
+    const v = JSON.parse(str || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
 }
 
 // ---------- users ----------
@@ -176,7 +189,8 @@ export function createBoard(db, user, name, laneTitles = DEFAULT_LANES) {
 }
 
 export function getBoardMeta(db, id) {
-  return db.prepare('SELECT id, name, version, created_by, created_at FROM boards WHERE id = ?').get(id) || null;
+  const b = db.prepare('SELECT id, name, version, created_by, created_at, settings FROM boards WHERE id = ?').get(id);
+  return b ? { ...b, settings: parseSettings(b.settings) } : null;
 }
 
 export function listBoards(db, user) {
