@@ -516,6 +516,7 @@ export class CardDetailModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('kanban-plugin__card-detail-modal');
+    this.modalEl.addClass('kanban-plugin__card-detail-window');
 
     render(
       <KanbanContext.Provider value={this.kanbanContext}>
