@@ -32,6 +32,8 @@ export function byTag(list: TagColor[] | null | undefined) {
 
 /** Board settings that are personal (view state) and never shared on team boards. */
 export const PERSONAL_SETTING_KEYS = new Set([
+  // Tag colors belong to the user, not the board: same on all of my boards, never shared.
+  'tag-colors',
   'list-collapse',
   'kanban-plugin',
   'table-sizing',

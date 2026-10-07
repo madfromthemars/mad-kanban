@@ -178,13 +178,9 @@ export class StateManager {
       const newSettings = newState?.data.settings;
 
       if (oldSettings && newSettings && shouldRefreshBoard(oldSettings, newSettings)) {
-        this.state = update(this.state, {
-          data: {
-            settings: {
-              $set: newSettings,
-            },
-          },
-        });
+        // Re-parse the new board's cards with the new settings. (This used to
+        // re-parse the *old* board, silently dropping the new lanes/cards.)
+        this.state = newState;
         this.compileSettings();
         this.state = this.parser.reparseBoard();
       } else {
@@ -286,10 +282,11 @@ export class StateManager {
       'show-board-settings': this.getSettingRaw('show-board-settings', suppliedSettings) ?? true,
       'show-search': this.getSettingRaw('show-search', suppliedSettings) ?? true,
       'show-set-view': this.getSettingRaw('show-set-view', suppliedSettings) ?? true,
-      // Union: global colors plus this board's, the board winning on the same tag.
+      // Union of this board's colors and the user's global colors; the global
+      // list wins so a tag looks the same on every board.
       'tag-colors': mergeTagColors(
-        this.getGlobalSetting('tag-colors') || [],
-        suppliedSettings?.['tag-colors'] ?? this.state?.data?.settings?.['tag-colors'] ?? []
+        suppliedSettings?.['tag-colors'] ?? this.state?.data?.settings?.['tag-colors'] ?? [],
+        this.getGlobalSetting('tag-colors') || []
       ),
       'tag-sort': this.getSettingRaw('tag-sort', suppliedSettings) ?? [],
       'tag-action': this.getSettingRaw('tag-action', suppliedSettings) ?? 'obsidian',

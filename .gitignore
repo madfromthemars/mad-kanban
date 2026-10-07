@@ -20,3 +20,4 @@ server/data
 *.db
 *.db-*
 server/public/
+test/.out/

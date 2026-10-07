@@ -1,6 +1,12 @@
 import { newId, parseSettings, rowToCard, transaction } from './db.js';
 import { laneKey } from './lanes.js';
 
+/** Lanes first, so cards created in a new lane in the same batch can find it. */
+export function orderOps(ops) {
+  if (!Array.isArray(ops)) return ops;
+  return [...ops.filter((o) => o?.type === 'lane.create'), ...ops.filter((o) => o?.type !== 'lane.create')];
+}
+
 export class OpError extends Error {
   constructor(status, message, extra = {}) {
     super(message);
@@ -25,6 +31,7 @@ function validId(id) {
 export function applyOps(db, board, user, ops) {
   if (!Array.isArray(ops)) throw new OpError(400, 'ops must be an array');
   if (ops.length > 500) throw new OpError(400, 'too many ops in one batch');
+  ops = orderOps(ops);
 
   const now = Date.now();
   const results = [];

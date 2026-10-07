@@ -272,6 +272,20 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   snap = (await api('GET', `/api/boards/${boardId}`, null, A)).json.board;
   assert.equal(snap.board.settings['date-format'], undefined);
 
+  // a new lane and a card in it, sent card-first, still works
+  const lc = await api(
+    'POST',
+    `/api/boards/${boardId}/ops`,
+    {
+      ops: [
+        { type: 'card.create', id: 'cardinnew1', laneId: 'lanenew002', index: 0, content: 'In new lane' },
+        { type: 'lane.create', id: 'lanenew002', title: 'Fresh', index: 0 },
+      ],
+    },
+    A
+  );
+  assert.equal(lc.json.ok, true, JSON.stringify(lc.json));
+
   // default lanes
   const d = await api('POST', '/api/boards', { name: 'Defaults' }, A);
   assert.deepEqual(d.json.board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done']);

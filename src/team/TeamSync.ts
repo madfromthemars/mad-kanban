@@ -5,10 +5,10 @@ import { Board, Item, Lane } from 'src/components/types';
 import type { TeamManager } from './TeamManager';
 import { diffTeamBoard } from './boardDiff';
 import { normalizeIds, snapshotToBoard } from './convert';
-import { isTeamItem, isTeamLane, newTeamId, teamItemId, teamLaneId } from './ids';
+import { isTeamItem, isTeamLane, newTeamId, parseTeamLaneId, teamItemId, teamLaneId } from './ids';
 import { TeamApiError } from './TeamClient';
 import { TeamBoardSnapshot, TeamOp, TeamServerEvent } from './types';
-import { PERSONAL_SETTING_KEYS, byTag, sameTagColor } from 'src/tagColors';
+import { PERSONAL_SETTING_KEYS } from 'src/tagColors';
 import { KanbanSettings } from 'src/Settings';
 import update from 'immutability-helper';
 
@@ -123,22 +123,6 @@ export class TeamSync {
       board = update(board, { data: { settings: { $set: { ...personal, ...serverShared } } } });
     }
 
-    // Tag colors flow both ways. Down: teammates' colors fill my global list,
-    // and colors they changed since the last snapshot replace mine.
-    const plugin = this.manager.plugin;
-    const serverColors = (serverShared['tag-colors'] || []) as any[];
-    plugin.addGlobalTagColors(serverColors);
-    if (prevSnapshot) {
-      const before = byTag(prevSnapshot.board.settings?.['tag-colors']);
-      plugin.overrideGlobalTagColors(serverColors.filter((t) => before.has(t.tagKey) && !sameTagColor(before.get(t.tagKey), t)));
-    }
-    // Up: tags used on this board that I've colored but the team hasn't.
-    const used = new Set<string>();
-    for (const lane of board.children) for (const item of lane.children) for (const t of item.data.metadata.tags || []) used.add(t);
-    const teamHas = byTag(serverColors);
-    const mine = (plugin.settings['tag-colors'] || []).filter((t) => used.has(t.tagKey) && !teamHas.has(t.tagKey));
-    if (mine.length) push.push({ type: 'board.addTagColors', colors: mine });
-
     this.stateManager.setRemoteState(board, true);
     if (push.length) {
       this.queue.push(...push);
@@ -200,8 +184,21 @@ export class TeamSync {
     }, delay);
   }
 
+  /** True when the board's lanes carry this team board's server ids. */
+  private isSynced(board: Board) {
+    if (!board.children.length) return !this.snapshot?.lanes.length;
+    return board.children.every((l) => parseTeamLaneId(l.id)?.boardId === this.boardId);
+  }
+
   onLocalChange(prev: Board, next: Board) {
     if (!this.ready || !prev || !next) return;
+    if (!this.isSynced(prev)) {
+      // The board on screen isn't the server's board (e.g. a re-parse replaced
+      // it). Diffing would re-upload every card as new; reload instead.
+      console.warn('[Kanban team] board out of sync with server, reloading instead of uploading');
+      this.requestReload(0);
+      return;
+    }
     const ops = diffTeamBoard(this.boardId, prev, next, this.versions);
     if (prev.data.settings !== next.data.settings) {
       const a = TeamSync.shared(prev.data.settings);

@@ -150,7 +150,12 @@ export function diffTeamBoard(
   }
 
   placements.sort((a, b) => ((a as any).index ?? 0) - ((b as any).index ?? 0));
-  ops.unshift(...placements);
+  // Lanes must exist before cards are placed in them.
+  let afterLastLaneCreate = 0;
+  ops.forEach((o, i) => {
+    if (o.type === 'lane.create') afterLastLaneCreate = i + 1;
+  });
+  ops.splice(afterLastLaneCreate, 0, ...placements);
 
   // Cards: archive / delete
   for (const cardId of prevIdx.cards.keys()) {
