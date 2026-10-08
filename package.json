@@ -1,6 +1,6 @@
 {
   "name": "mad-kanban",
-  "version": "2.1.30",
+  "version": "2.1.31",
   "description": "Mad Kanban: team Kanban boards for Obsidian, synced through your own server. Based on Obsidian Kanban.",
   "main": "main.js",
   "scripts": {

@@ -43,6 +43,7 @@ import {
   replaceBrs,
   replaceNewLines,
 } from '../helpers/parser';
+import { tagsIn } from 'src/cardTasks';
 import { parseFragment } from '../parseMarkdown';
 
 interface TaskItem extends ListItem {
@@ -221,6 +222,14 @@ export function listItemToItemData(stateManager: StateManager, md: string, item:
 
       itemData.title = title;
     }
+  }
+
+  // The markdown parser misses a tag that starts a line right under the title
+  // (e.g. "Title\n#tag", how the card window saves tags when there's no description).
+  for (const tag of tagsIn(itemData.titleRaw)) {
+    const withHash = '#' + tag;
+    if (!itemData.metadata.tags) itemData.metadata.tags = [];
+    if (!itemData.metadata.tags.includes(withHash)) itemData.metadata.tags.push(withHash);
   }
 
   itemData.metadata.tags?.sort(defaultSort);
