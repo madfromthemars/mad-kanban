@@ -29,6 +29,15 @@ import { ItemForm } from '../Item/ItemForm';
 import { FilterContext, KanbanContext, SearchContext, SortContext } from '../context';
 import { c, generateInstanceId } from '../helpers';
 import { DataTypes, EditState, EditingState, Item, Lane } from '../types';
+import { laneKey } from 'src/team/laneKey';
+
+const STATUS_KEYS = new Set(['todo', 'inprogress', 'review', 'done']);
+
+/** Status family of a list (for its colored dot), based on the same synonyms team boards match on. */
+function laneStatus(title: string) {
+  const key = laneKey(title || '');
+  return STATUS_KEYS.has(key) ? key : 'other';
+}
 import { LaneHeader } from './LaneHeader';
 
 const laneAccepts = [DataTypes.Item];
@@ -184,6 +193,7 @@ function DraggableLaneRaw({
       >
         <div
           data-count={lane.children.length}
+          data-status={laneStatus(lane.data.title)}
           ref={elementRef}
           className={classcat([c('lane'), { 'will-prepend': shouldPrepend }])}
           onClick={isCollapsed ? toggleIsCollapsed : undefined}

@@ -25,7 +25,8 @@ import { TeamSyncStatus } from 'src/team/ui/TeamBadges';
 import { TableView } from './Table/Table';
 import { FilterContext, KanbanContext, SearchContext } from './context';
 import { baseClassName, c, useFilterValue, useSearchValue } from './helpers';
-import { DataTypes } from './types';
+import { DataTypes, Item } from './types';
+import { parseTeamItemId } from 'src/team/ids';
 
 const boardScrollTiggers = [DataTypes.Item, DataTypes.Lane];
 const boardAccepts = [DataTypes.Lane];
@@ -240,7 +241,16 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     setDebouncedSearchQuery,
     setIsSearching
   );
-  const filterValue = useFilterValue(boardData, cardBodyCache, filePath);
+  const team = stateManager.plugin?.team;
+  const getAssignees = useCallback(
+    (item: Item) => {
+      const ids = parseTeamItemId(item.id);
+      if (!ids || !team) return null;
+      return team.getCard(ids.cardId)?.assignees || [];
+    },
+    [team]
+  );
+  const filterValue = useFilterValue(boardData, cardBodyCache, filePath, getAssignees, team?.user?.id);
 
   return (
     <DndScope id={view.id}>
@@ -339,6 +349,15 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                       index={boardData.children.length}
                     />
                   </Sortable>
+                  {!isLaneFormVisible && boardData.children.length > 0 && (
+                    <button
+                      className={c('add-lane-button')}
+                      onClick={() => setIsLaneFormVisible(true)}
+                    >
+                      <span className={c('add-lane-plus')}>+</span>
+                      {t('Add a list')}
+                    </button>
+                  )}
                 </div>
               </ScrollContainer>
               )}

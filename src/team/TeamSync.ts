@@ -5,7 +5,15 @@ import { Board, Item, Lane } from 'src/components/types';
 import type { TeamManager } from './TeamManager';
 import { diffTeamBoard } from './boardDiff';
 import { normalizeIds, snapshotToBoard } from './convert';
-import { isTeamItem, isTeamLane, newTeamId, parseTeamLaneId, teamItemId, teamLaneId } from './ids';
+import {
+  isTeamItem,
+  isTeamLane,
+  newTeamId,
+  normalizeLaneTitle,
+  parseTeamLaneId,
+  teamItemId,
+  teamLaneId,
+} from './ids';
 import { TeamApiError } from './TeamClient';
 import { TeamBoardSnapshot, TeamOp, TeamServerEvent } from './types';
 import { PERSONAL_SETTING_KEYS } from 'src/tagColors';
@@ -190,6 +198,20 @@ export class TeamSync {
     return board.children.every((l) => parseTeamLaneId(l.id)?.boardId === this.boardId);
   }
 
+  /** Same check as the server's detectReupload: several existing lists or cards created again. */
+  private looksLikeReupload(prev: Board, ops: TeamOp[]) {
+    const laneKeys = new Set(prev.children.map((l) => normalizeLaneTitle(l.data.title)));
+    const contents = new Set<string>();
+    for (const lane of prev.children) for (const item of lane.children) contents.add(item.data.titleRaw);
+    let dupLanes = 0;
+    let dupCards = 0;
+    for (const op of ops) {
+      if (op.type === 'lane.create' && laneKeys.has(normalizeLaneTitle(op.title))) dupLanes++;
+      else if (op.type === 'card.create' && contents.has(op.content)) dupCards++;
+    }
+    return dupLanes >= 2 || dupCards >= 3;
+  }
+
   onLocalChange(prev: Board, next: Board) {
     if (!this.ready || !prev || !next) return;
     if (!this.isSynced(prev)) {
@@ -210,6 +232,12 @@ export class TeamSync {
       if (Object.keys(set).length) ops.push({ type: 'board.settings', set });
     }
     if (!ops.length) return;
+    if (this.looksLikeReupload(prev, ops)) {
+      // Lists/cards that already exist would be created again under new ids.
+      console.warn('[Kanban team] refusing to re-upload existing lists/cards, reloading', ops);
+      this.requestReload(0);
+      return;
+    }
     this.queue.push(...ops);
     void this.flush();
   }

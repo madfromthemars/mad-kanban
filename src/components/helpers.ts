@@ -413,8 +413,21 @@ export function itemMatchesFilters(
   item: Item,
   filters: FilterState,
   cardBodyCache?: Map<string, string>,
-  boardPath?: string
+  boardPath?: string,
+  getAssignees?: (item: Item) => string[] | null,
+  meId?: string | null
 ): boolean {
+  // Assignee filter (team cards; other cards count as unassigned)
+  if (filters.assignee && filters.assignee !== 'all') {
+    const assignees = getAssignees?.(item) || [];
+    if (filters.assignee === 'unassigned') {
+      if (assignees.length) return false;
+    } else {
+      const who = filters.assignee === 'me' ? meId : filters.assignee;
+      if (!who || !assignees.includes(who)) return false;
+    }
+  }
+
   // Status filter
   if (filters.statusFilter === 'complete' && !item.data.checked) {
     return false;
@@ -492,13 +505,16 @@ export function itemMatchesFilters(
 export function useFilterValue(
   board: Board,
   cardBodyCache?: Map<string, string>,
-  boardPath?: string
+  boardPath?: string,
+  getAssignees?: (item: Item) => string[] | null,
+  meId?: string | null
 ): FilterContextProps {
   const [filters, setFilters] = useState<FilterState>({
     tags: [],
     dateFilter: 'all',
     statusFilter: 'all',
     priorityFilter: 'all',
+    assignee: 'all',
   });
 
   // Track cache size to trigger re-extraction when items load their content
@@ -570,17 +586,26 @@ export function useFilterValue(
     setFilters((prev) => ({ ...prev, priorityFilter }));
   }, []);
 
+  const setAssigneeFilter = useCallback((assignee: string) => {
+    setFilters((prev) => ({ ...prev, assignee }));
+  }, []);
+
   const clearFilters = useCallback(() => {
     setFilters({
       tags: [],
       dateFilter: 'all',
       statusFilter: 'all',
       priorityFilter: 'all',
+      assignee: 'all',
     });
   }, []);
 
   const hasActiveFilters =
-    filters.tags.length > 0 || filters.dateFilter !== 'all' || filters.statusFilter !== 'all' || filters.priorityFilter !== 'all';
+    filters.tags.length > 0 ||
+    filters.dateFilter !== 'all' ||
+    filters.statusFilter !== 'all' ||
+    filters.priorityFilter !== 'all' ||
+    filters.assignee !== 'all';
 
   // Tag grouping state
   const [isGroupingByTag, setGroupingByTag] = useState(false);
@@ -605,6 +630,9 @@ export function useFilterValue(
     setDateFilter,
     setStatusFilter,
     setPriorityFilter,
+    setAssigneeFilter,
+    getAssignees,
+    meId,
     clearFilters,
     hasActiveFilters,
     cardBodyCache,

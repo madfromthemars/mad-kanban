@@ -12,7 +12,20 @@ import { ListFormat } from './parsers/List';
 import { BaseFormat, frontmatterKey, shouldRefreshBoard } from './parsers/common';
 import { getTaskStatusDone } from './parsers/helpers/inlineMetadata';
 import { defaultMetadataPosition } from './settingHelpers';
+import { sortByPriority } from './cardTasks';
 import { mergeTagColors } from './tagColors';
+
+
+function sortBoardByPriority(board: Board): Board {
+  let changed = false;
+  const lanes = board.children.map((lane) => {
+    const children = sortByPriority(lane.children, (item) => item.data.metadata?.priority);
+    if (children === lane.children) return lane;
+    changed = true;
+    return { ...lane, children };
+  });
+  return changed ? { ...board, children: lanes } : board;
+}
 
 export class StateManager {
   onEmpty: () => void;
@@ -116,6 +129,13 @@ export class StateManager {
     }
   }
 
+  /** Cards stay ordered by priority unless the board or global setting turns it off. */
+  private sortsByPriority(board: Board) {
+    const local = board.data?.settings?.['sort-by-priority'];
+    if (local !== undefined) return local !== false;
+    return this.getGlobalSetting('sort-by-priority') !== false;
+  }
+
   /** Apply a board that did not originate from a user edit (server snapshot, mirror, re-parse). */
   setRemoteState(board: Board, shouldSave: boolean) {
     const prev = this.applyingRemote;
@@ -174,6 +194,9 @@ export class StateManager {
       let newState = typeof state === 'function' ? state(this.state) : state;
       if (this.teamSync?.ready && !this.applyingRemote && newState) {
         newState = this.teamSync.assignIds(newState);
+      }
+      if (newState && this.sortsByPriority(newState)) {
+        newState = sortBoardByPriority(newState);
       }
       const newSettings = newState?.data.settings;
 

@@ -4,6 +4,7 @@ import { KanbanContext } from 'src/components/context';
 import { c } from 'src/components/helpers';
 
 import { TeamComment, UploadedFile } from '../types';
+import { hueFor, initials } from './TeamBadges';
 
 /** Markdown/HTML snippet that embeds an uploaded file. */
 export function mediaMarkdown(f: UploadedFile) {
@@ -173,31 +174,40 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
   return (
     <div className={c('comments')}>
       <div className={c('comments-header')}>
-        Comments{comments?.length ? ` (${comments.length})` : ''}
+        Comments
+        {comments?.length ? <span className={c('comments-count')}>{comments.length}</span> : null}
       </div>
       {error && <div className={c('comments-error')}>Could not load comments: {error}</div>}
       {comments === null && !error && <div className={c('comments-empty')}>Loading…</div>}
       {comments?.length === 0 && <div className={c('comments-empty')}>No comments yet.</div>}
-      {comments?.map((cm) => (
-        <div key={cm.id} className={c('comment')}>
-          <div className={c('comment-meta')}>
-            <span className={c('comment-author')}>{cm.userName || team.userName(cm.userId)}</span>
-            <span className={c('comment-time')}>{timeAgo(cm.createdAt)}</span>
-            {cm.userId === me && (
-              <a className={c('comment-delete')} onClick={() => void remove(cm.id)} title="Delete comment">
-                Delete
-              </a>
-            )}
+      {comments?.map((cm) => {
+        const name = cm.userName || team.userName(cm.userId);
+        return (
+          <div key={cm.id} className={c('comment')}>
+            <span className={c('assignee')} style={{ '--assignee-hue': hueFor(cm.userId) }} title={name}>
+              {initials(name)}
+            </span>
+            <div className={c('comment-main')}>
+              <div className={c('comment-meta')}>
+                <span className={c('comment-author')}>{name}</span>
+                <span className={c('comment-time')}>{timeAgo(cm.createdAt)}</span>
+                {cm.userId === me && (
+                  <a className={c('comment-delete')} onClick={() => void remove(cm.id)} title="Delete comment">
+                    Delete
+                  </a>
+                )}
+              </div>
+              <CommentBody markdown={cm.body} sourcePath={stateManager.file.path} />
+            </div>
           </div>
-          <CommentBody markdown={cm.body} sourcePath={stateManager.file.path} />
-        </div>
-      ))}
+        );
+      })}
       <div className={c('comment-form')}>
         <textarea
           className={c('comment-input')}
-          placeholder="Write a comment… (Ctrl/Cmd + Enter to send)"
+          placeholder="Write a comment…"
           value={draft}
-          rows={3}
+          rows={2}
           onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => {
             e.stopPropagation();
@@ -213,6 +223,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
             label="Attach"
             onUploaded={(md) => setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md}` : md))}
           />
+          <span className={c('cd-hint')}>⌘/Ctrl + Enter</span>
           <button className="mod-cta" disabled={!draft.trim() || sending} onClick={() => void send()}>
             {sending ? 'Sending…' : 'Comment'}
           </button>

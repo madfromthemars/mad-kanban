@@ -30,7 +30,7 @@ import {
   openDb,
   userByToken,
 } from './db.js';
-import { OpError, applyOps, orderOps } from './ops.js';
+import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DATA_DIR = process.env.DATA_DIR || './data';
@@ -254,6 +254,11 @@ route('POST', '/api/boards/:id/ops', async (req, params) => {
   const board = requireBoard(user, params.id);
   const body = await readJson(req);
   body.ops = orderOps(body.ops);
+  const reupload = detectReupload(db, board.id, body.ops);
+  if (reupload) {
+    console.warn(`${new Date().toISOString()} [${board.name}] ${user.name}: ${reupload}`);
+    throw new OpError(409, reupload);
+  }
   const result = applyOps(db, board, user, body.ops);
   logOps(user, board, body.ops, result);
   const meta = getBoardMeta(db, board.id);

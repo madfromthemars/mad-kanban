@@ -7,14 +7,14 @@ import { Item } from 'src/components/types';
 import { parseTeamItemId } from '../ids';
 import { AssigneeModal } from './modals';
 
-function initials(name: string) {
+export function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function hueFor(id: string) {
+export function hueFor(id: string) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
   return h;

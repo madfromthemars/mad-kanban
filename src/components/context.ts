@@ -24,6 +24,8 @@ export interface FilterState {
   dateFilter: DateFilterType;
   statusFilter: StatusFilterType;
   priorityFilter: PriorityFilterType;
+  /** 'all' | 'me' | 'unassigned' | a team user id */
+  assignee: string;
 }
 
 export interface FilterContextProps {
@@ -33,6 +35,10 @@ export interface FilterContextProps {
   setDateFilter: (filter: DateFilterType) => void;
   setStatusFilter: (filter: StatusFilterType) => void;
   setPriorityFilter: (filter: PriorityFilterType) => void;
+  setAssigneeFilter: (assignee: string) => void;
+  /** Assignees of a team card, or null for a card that isn't a team card. */
+  getAssignees?: (item: Item) => string[] | null;
+  meId?: string | null;
   clearFilters: () => void;
   hasActiveFilters: boolean;
   cardBodyCache?: Map<string, string>;

@@ -108,7 +108,8 @@ export class KanbanView extends TextFileView implements HoverParent {
     });
 
     for (const k of this.previewCache.keys()) {
-      if (!seenKeys.has(k)) {
+      // Previews in the card window aren't board entities; the window manages them.
+      if (!seenKeys.has(k) && !k.startsWith('modal-')) {
         this.removeChild(this.previewCache.get(k));
         this.previewCache.delete(k);
       }
@@ -295,7 +296,8 @@ export class KanbanView extends TextFileView implements HoverParent {
       this,
       {
         onSettingsChange: (settings) => {
-          const updatedBoard = update(board, {
+          // The board may have been replaced (e.g. by a server sync) while the modal was open.
+          const updatedBoard = update(stateManager.state, {
             data: {
               settings: {
                 $set: settings,

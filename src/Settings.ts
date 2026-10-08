@@ -48,6 +48,7 @@ export interface KanbanSettings {
   'date-trigger'?: string;
   'full-list-lane-width'?: boolean;
   'hide-card-count'?: boolean;
+  'sort-by-priority'?: boolean;
   'inline-metadata-position'?: 'body' | 'footer' | 'metadata-table';
   'lane-width'?: number;
   'list-collapse'?: boolean[];
@@ -89,6 +90,7 @@ export const settingKeyLookup: Set<keyof KanbanSettings> = new Set([
   'date-trigger',
   'full-list-lane-width',
   'hide-card-count',
+  'sort-by-priority',
   'inline-metadata-position',
   'lane-width',
   'list-collapse',
@@ -372,6 +374,41 @@ export class SettingsManager {
             },
           });
         });
+      });
+
+    new Setting(contentEl)
+      .setName('Sort cards by priority')
+      .setDesc('Keep cards in each list ordered Highest → Low, then cards without a priority. Cards with the same priority keep your order.')
+      .then((setting) => {
+        let toggleComponent: ToggleComponent;
+
+        setting
+          .addToggle((toggle) => {
+            toggleComponent = toggle;
+
+            const [value, globalValue] = this.getSetting('sort-by-priority', local);
+            toggle.setValue(value !== undefined ? !!value : globalValue !== false);
+
+            toggle.onChange((newValue) => {
+              this.applySettingsUpdate({
+                'sort-by-priority': {
+                  $set: newValue,
+                },
+              });
+            });
+          })
+          .addExtraButton((b) => {
+            b.setIcon('lucide-rotate-ccw')
+              .setTooltip(t('Reset to default'))
+              .onClick(() => {
+                const [, globalValue] = this.getSetting('sort-by-priority', local);
+                toggleComponent.setValue(globalValue !== false);
+
+                this.applySettingsUpdate({
+                  $unset: ['sort-by-priority'],
+                });
+              });
+          });
       });
 
     new Setting(contentEl)

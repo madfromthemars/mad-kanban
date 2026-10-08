@@ -286,8 +286,31 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   );
   assert.equal(lc.json.ok, true, JSON.stringify(lc.json));
 
-  // default lanes
+  // a whole-board re-upload (existing lists + cards under new ids) is refused
   const d = await api('POST', '/api/boards', { name: 'Defaults' }, A);
+  const dId = d.json.board.board.id;
+  const seed = await api('POST', `/api/boards/${dId}/ops`, {
+    ops: ['one', 'two', 'three'].map((c, i) => ({ type: 'card.create', id: `seedcard0${i}`, laneTitle: 'To Do', index: i, content: c })),
+  }, A);
+  assert.equal(seed.json.ok, true, JSON.stringify(seed.json));
+  const dup = await api('POST', `/api/boards/${dId}/ops`, {
+    ops: [
+      { type: 'lane.create', id: 'dupelane01', title: 'To Do', index: 3 },
+      { type: 'lane.create', id: 'dupelane02', title: 'Done', index: 4 },
+      ...['one', 'two', 'three'].map((c, i) => ({ type: 'card.create', id: `dupecard0${i}`, laneId: 'dupelane01', index: i, content: c })),
+    ],
+  }, A);
+  assert.equal(dup.status, 409, JSON.stringify(dup.json));
+  const after = (await api('GET', `/api/boards/${dId}`, null, A)).json.board;
+  assert.equal(after.lanes.length, 3);
+  assert.equal(after.cards.length, 3);
+  // duplicating a single card is still fine
+  const one = await api('POST', `/api/boards/${dId}/ops`, {
+    ops: [{ type: 'card.create', id: 'dupecard09', laneTitle: 'To Do', index: 0, content: 'one' }],
+  }, A);
+  assert.equal(one.json.ok, true, JSON.stringify(one.json));
+
+  // default lanes
   assert.deepEqual(d.json.board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done']);
 
   ws.close();

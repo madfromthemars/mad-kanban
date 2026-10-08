@@ -7,6 +7,34 @@ export function orderOps(ops) {
   return [...ops.filter((o) => o?.type === 'lane.create'), ...ops.filter((o) => o?.type !== 'lane.create')];
 }
 
+/**
+ * A client whose board lost its server ids re-sends the whole board as new
+ * lanes/cards. Refuse batches that recreate several existing lanes or cards.
+ */
+export function detectReupload(db, boardId, ops) {
+  if (!Array.isArray(ops)) return null;
+  const lanes = db.prepare('SELECT id, title FROM lanes WHERE board_id = ?').all(boardId);
+  const laneIds = new Set(lanes.map((l) => l.id));
+  const laneKeys = new Set(lanes.map((l) => laneKey(l.title)));
+  const contents = new Map();
+  for (const c of db.prepare('SELECT id, content FROM cards WHERE board_id = ? AND archived = 0').all(boardId)) {
+    contents.set(c.content, (contents.get(c.content) || 0) + 1);
+  }
+  let dupLanes = 0;
+  let dupCards = 0;
+  for (const op of ops) {
+    if (op?.type === 'lane.create' && !laneIds.has(op.id) && laneKeys.has(laneKey(String(op.title ?? '')))) {
+      dupLanes++;
+    } else if (op?.type === 'card.create' && contents.get(String(op.content ?? ''))) {
+      dupCards++;
+    }
+  }
+  if (dupLanes >= 2 || dupCards >= 3) {
+    return `refused: this change would duplicate ${dupLanes} list(s) and ${dupCards} card(s) that already exist; reload the board`;
+  }
+  return null;
+}
+
 export class OpError extends Error {
   constructor(status, message, extra = {}) {
     super(message);
@@ -207,7 +235,8 @@ export function applyOps(db, board, user, ops) {
             r.error = 'card exists';
             break;
           }
-          const lane = q.lane.get(op.laneId, board.id);
+          let lane = op.laneId ? q.lane.get(String(op.laneId), board.id) : null;
+          if (!lane && op.laneTitle) lane = q.laneByTitle.get(board.id, String(op.laneTitle));
           if (!lane) {
             r.ok = false;
             r.error = 'lane not found';

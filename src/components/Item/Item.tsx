@@ -30,6 +30,7 @@ import { ItemMenuButton } from './ItemMenuButton';
 import { ItemMetadata } from './MetadataTable';
 import { PriorityButton } from './PriorityButton';
 import { CardDetailModal } from './CardDetailModal';
+import { Checklist, DueChip } from './CardChecklist';
 import { getItemClassModifiers } from './helpers';
 
 export interface DraggableItemProps {
@@ -102,6 +103,9 @@ const CardFooter = memo(function CardFooter({ item }: { item: Item }) {
   const [counts, setCounts] = useState<{ total: number; checked: number } | null>(null);
   const [externalTags, setExternalTags] = useState<string[]>([]);
   const [fileRev, setFileRev] = useState(0);
+  const [fileBody, setFileBody] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const { boardModifiers } = useContext(KanbanContext);
   const cardFileRef = useRef<TFile | null>(null);
 
   // Resolve the card file once
@@ -128,6 +132,7 @@ const CardFooter = memo(function CardFooter({ item }: { item: Item }) {
     if (file) {
       void stateManager.app.vault.read(file).then((content) => {
         if (cancelled) return;
+        setFileBody(content);
         const extCounts = countCheckboxes(content);
         setCounts({
           total: inlineCounts.total + extCounts.total,
@@ -139,6 +144,7 @@ const CardFooter = memo(function CardFooter({ item }: { item: Item }) {
     } else {
       setCounts(inlineCounts.total > 0 ? inlineCounts : null);
       setExternalTags([]);
+      setFileBody(null);
     }
 
     return () => { cancelled = true; };
@@ -150,16 +156,48 @@ const CardFooter = memo(function CardFooter({ item }: { item: Item }) {
 
   const hasProgress = counts && counts.total > 0;
   const hasTags = allTags.length > 0;
+  const due = item.data.metadata.date;
+  const hasDue = !!due?.isValid?.();
 
-  if (!hasProgress && !hasTags) return null;
+  if (!hasProgress && !hasTags && !hasDue) return null;
 
   const percent = hasProgress ? Math.round((counts.checked / counts.total) * 100) : 0;
 
+  // Checklist shown on the card: the card's note when it has one, else the card text.
+  const inlineBody = item.data.titleRaw.split(/\r?\n/).slice(1).join('\n').trim();
+  const checklistBody = cardFileRef.current ? fileBody ?? '' : inlineBody;
+  const writeChecklist = (next: string) => {
+    const file = cardFileRef.current;
+    if (file) {
+      setFileBody(next);
+      void stateManager.app.vault.modify(file, next);
+      return;
+    }
+    const board = stateManager.state;
+    for (let l = 0; l < board.children.length; l++) {
+      const i = board.children[l].children.findIndex((it) => it.id === item.id);
+      if (i < 0) continue;
+      const latest = board.children[l].children[i];
+      const first = latest.data.titleRaw.split(/\r?\n/)[0].trim();
+      const raw = next.trim() ? `${first}\n${next.trim()}` : first;
+      boardModifiers.updateItem([l, i], stateManager.updateItemContent(latest, raw));
+      return;
+    }
+  };
+
   return (
     <div className={c('item-footer')} data-ignore-drag={true}>
+      {hasDue && <DueChip date={due} done={!!item.data.checked} />}
       {hasTags && <Tags tags={allTags} alwaysShow={true} />}
       {hasProgress && (
-        <div className={c('item-checkbox-progress')}>
+        <div
+          className={`${c('item-checkbox-progress')} is-clickable ${expanded ? 'is-expanded' : ''}`}
+          title={expanded ? 'Hide checklist' : 'Show checklist'}
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(!expanded);
+          }}
+        >
           <div className={c('item-checkbox-progress-bar')}>
             <div
               className={c('item-checkbox-progress-fill')}
@@ -169,6 +207,11 @@ const CardFooter = memo(function CardFooter({ item }: { item: Item }) {
           <span className={c('item-checkbox-progress-text')}>
             {counts.checked}/{counts.total}
           </span>
+        </div>
+      )}
+      {hasProgress && expanded && (
+        <div className={c('item-checklist')} onClick={(e) => e.stopPropagation()}>
+          <Checklist body={checklistBody} onChange={writeChecklist} compact={true} />
         </div>
       )}
     </div>
@@ -374,7 +417,9 @@ export const DraggableItem = memo(function DraggableItem(props: DraggableItemPro
         innerProps.item,
         filterContext.filters,
         filterContext.cardBodyCache,
-        filterContext.boardPath
+        filterContext.boardPath,
+        filterContext.getAssignees,
+        filterContext.meId
       )
     : true;
 

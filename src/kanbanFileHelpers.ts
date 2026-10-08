@@ -1,4 +1,5 @@
 import { App, TAbstractFile, TFile, TFolder, Vault, normalizePath } from 'obsidian';
+import { stripDateTokens } from './cardTasks';
 
 const illegalCharsRegEx = /[\\/:"*?<>|]+/g;
 const condenceWhiteSpaceRE = /\s+/g;
@@ -148,7 +149,9 @@ export function buildCardContent(cardPath: string, cardTitle: string, descriptio
 export function extractCardLinkPath(titleRaw: string): string | null {
   const first = titleRaw.split(/\r?\n/)[0]?.trim() ?? '';
   if (first.startsWith('[[')) {
-    const trimmed = first.endsWith(']]') ? first.slice(2, -2) : first.slice(2);
+    // The link may be followed by a due date or priority marker.
+    const m = first.match(/^\[\[([^\]]*)\]\]/);
+    const trimmed = m ? m[1] : first.slice(2);
     const [path] = trimmed.split('|');
     return path?.trim() || null;
   }
@@ -227,15 +230,16 @@ const priorityFieldRegex = /\s*\[priority::\s*[^\]]*\]/g;
 export function extractCardTitle(titleRaw: string) {
   const first = titleRaw.split(/\r?\n/)[0]?.trim() ?? '';
   if (first.startsWith('[[')) {
-    const trimmed = first.endsWith(']]') ? first.slice(2, -2) : first.slice(2);
+    const m = first.match(/^\[\[([^\]]*)\]\]/);
+    const trimmed = m ? m[1] : first.slice(2);
     const [path, alias] = trimmed.split('|');
-    if (alias) return alias.trim().replace(priorityFieldRegex, '').trim();
+    if (alias) return stripDateTokens(alias.trim().replace(priorityFieldRegex, '')).trim();
     const parts = (path || '').split('/');
     const file = parts[parts.length - 1] || '';
     return file.replace(/\.md$/i, '').trim();
   }
 
-  return first.replace(priorityFieldRegex, '').trim();
+  return stripDateTokens(first.replace(priorityFieldRegex, '')).trim();
 }
 
 export function updateCardContentLink(content: string, newPath: string, cardTitle: string) {
