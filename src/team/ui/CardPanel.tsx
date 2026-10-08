@@ -2,6 +2,7 @@ import { Component, MarkdownRenderer, Notice } from 'obsidian';
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'preact/compat';
 import { KanbanContext } from 'src/components/context';
 import { c } from 'src/components/helpers';
+import { Icon } from 'src/components/Icon/Icon';
 
 import { TeamComment, UploadedFile } from '../types';
 import { hueFor, initials } from './TeamBadges';
@@ -49,6 +50,7 @@ export const AttachButton = memo(function AttachButton({
           parts.push(mediaMarkdown(uploaded));
         } catch (e) {
           new Notice(`Kanban: upload failed for ${file.name} (${e?.message || e})`);
+          team.plugin.reportError('upload', e, { type: file.type, size: file.size });
         }
       }
       setBusy(null);
@@ -79,7 +81,12 @@ export const AttachButton = memo(function AttachButton({
           inputRef.current?.click();
         }}
       >
-        {busy || `📎 ${label}`}
+        {busy || (
+          <>
+            <Icon name="lucide-paperclip" />
+            {label}
+          </>
+        )}
       </button>
     </>
   );
@@ -118,13 +125,24 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
 
+  // Comments newer than this were unread when the card was opened; they keep a "New" marker.
+  const [readBefore, setReadBefore] = useState<number | null>(null);
+
   const load = useCallback(async () => {
     if (!team) return;
     try {
-      setComments(await team.client.comments(boardId, cardId));
+      const res = await team.client.comments(boardId, cardId);
+      setComments(res.comments);
+      setReadBefore((prev) => (prev === null ? res.lastReadAt : prev));
       setError(null);
+      // Seeing the thread marks it read (here and on the board badges).
+      if (res.comments.some((cm) => cm.userId !== team.user?.id && cm.createdAt > res.lastReadAt)) {
+        void team.client.markCommentsRead(boardId, cardId).catch((): void => undefined);
+      }
+      team.updateCard(cardId, { unreadComments: 0, commentCount: res.comments.length });
     } catch (e) {
       setError(e?.message || String(e));
+      team.plugin.reportError('comment.load', e, { board: boardId, card: cardId });
     }
   }, [team, boardId, cardId]);
 
@@ -150,6 +168,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
       setDraft('');
     } catch (e) {
       new Notice(`Kanban: could not post comment (${e?.message || e})`);
+      team.plugin.reportError('comment.post', e, { board: boardId, card: cardId });
     } finally {
       setSending(false);
     }
@@ -163,6 +182,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
         setComments((prev) => (prev || []).filter((c) => c.id !== id));
       } catch (e) {
         new Notice(`Kanban: could not delete comment (${e?.message || e})`);
+        team.plugin.reportError('comment.delete', e, { board: boardId });
       }
     },
     [team, boardId]
@@ -183,7 +203,12 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
       {comments?.map((cm) => {
         const name = cm.userName || team.userName(cm.userId);
         return (
-          <div key={cm.id} className={c('comment')}>
+          <div
+            key={cm.id}
+            className={`${c('comment')} ${
+              readBefore !== null && cm.userId !== me && cm.createdAt > readBefore ? 'is-new' : ''
+            }`}
+          >
             <span className={c('assignee')} style={{ '--assignee-hue': hueFor(cm.userId) }} title={name}>
               {initials(name)}
             </span>
@@ -191,6 +216,9 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
               <div className={c('comment-meta')}>
                 <span className={c('comment-author')}>{name}</span>
                 <span className={c('comment-time')}>{timeAgo(cm.createdAt)}</span>
+                {readBefore !== null && cm.userId !== me && cm.createdAt > readBefore && (
+                  <span className={c('comment-new')}>New</span>
+                )}
                 {cm.userId === me && (
                   <a className={c('comment-delete')} onClick={() => void remove(cm.id)} title="Delete comment">
                     Delete

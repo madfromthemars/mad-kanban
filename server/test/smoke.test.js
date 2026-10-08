@@ -310,6 +310,36 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   }, A);
   assert.equal(one.json.ok, true, JSON.stringify(one.json));
 
+  // unread comments: B comments on a card, A sees it as unread until A reads it
+  const ub = (await api('POST', '/api/boards', { name: 'Unread' }, A)).json.board;
+  await api('POST', `/api/boards/${ub.board.id}/join`, null, B);
+  const uc = await api('POST', `/api/boards/${ub.board.id}/ops`, { ops: [{ type: 'card.create', id: 'unreadcard1', laneTitle: 'To Do', index: 0, content: 'Talk' }] }, A);
+  assert.equal(uc.json.ok, true, JSON.stringify(uc.json));
+  await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, { body: 'hi from B' }, B);
+  await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, { body: 'and again' }, B);
+  const unreadOf = async (tok) => (await api('GET', `/api/boards/${ub.board.id}`, null, tok)).json.board.cards.find((c) => c.id === 'unreadcard1');
+  assert.equal((await unreadOf(A)).unreadComments, 2);
+  assert.equal((await unreadOf(B)).unreadComments, 0, 'own comments are never unread');
+  const ucl = await api("GET", `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, null, A);
+  assert.equal(ucl.json.lastReadAt, 0);
+  await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments/read`, null, A);
+  assert.equal((await unreadOf(A)).unreadComments, 0);
+  assert.ok((await api('GET', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, null, A)).json.lastReadAt > 0);
+  await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, { body: 'third' }, B);
+  assert.equal((await unreadOf(A)).unreadComments, 1);
+
+  // plugin error reports
+  const rep = await api('POST', '/api/client-logs', {
+    meta: { pluginVersion: '9.9.9', platform: 'test' },
+    entries: [{ ts: Date.now(), level: 'error', context: 'sync.flush', message: 'boom', stack: 'Error: boom\n at x', count: 3 }, { nope: 1 }],
+  }, A);
+  assert.equal(rep.json.stored, 1, JSON.stringify(rep.json));
+  const logs = await api('GET', '/api/admin/client-logs?hours=1', null, ADMIN);
+  assert.equal(logs.json.logs[0].message, 'boom');
+  assert.equal(logs.json.logs[0].count, 3);
+  assert.equal(logs.json.logs[0].meta.pluginVersion, '9.9.9');
+  assert.equal((await api('GET', '/api/admin/client-logs', null, A)).status, 403);
+
   // default lanes
   assert.deepEqual(d.json.board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done']);
 

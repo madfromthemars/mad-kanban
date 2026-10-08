@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Modal } from 'obsidian';
+import { App, FuzzyMatch, FuzzySuggestModal, Modal, setIcon } from 'obsidian';
 
 import { TeamBoardMeta, TeamUser } from '../types';
 
@@ -118,7 +118,16 @@ export class AssigneeModal extends FuzzySuggestModal<TeamUser> {
   }
 
   getItemText(user: TeamUser) {
-    return `${this.assigned.has(user.id) ? '✓ ' : ''}${user.name}`;
+    return user.name;
+  }
+
+  renderSuggestion(match: FuzzyMatch<TeamUser>, el: HTMLElement) {
+    super.renderSuggestion(match, el);
+    el.addClass('kanban-plugin__assignee-suggestion');
+    if (this.assigned.has(match.item.id)) {
+      const check = el.createSpan({ cls: 'kanban-plugin__assignee-check' });
+      setIcon(check, 'lucide-check');
+    }
   }
 
   onChooseItem(user: TeamUser) {

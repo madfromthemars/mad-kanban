@@ -11,6 +11,7 @@ import {
 } from '../context';
 import { c, itemMatchesFilters, useGetTagColorFn } from '../helpers';
 import { Item } from '../types';
+import { PriorityIcon } from '../Item/PriorityIcon';
 
 const dateFilterOptions: { value: DateFilterType; label: string }[] = [
   { value: 'all', label: 'Any' },
@@ -26,12 +27,13 @@ const statusFilterOptions: { value: StatusFilterType; label: string }[] = [
   { value: 'complete', label: 'Checked off' },
 ];
 
+// `icon` holds the stored priority value, drawn with PriorityIcon
 const priorityFilterOptions: { value: PriorityFilterType; label: string; icon?: string }[] = [
   { value: 'all', label: 'Any' },
-  { value: 'highest', label: 'Highest', icon: '🔺' },
-  { value: 'high', label: 'High', icon: '⏫' },
-  { value: 'medium', label: 'Medium', icon: '🔼' },
-  { value: 'low', label: 'Low', icon: '🔽' },
+  { value: 'highest', label: 'Highest', icon: '0' },
+  { value: 'high', label: 'High', icon: '1' },
+  { value: 'medium', label: 'Medium', icon: '2' },
+  { value: 'low', label: 'Low', icon: '4' },
   { value: 'none', label: 'None' },
 ];
 
@@ -55,7 +57,7 @@ function Segmented<T extends string>({
           onClick={() => onChange(opt.value)}
           title={opt.label}
         >
-          {opt.icon && <span className={c('segmented-icon')}>{opt.icon}</span>}
+          {opt.icon && <PriorityIcon value={opt.icon} />}
           {opt.label}
         </button>
       ))}

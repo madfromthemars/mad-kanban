@@ -37,6 +37,8 @@ export interface TeamCard {
   updatedAt: number;
   lastMoved: number;
   commentCount?: number;
+  /** Comments by others the current user hasn't read yet */
+  unreadComments?: number;
 }
 
 export interface TeamComment {

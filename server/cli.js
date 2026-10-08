@@ -5,7 +5,8 @@
 //   node cli.js remove-user <id>     disable a user (their token stops working)
 //   node cli.js rename-user <id> <name>
 //   node cli.js list-boards          list boards
-import { createUser, disableUser, listUsers, openDb, renameUser } from './db.js';
+//   node cli.js client-logs [hours] [user name]   errors reported by plugins (default 72h)
+import { createUser, disableUser, listClientLogs, listUsers, openDb, renameUser } from './db.js';
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 const PORT = Number(process.env.PORT || 8787);
@@ -48,8 +49,29 @@ switch (cmd) {
     for (const b of db.prepare('SELECT id, name, version FROM boards ORDER BY name').all())
       console.log(`${b.id}\t${b.name}\tv${b.version}`);
     break;
+  case 'client-logs': {
+    const hours = Number(args[0] || 72);
+    const name = args.slice(1).join(' ').trim();
+    const user = name ? listUsers(db).find((u) => u.name.toLowerCase() === name.toLowerCase()) : null;
+    if (name && !user) die(`no user named "${name}"`);
+    const logs = listClientLogs(db, { since: Date.now() - hours * 3600 * 1000, userId: user?.id ?? null, limit: 500 });
+    if (!logs.length) console.log(`no client errors in the last ${hours}h`);
+    for (const l of logs.reverse()) {
+      const m = l.meta || {};
+      console.log(
+        `\n=== ${new Date(l.ts).toISOString()}  ${l.user_name || l.user_id}  v${m.pluginVersion || '?'}  ${m.platform || ''}  [${l.level}] ${l.context}${l.count > 1 ? `  x${l.count}` : ''}`
+      );
+      console.log(l.message);
+      if (l.stack) console.log(l.stack.split('\n').slice(0, 12).join('\n'));
+      const extra = { ...m };
+      delete extra.pluginVersion;
+      delete extra.platform;
+      if (Object.keys(extra).length) console.log('meta:', JSON.stringify(extra));
+    }
+    break;
+  }
   default:
-    die('commands: add-user <name> | list-users | rename-user <id> <name> | remove-user <id> | list-boards');
+    die('commands: add-user <name> | list-users | rename-user <id> <name> | remove-user <id> | list-boards | client-logs [hours] [user]');
 }
 
 db.close();

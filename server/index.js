@@ -5,6 +5,10 @@ import { URL } from 'node:url';
 import { WebSocketServer } from 'ws';
 
 import {
+  addClientLogs,
+  commentsReadAt,
+  markCommentsRead,
+  listClientLogs,
   addComment,
   addFile,
   boardMembers,
@@ -112,7 +116,7 @@ function requireBoard(user, boardId, { member = true } = {}) {
 
 // ---------- audit log (docker compose logs kanban) ----------
 
-const LOGGED = new Set(['card.create', 'card.delete', 'card.archive', 'card.move', 'card.assign', 'lane.create', 'lane.delete', 'lane.update']);
+const LOGGED = new Set(['card.create', 'card.update', 'card.delete', 'card.archive', 'card.move', 'card.assign', 'lane.create', 'lane.delete', 'lane.update']);
 
 function logOps(user, board, ops, result) {
   if (!Array.isArray(ops)) return;
@@ -195,6 +199,33 @@ route('GET', '/api/me', (req) => {
   const user = requireUser(req);
   return { user };
 });
+// Error reports from plugins (see src/ErrorReporter.ts).
+route('POST', '/api/client-logs', async (req) => {
+  const user = requireUser(req);
+  const body = await readJson(req);
+  if (!Array.isArray(body.entries)) throw new OpError(400, 'entries must be an array');
+  const meta = body.meta && typeof body.meta === 'object' ? body.meta : {};
+  const stored = addClientLogs(db, user, body.entries, meta);
+  for (const e of body.entries.slice(0, 20)) {
+    if (!e?.message) continue;
+    console.warn(
+      `${new Date().toISOString()} [client-${e.level || 'error'}] ${user.name} v${meta.pluginVersion || '?'} ${e.context || ''}: ${String(e.message).split('\n')[0].slice(0, 200)}${e.count > 1 ? ` (x${e.count})` : ''}`
+    );
+  }
+  return { ok: true, stored };
+});
+route('GET', '/api/admin/client-logs', (req) => {
+  requireAdmin(req);
+  const url = new URL(req.url, 'http://x');
+  const hours = Number(url.searchParams.get('hours') || 72);
+  return {
+    logs: listClientLogs(db, {
+      since: Date.now() - hours * 3600 * 1000,
+      userId: url.searchParams.get('user') || null,
+      limit: Number(url.searchParams.get('limit') || 200),
+    }),
+  };
+});
 route('GET', '/api/users', (req) => {
   requireUser(req);
   return { users: listUsers(db) };
@@ -217,14 +248,14 @@ route('POST', '/api/boards', async (req) => {
   const lanes = Array.isArray(body.lanes) && body.lanes.length ? body.lanes : undefined;
   const board = createBoard(db, user, name, lanes);
   broadcast({ type: 'boards.changed', ts: Date.now() });
-  return { board: getBoardSnapshot(db, board.id) };
+  return { board: getBoardSnapshot(db, board.id, user.id) };
 });
 route('POST', '/api/boards/:id/join', (req, params) => {
   const user = requireUser(req);
   requireBoard(user, params.id, { member: false });
   joinBoard(db, user, params.id);
   broadcast({ type: 'boards.changed', boardId: params.id, ts: Date.now() });
-  return { board: getBoardSnapshot(db, params.id) };
+  return { board: getBoardSnapshot(db, params.id, user.id) };
 });
 route('DELETE', '/api/boards/:id/join', (req, params) => {
   const user = requireUser(req);
@@ -235,7 +266,7 @@ route('DELETE', '/api/boards/:id/join', (req, params) => {
 route('GET', '/api/boards/:id', (req, params) => {
   const user = requireUser(req);
   requireBoard(user, params.id);
-  return { board: getBoardSnapshot(db, params.id) };
+  return { board: getBoardSnapshot(db, params.id, user.id) };
 });
 route('GET', '/api/boards/:id/members', (req, params) => {
   const user = requireUser(req);
@@ -280,7 +311,16 @@ route('POST', '/api/boards/:id/ops', async (req, params) => {
 route('GET', '/api/boards/:id/cards/:cardId/comments', (req, params) => {
   const user = requireUser(req);
   requireBoard(user, params.id);
-  return { comments: listComments(db, params.id, params.cardId) };
+  return {
+    comments: listComments(db, params.id, params.cardId),
+    lastReadAt: commentsReadAt(db, user, params.id, params.cardId),
+  };
+});
+route('POST', '/api/boards/:id/cards/:cardId/comments/read', (req, params) => {
+  const user = requireUser(req);
+  const board = requireBoard(user, params.id);
+  markCommentsRead(db, user, board.id, params.cardId);
+  return { ok: true };
 });
 route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
   const user = requireUser(req);
@@ -291,6 +331,7 @@ route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
   if (!text) throw new OpError(400, 'comment is empty');
   if (text.length > 20000) throw new OpError(400, 'comment is too long');
   const comment = addComment(db, user, board.id, params.cardId, text);
+  markCommentsRead(db, user, board.id, params.cardId);
   broadcast({ type: 'comments.changed', boardId: board.id, cardId: params.cardId, ts: Date.now() });
   notifyBoardChanged(getBoardMeta(db, board.id), {
     users: cardAssignees(db, board.id, params.cardId),

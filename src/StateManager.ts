@@ -396,6 +396,7 @@ export class StateManager {
   }
 
   setError(e: Error) {
+    this.plugin?.reportError('board', e, { file: this.file?.path });
     this.setState(
       update(this.state, {
         data: {

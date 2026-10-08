@@ -87,6 +87,7 @@ export class PluginUpdater {
     } catch (e) {
       console.error('[Kanban] plugin update failed', e);
       if (manual) new Notice(`Kanban: update failed (${e?.message || e})`);
+      this.plugin.reportWarning('update', e);
     } finally {
       this.busy = false;
     }

@@ -218,6 +218,9 @@ export class TeamSync {
       // The board on screen isn't the server's board (e.g. a re-parse replaced
       // it). Diffing would re-upload every card as new; reload instead.
       console.warn('[Kanban team] board out of sync with server, reloading instead of uploading');
+      this.manager.plugin.reportWarning('sync.guard', 'board out of sync with server; reloaded instead of uploading', {
+        board: this.boardId,
+      });
       this.requestReload(0);
       return;
     }
@@ -235,6 +238,10 @@ export class TeamSync {
     if (this.looksLikeReupload(prev, ops)) {
       // Lists/cards that already exist would be created again under new ids.
       console.warn('[Kanban team] refusing to re-upload existing lists/cards, reloading', ops);
+      this.manager.plugin.reportWarning('sync.reupload-guard', 'refused to re-upload existing lists/cards', {
+        board: this.boardId,
+        ops: ops.map((o) => o.type),
+      });
       this.requestReload(0);
       return;
     }
@@ -259,9 +266,14 @@ export class TeamSync {
         const errors = res.results.filter((r) => !r.ok && r.error !== 'conflict');
         if (res.conflicts.length) {
           new Notice('Kanban: a card was changed by someone else, reloading the board');
+          this.manager.plugin.reportWarning('sync.conflict', 'card.update rejected as stale', {
+            board: this.boardId,
+            cards: res.conflicts.map((c) => c.id),
+          });
         }
         for (const err of errors) {
           new Notice(`Kanban: sync failed for ${err.type}: ${err.error}`);
+          this.manager.plugin.reportError('sync.op', `${err.type}: ${err.error}`, { board: this.boardId });
         }
         this.reloadRequested = true;
       }

@@ -10,6 +10,7 @@ import { BoardModifiers } from '../../helpers/boardModifiers';
 import { parseTeamItemId } from 'src/team/ids';
 import { setPriorityInTitle } from 'src/kanbanFileHelpers';
 import { AssigneeModal } from 'src/team/ui/modals';
+import { PRIORITY_LEVELS } from './PriorityIcon';
 import { applyTemplate, escapeRegExpStr, generateInstanceId } from '../helpers';
 import { EditState, Item } from '../types';
 
@@ -146,18 +147,12 @@ export function useItemMenu({
       try {
         const currentPriority = item.data.metadata.priority;
 
-        const priorityOptions: { label: string; value: string | null }[] = [
-          { label: '🔺 Highest', value: '0' },
-          { label: '⏫ High', value: '1' },
-          { label: '🔼 Medium', value: '2' },
-          { label: '🔽 Low', value: '4' },
-          { label: 'None', value: null },
-        ];
+        const priorityOptions = [...PRIORITY_LEVELS].reverse();
 
         const addPriorityOptions = (targetMenu: Menu) => {
           for (const opt of priorityOptions) {
             targetMenu.addItem((mi) => {
-              mi.setTitle(opt.label);
+              mi.setTitle(opt.label).setIcon(opt.icon);
               const isChecked =
                 opt.value === null
                   ? !currentPriority || currentPriority === '3'

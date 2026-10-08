@@ -3,6 +3,7 @@ import { Path } from 'src/dnd/types';
 import { BoardModifiers } from 'src/helpers/boardModifiers';
 import { StateManager } from 'src/StateManager';
 import { setPriorityInTitle } from 'src/kanbanFileHelpers';
+import { PriorityIcon, priorityLevel } from './PriorityIcon';
 
 import { c } from '../helpers';
 import { Item } from '../types';
@@ -14,20 +15,7 @@ interface PriorityButtonProps {
   stateManager: StateManager;
 }
 
-const priorityCycle: { value: string | null; label: string }[] = [
-  { value: null, label: '' },
-  { value: '0', label: '\uD83D\uDD3A' },  // Highest
-  { value: '1', label: '\u23EB' },         // High
-  { value: '2', label: '\uD83D\uDD3C' },  // Medium
-  { value: '4', label: '\uD83D\uDD3D' },  // Low
-];
-
-const priorityLabelMap: Record<string, string> = {
-  '0': '\uD83D\uDD3A',
-  '1': '\u23EB',
-  '2': '\uD83D\uDD3C',
-  '4': '\uD83D\uDD3D',
-};
+const priorityCycle: (string | null)[] = [null, '0', '1', '2', '4'];
 
 export const PriorityButton = Preact.memo(function PriorityButton({
   item,
@@ -37,16 +25,8 @@ export const PriorityButton = Preact.memo(function PriorityButton({
 }: PriorityButtonProps) {
   const currentPriority = item.data.metadata.priority;
 
-  const currentIndex = priorityCycle.findIndex((p) =>
-    p.value === null
-      ? !currentPriority || currentPriority === '3'
-      : p.value === currentPriority
-  );
-
-  const label =
-    currentPriority && priorityLabelMap[currentPriority]
-      ? priorityLabelMap[currentPriority]
-      : '';
+  const current = currentPriority && currentPriority !== '3' ? currentPriority : null;
+  const currentIndex = Math.max(0, priorityCycle.indexOf(current));
 
   const onClick = Preact.useCallback(
     (e: MouseEvent) => {
@@ -54,7 +34,7 @@ export const PriorityButton = Preact.memo(function PriorityButton({
       const nextIndex = (currentIndex + 1) % priorityCycle.length;
       const next = priorityCycle[nextIndex];
 
-      const newTitleRaw = setPriorityInTitle(item.data.titleRaw, next.value);
+      const newTitleRaw = setPriorityInTitle(item.data.titleRaw, next);
 
       boardModifiers.updateItem(
         path,
@@ -70,9 +50,9 @@ export const PriorityButton = Preact.memo(function PriorityButton({
       onPointerDown={(e: PointerEvent) => e.preventDefault()}
       onClick={(e) => onClick(e as unknown as MouseEvent)}
       className={`${c('priority-button')} clickable-icon`}
-      aria-label="Cycle priority"
+      aria-label={`Priority: ${priorityLevel(current).label} (click to change)`}
     >
-      {label}
+      {current && <PriorityIcon value={current} />}
     </a>
   );
 });

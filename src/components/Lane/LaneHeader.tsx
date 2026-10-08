@@ -1,13 +1,12 @@
 import update from 'immutability-helper';
 import { Menu } from 'obsidian';
 import { memo } from 'preact/compat';
-import { Dispatch, StateUpdater, useCallback, useContext, useEffect, useState } from 'preact/hooks';
+import { Dispatch, StateUpdater, useCallback, useContext, useEffect, useRef, useState } from 'preact/hooks';
 import { useNestedEntityPath } from 'src/dnd/components/Droppable';
 import { t } from 'src/lang/helpers';
 import { parseLaneTitle } from 'src/parsers/helpers/parser';
 
 import { getDropAction } from '../Editor/helpers';
-import { GripIcon } from '../Icon/GripIcon';
 import { Icon } from '../Icon/Icon';
 import { KanbanContext } from '../context';
 import { c } from '../helpers';
@@ -120,8 +119,28 @@ export const LaneHeader = memo(function LaneHeader({
     [boardModifiers, lane, lanePath]
   );
 
+  // Single click on the name collapses/expands the list; double click renames it.
+  const clickTimer = useRef<number | null>(null);
+
+  const onTitleClick = useCallback(
+    (e: MouseEvent) => {
+      if (isEditing(editState)) return;
+      e.stopPropagation();
+      if (clickTimer.current != null) window.clearTimeout(clickTimer.current);
+      clickTimer.current = window.setTimeout(() => {
+        clickTimer.current = null;
+        toggleIsCollapsed();
+      }, 220);
+    },
+    [editState, toggleIsCollapsed]
+  );
+
   const onDoubleClick = useCallback(
     (e: MouseEvent) => {
+      if (clickTimer.current != null) {
+        window.clearTimeout(clickTimer.current);
+        clickTimer.current = null;
+      }
       !isCollapsed && setEditState({ x: e.clientX, y: e.clientY });
     },
     [isCollapsed, setEditState]
@@ -134,22 +153,20 @@ export const LaneHeader = memo(function LaneHeader({
         onDblClick={onDoubleClick}
         className={c('lane-header-wrapper')}
       >
-        <div className={c('lane-grip')} ref={bindHandle}>
-          <GripIcon />
+        <div
+          className={c('lane-title-toggle')}
+          onClick={onTitleClick}
+          title={isEditing(editState) ? undefined : isCollapsed ? 'Expand list' : 'Collapse list'}
+        >
+          <LaneTitle
+            id={lane.id}
+            editState={editState}
+            maxItems={lane.data.maxItems}
+            onChange={onLaneTitleChange}
+            setEditState={setEditState}
+            title={lane.data.title}
+          />
         </div>
-
-        <div onClick={toggleIsCollapsed} className={c('lane-collapse')}>
-          <Icon name="chevron-down" />
-        </div>
-
-        <LaneTitle
-          id={lane.id}
-          editState={editState}
-          maxItems={lane.data.maxItems}
-          onChange={onLaneTitleChange}
-          setEditState={setEditState}
-          title={lane.data.title}
-        />
 
         <LaneLimitCounter
           editState={editState}

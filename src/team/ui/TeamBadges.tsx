@@ -6,6 +6,7 @@ import { Item } from 'src/components/types';
 
 import { parseTeamItemId } from '../ids';
 import { AssigneeModal } from './modals';
+import { Icon } from 'src/components/Icon/Icon';
 
 export function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -104,10 +105,22 @@ export const TeamCardExtras = memo(function TeamCardExtras({
           {info?.laneTitle && <span className={c('team-badge-lane')}>{info.laneTitle}</span>}
         </a>
       )}
-      {!detail && (info?.card.commentCount || 0) > 0 && (
-        <span className={c('comment-count')} title="Comments">
-          💬 {info.card.commentCount}
+      {!detail && (info?.card.unreadComments || 0) > 0 ? (
+        <span
+          className={`${c('comment-count')} is-unread`}
+          title={`${info.card.unreadComments} unread comment${info.card.unreadComments === 1 ? '' : 's'} (${info.card.commentCount} total)`}
+        >
+          <Icon name="lucide-message-square" />
+          {info.card.unreadComments} new
         </span>
+      ) : (
+        !detail &&
+        (info?.card.commentCount || 0) > 0 && (
+          <span className={c('comment-count')} title="Comments (all read)">
+            <Icon name="lucide-message-square" />
+            {info.card.commentCount}
+          </span>
+        )
       )}
       {assignees.length > 0 && (
         <AssigneeChips assignees={assignees} onClick={openPicker} compact={!detail} />

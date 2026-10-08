@@ -29,8 +29,8 @@ import {
   splitFrontmatter,
   tagsIn,
 } from 'src/cardTasks';
-import { moment } from 'obsidian';
 import { Checklist, DuePicker, TagEditor } from './CardChecklist';
+import { PRIORITY_LEVELS, PriorityIcon } from './PriorityIcon';
 import { AttachButton, TeamComments } from 'src/team/ui/CardPanel';
 import { parseTeamItemId } from 'src/team/ids';
 
@@ -94,13 +94,7 @@ function combineTitleAndBody(titleLine: string, body: string) {
   return `${titleLine.trim()}\n${body.trim()}`;
 }
 
-const PRIORITIES: { value: string | null; label: string; icon: string }[] = [
-  { value: null, label: 'None', icon: '' },
-  { value: '4', label: 'Low', icon: '🔽' },
-  { value: '2', label: 'Medium', icon: '🔼' },
-  { value: '1', label: 'High', icon: '⏫' },
-  { value: '0', label: 'Highest', icon: '🔺' },
-];
+const PRIORITIES = PRIORITY_LEVELS;
 
 function Field({ label, children }: { label: string; children: any }) {
   return (
@@ -206,9 +200,9 @@ const CardDetailContent = memo(function CardDetailContent({
     (iso: string | null) => {
       const p = resolvePath();
       const latest = stateManager.state?.children?.[p[0]]?.children?.[p[1]] || currentItem;
-      const fmt = stateManager.getSetting('date-format') || 'YYYY-MM-DD';
+      // Always stored as YYYY-MM-DD so every board (and every teammate) reads it the same way.
       const trigger = stateManager.getSetting('date-trigger') || '@';
-      const value = iso ? moment(iso, 'YYYY-MM-DD').format(fmt) : null;
+      const value = iso || null;
       const newItem = stateManager.updateItemContent(latest, setDueInTitle(latest.data.titleRaw, value, trigger));
       boardModifiers.updateItem(resolvePath(), newItem);
       setCurrentItem(newItem);
@@ -450,7 +444,15 @@ const CardDetailContent = memo(function CardDetailContent({
     onItemUpdate?.(newItem);
   };
 
-  const saveDescription = (description: string) => writeCard(joinCardBody({ ...parts, description }));
+  // Tags or checklist lines typed into the description go to their own sections.
+  const saveDescription = (description: string) => {
+    const typed = splitCardBody(description);
+    const tags = [...parts.tags];
+    for (const t of typed.tags) if (!tags.some((x) => x.toLowerCase() === t.toLowerCase())) tags.push(t);
+    writeCard(
+      joinCardBody({ description: typed.description, tasks: [...parts.tasks, ...typed.tasks], tags })
+    );
+  };
   saveDescriptionRef.current = saveDescription;
 
   const titleTags = tagsIn(splitTitleAndBody(currentItem.data.titleRaw).titleLine).filter(
@@ -676,7 +678,7 @@ const CardDetailContent = memo(function CardDetailContent({
                   title={p.label}
                   onClick={() => setPriority(p.value)}
                 >
-                  {p.icon || '—'}
+                  <PriorityIcon value={p.value} />
                 </button>
               ))}
             </div>

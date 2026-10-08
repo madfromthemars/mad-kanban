@@ -57,7 +57,18 @@ export function hydrateItem(stateManager: StateManager, item: Item) {
   const { dateStr, timeStr, fileAccessor } = item.data.metadata;
 
   if (dateStr) {
-    item.data.metadata.date = moment(dateStr, stateManager.getSetting('date-format'));
+    // Cards can come from boards with another date format (team boards, mirrors), so
+    // try this board's format first, then the standard ones, strictly.
+    const formats = [stateManager.getSetting('date-format'), 'YYYY-MM-DD', 'DD.MM.YYYY'].filter(Boolean);
+    let date: moment.Moment | null = null;
+    for (const f of formats) {
+      const d = moment(dateStr, f, true);
+      if (d.isValid()) {
+        date = d;
+        break;
+      }
+    }
+    item.data.metadata.date = date || moment(dateStr, stateManager.getSetting('date-format'));
   }
 
   if (timeStr) {

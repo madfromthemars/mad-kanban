@@ -104,6 +104,19 @@ function migrate(db) {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS comments_card ON comments(board_id, card_id, created_at);
+    CREATE TABLE IF NOT EXISTS client_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
+      ts INTEGER NOT NULL,
+      received_at INTEGER NOT NULL,
+      level TEXT NOT NULL,
+      context TEXT NOT NULL,
+      message TEXT NOT NULL,
+      stack TEXT,
+      count INTEGER NOT NULL DEFAULT 1,
+      meta TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS client_logs_ts ON client_logs(received_at);
     CREATE TABLE IF NOT EXISTS files (
       id TEXT PRIMARY KEY,
       board_id TEXT NOT NULL,
@@ -114,6 +127,24 @@ function migrate(db) {
       created_at INTEGER NOT NULL
     );
   `);
+  // Per-user read marker for card comments. When the table is first created, everything
+  // already there counts as read so nobody starts with a wall of "new" badges.
+  const hadReads = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='comment_reads'").get();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS comment_reads (
+      user_id TEXT NOT NULL,
+      board_id TEXT NOT NULL,
+      card_id TEXT NOT NULL,
+      last_read_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, board_id, card_id)
+    );
+  `);
+  if (!hadReads) {
+    db.prepare(
+      `INSERT OR IGNORE INTO comment_reads (user_id, board_id, card_id, last_read_at)
+       SELECT u.id, m.board_id, m.card_id, ? FROM users u CROSS JOIN (SELECT DISTINCT board_id, card_id FROM comments) m`
+    ).run(Date.now());
+  }
   const boardCols = db.prepare('PRAGMA table_info(boards)').all().map((c) => c.name);
   if (!boardCols.includes('settings')) {
     db.exec("ALTER TABLE boards ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'");
@@ -261,11 +292,18 @@ export function rowToCard(r) {
     updatedAt: r.updated_at,
     lastMoved: r.last_moved,
     commentCount: r.comment_count || 0,
+    ...(r.unread_comments !== undefined ? { unreadComments: r.unread_comments || 0 } : {}),
   };
 }
 
 const COMMENT_COUNT =
   '(SELECT COUNT(*) FROM comments m WHERE m.board_id = c.board_id AND m.card_id = c.id) AS comment_count';
+
+// Comments by others newer than the user's read marker. Binds (userId, userId).
+const UNREAD_COMMENTS = `(SELECT COUNT(*) FROM comments m
+  WHERE m.board_id = c.board_id AND m.card_id = c.id AND m.user_id != ?
+    AND m.created_at > COALESCE((SELECT r.last_read_at FROM comment_reads r
+      WHERE r.user_id = ? AND r.board_id = c.board_id AND r.card_id = c.id), 0)) AS unread_comments`;
 
 function safeJson(str, fallback) {
   try {
@@ -276,17 +314,24 @@ function safeJson(str, fallback) {
   }
 }
 
-export function getBoardSnapshot(db, boardId) {
+export function getBoardSnapshot(db, boardId, userId = null) {
   const board = getBoardMeta(db, boardId);
   if (!board) return null;
   const lanes = db
     .prepare('SELECT * FROM lanes WHERE board_id = ? ORDER BY position')
     .all(boardId)
     .map(rowToLane);
-  const cards = db
-    .prepare(`SELECT c.*, ${COMMENT_COUNT} FROM cards c WHERE c.board_id = ? ORDER BY c.archived, c.lane_id, c.position`)
-    .all(boardId)
-    .map(rowToCard);
+  const cards = (
+    userId
+      ? db
+          .prepare(
+            `SELECT c.*, ${COMMENT_COUNT}, ${UNREAD_COMMENTS} FROM cards c WHERE c.board_id = ? ORDER BY c.archived, c.lane_id, c.position`
+          )
+          .all(userId, userId, boardId)
+      : db
+          .prepare(`SELECT c.*, ${COMMENT_COUNT} FROM cards c WHERE c.board_id = ? ORDER BY c.archived, c.lane_id, c.position`)
+          .all(boardId)
+  ).map(rowToCard);
   return {
     board,
     lanes,
@@ -300,14 +345,14 @@ export function myCards(db, user) {
   // JSON array membership check; assignees are short lists so LIKE is fine, then verify in JS.
   const rows = db
     .prepare(
-      `SELECT c.*, b.name AS board_name, l.title AS lane_title, ${COMMENT_COUNT}
+      `SELECT c.*, b.name AS board_name, l.title AS lane_title, ${COMMENT_COUNT}, ${UNREAD_COMMENTS}
        FROM cards c
        JOIN boards b ON b.id = c.board_id
        LEFT JOIN lanes l ON l.id = c.lane_id
        WHERE c.archived = 0 AND c.assignees LIKE ?
        ORDER BY b.name, l.position, c.position`
     )
-    .all(`%"${user.id}"%`);
+    .all(user.id, user.id, `%"${user.id}"%`);
   return rows
     .map((r) => ({ ...rowToCard(r), boardName: r.board_name, laneTitle: r.lane_title }))
     .filter((c) => c.assignees.includes(user.id));
@@ -339,6 +384,21 @@ export function addComment(db, user, boardId, cardId, body) {
   return listComments(db, boardId, cardId).find((c) => c.id === id);
 }
 
+/** When the user last read this card's comments (0 = never). */
+export function commentsReadAt(db, user, boardId, cardId) {
+  const r = db
+    .prepare('SELECT last_read_at FROM comment_reads WHERE user_id = ? AND board_id = ? AND card_id = ?')
+    .get(user.id, boardId, cardId);
+  return r ? r.last_read_at : 0;
+}
+
+export function markCommentsRead(db, user, boardId, cardId, at = Date.now()) {
+  db.prepare(
+    `INSERT INTO comment_reads (user_id, board_id, card_id, last_read_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, board_id, card_id) DO UPDATE SET last_read_at = MAX(last_read_at, excluded.last_read_at)`
+  ).run(user.id, boardId, cardId, at);
+}
+
 export function getComment(db, boardId, id) {
   return db.prepare('SELECT * FROM comments WHERE id = ? AND board_id = ?').get(id, boardId) || null;
 }
@@ -366,4 +426,58 @@ export function addFile(db, user, boardId, { id, name, mime, size }) {
 
 export function getFile(db, id) {
   return db.prepare('SELECT * FROM files WHERE id = ?').get(id) || null;
+}
+
+// ---------- client error logs ----------
+
+const LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+function clip(v, n) {
+  return v == null ? null : String(v).slice(0, n);
+}
+
+/** Store error reports sent by a plugin; returns how many were stored. */
+export function addClientLogs(db, user, entries, meta) {
+  const now = Date.now();
+  const ins = db.prepare(
+    `INSERT INTO client_logs (user_id, ts, received_at, level, context, message, stack, count, meta)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  let n = 0;
+  for (const e of entries.slice(0, 100)) {
+    if (!e || typeof e !== 'object' || !e.message) continue;
+    ins.run(
+      user.id,
+      Number(e.ts) || now,
+      now,
+      clip(e.level || 'error', 16),
+      clip(e.context || 'unknown', 120),
+      clip(e.message, 4000),
+      clip(e.stack, 12000),
+      Math.max(1, Math.min(Number(e.count) || 1, 100000)),
+      JSON.stringify({ ...meta, ...(e.meta && typeof e.meta === 'object' ? e.meta : {}) }).slice(0, 4000)
+    );
+    n++;
+  }
+  db.prepare('DELETE FROM client_logs WHERE received_at < ?').run(now - LOG_RETENTION_MS);
+  return n;
+}
+
+export function listClientLogs(db, { since = 0, userId = null, limit = 200 } = {}) {
+  const rows = db
+    .prepare(
+      `SELECT l.*, u.name AS user_name FROM client_logs l LEFT JOIN users u ON u.id = l.user_id
+       WHERE l.received_at >= ? AND (? IS NULL OR l.user_id = ?)
+       ORDER BY l.received_at DESC, l.id DESC LIMIT ?`
+    )
+    .all(since, userId, userId, Math.min(limit, 2000));
+  return rows.map((r) => {
+    let meta = {};
+    try {
+      meta = JSON.parse(r.meta) || {};
+    } catch {
+      /* keep {} */
+    }
+    return { ...r, meta };
+  });
 }

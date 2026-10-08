@@ -29,6 +29,7 @@ import { clearCardCaches } from './components/Item/ItemContent';
 import { TeamManager } from './team/TeamManager';
 import { TagColor } from './components/types';
 import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './tagColors';
+import { ErrorReporter } from './ErrorReporter';
 import { PluginUpdater } from './team/PluginUpdater';
 
 interface WindowRegistry {
@@ -150,6 +151,7 @@ export default class KanbanPlugin extends Plugin {
   }
 
   onunload() {
+    this.errors?.stop();
     this.MarkdownEditor = null;
     this.team?.destroy();
     this.updater?.destroy();
@@ -168,9 +170,22 @@ export default class KanbanPlugin extends Plugin {
   }
 
   MarkdownEditor: any;
+  errors: ErrorReporter;
+
+  /** Record an error in errors.log and send it to the team server. */
+  reportError(context: string, error: unknown, meta?: Record<string, unknown>) {
+    this.errors?.report(context, error, meta);
+  }
+
+  reportWarning(context: string, error: unknown, meta?: Record<string, unknown>) {
+    this.errors?.warn(context, error, meta);
+  }
 
   async onload() {
     await this.loadSettings();
+
+    this.errors = new ErrorReporter(this);
+    await this.errors.start();
 
     this.MarkdownEditor = getEditorClass(this.app);
     this.team = new TeamManager(this);
@@ -782,6 +797,23 @@ export default class KanbanPlugin extends Plugin {
       id: 'check-plugin-updates',
       name: t('Check for plugin updates'),
       callback: () => void this.updater.check(true),
+    });
+
+    this.addCommand({
+      id: 'send-error-report',
+      name: 'Send error report to the team server',
+      callback: async () => {
+        const n = this.errors?.pendingCount ?? 0;
+        await this.errors?.flush();
+        const left = this.errors?.pendingCount ?? 0;
+        new Notice(
+          n === 0
+            ? 'Kanban: no unsent errors'
+            : left === 0
+              ? `Kanban: sent ${n} error report${n === 1 ? '' : 's'}`
+              : `Kanban: could not reach the team server; ${left} report${left === 1 ? '' : 's'} will be sent later`
+        );
+      },
     });
 
     this.addCommand({

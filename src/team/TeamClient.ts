@@ -169,11 +169,22 @@ export class TeamClient {
     });
   }
 
+  sendClientLogs(entries: unknown[], meta: Record<string, unknown>) {
+    return this.request<{ ok: boolean; stored: number }>('POST', '/api/client-logs', { entries, meta });
+  }
+
   comments(boardId: string, cardId: string) {
-    return this.request<{ comments: TeamComment[] }>(
+    return this.request<{ comments: TeamComment[]; lastReadAt?: number }>(
       'GET',
       `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}/comments`
-    ).then((r) => r.comments);
+    ).then((r) => ({ comments: r.comments, lastReadAt: r.lastReadAt ?? 0 }));
+  }
+
+  markCommentsRead(boardId: string, cardId: string) {
+    return this.request<{ ok: boolean }>(
+      'POST',
+      `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}/comments/read`
+    );
   }
 
   addComment(boardId: string, cardId: string, body: string) {

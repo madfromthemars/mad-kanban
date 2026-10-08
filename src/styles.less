@@ -3971,3 +3971,169 @@ div.kanban-plugin__lane-title-count {
   border-radius: 999px;
   padding: 0 10px;
 }
+
+/* List name toggles collapse */
+.kanban-plugin__lane-title-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+
+  &:hover .kanban-plugin__lane-title-text {
+    color: var(--text-accent);
+  }
+}
+
+.kanban-plugin__lane-header-wrapper {
+  padding-left: 12px;
+}
+
+/* Line icons instead of emoji */
+.kanban-plugin {
+  --kb-prio-highest: var(--color-red, #e5484d);
+  --kb-prio-high: var(--color-orange, #f59e0b);
+  --kb-prio-medium: var(--color-yellow, #d4a72c);
+  --kb-prio-low: var(--color-blue, #3b82f6);
+}
+
+.kanban-plugin__priority-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  --icon-size: 16px;
+  --icon-stroke: 2.5px;
+  color: var(--text-faint);
+
+  svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+    stroke-width: var(--icon-stroke);
+  }
+
+  &.is-highest {
+    color: var(--kb-prio-highest);
+  }
+
+  &.is-high {
+    color: var(--kb-prio-high);
+  }
+
+  &.is-medium {
+    color: var(--kb-prio-medium);
+  }
+
+  &.is-low {
+    color: var(--kb-prio-low);
+  }
+}
+
+/* Card window: the selected priority keeps its color on a tinted background */
+.kanban-plugin__cd-priority button.is-active {
+  background: var(--background-modifier-hover);
+  box-shadow: inset 0 0 0 1.5px var(--interactive-accent);
+}
+
+.kanban-plugin__cd-priority button.is-active .kanban-plugin__priority-icon.is-none {
+  color: var(--text-normal);
+}
+
+/* Board card corner */
+.kanban-plugin__item .kanban-plugin__priority-button .kanban-plugin__priority-icon {
+  --icon-size: 15px;
+}
+
+/* Filter panel */
+.kanban-plugin__segmented .kanban-plugin__priority-icon {
+  --icon-size: 14px;
+}
+
+/* Comment count and attach buttons */
+.kanban-plugin__comment-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+
+  .kanban-plugin__icon {
+    --icon-size: 12px;
+    display: inline-flex;
+  }
+}
+
+.kanban-plugin__attach-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  .kanban-plugin__icon {
+    --icon-size: 14px;
+    display: inline-flex;
+  }
+}
+
+/* Assignee picker check */
+.kanban-plugin__assignee-suggestion {
+  display: flex;
+  align-items: center;
+}
+
+.kanban-plugin__assignee-check {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--interactive-accent);
+}
+
+.kanban-plugin__priority-icon svg,
+.modal .kanban-plugin__priority-icon svg {
+  color: inherit;
+}
+
+.kanban-plugin__card-detail-content .kanban-plugin__cd-priority button {
+  .kanban-plugin__priority-icon.is-highest {
+    color: var(--kb-prio-highest, #e5484d);
+  }
+
+  .kanban-plugin__priority-icon.is-high {
+    color: var(--kb-prio-high, #f59e0b);
+  }
+
+  .kanban-plugin__priority-icon.is-medium {
+    color: var(--kb-prio-medium, #d4a72c);
+  }
+
+  .kanban-plugin__priority-icon.is-low {
+    color: var(--kb-prio-low, #3b82f6);
+  }
+}
+
+/* Unread comments */
+.kanban-plugin__comment-count.is-unread {
+  position: relative;
+  padding: 1px 7px 1px 5px;
+  border-radius: 999px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+
+  .kanban-plugin__icon {
+    color: var(--text-on-accent);
+  }
+}
+
+.kanban-plugin__comment.is-new .kanban-plugin__comment-main {
+  background: hsla(var(--interactive-accent-hsl), 0.1);
+  box-shadow: inset 3px 0 0 var(--interactive-accent);
+}
+
+.kanban-plugin__comment-new {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
