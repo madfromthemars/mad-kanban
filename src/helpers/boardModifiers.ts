@@ -14,6 +14,7 @@ import {
 } from 'src/dnd/util/data';
 
 import { generateInstanceId } from '../components/helpers';
+import { laneKey } from 'src/team/laneKey';
 import { Board, DataTypes, Item, Lane } from '../components/types';
 
 export interface BoardModifiers {
@@ -152,6 +153,14 @@ export function getBoardModifiers(view: KanbanView, stateManager: StateManager):
         const lane = getEntityFromPath(boardData, path);
         const items = lane.children;
 
+        const archiveLane = boardData.children.findIndex((l) => laneKey(l.data.title) === 'archive');
+        if (archiveLane >= 0 && path[0] !== archiveLane) {
+          const emptied = updateEntity(boardData, path, { children: { $set: [] } });
+          return update(emptied, {
+            children: { [archiveLane]: { children: { $unshift: items } } },
+          });
+        }
+
         try {
           return update(
             updateEntity(boardData, path, {
@@ -211,6 +220,11 @@ export function getBoardModifiers(view: KanbanView, stateManager: StateManager):
     archiveItem: (path: Path) => {
       stateManager.setState((boardData) => {
         const item = getEntityFromPath(boardData, path);
+        // Boards have an Archive list: archiving moves the card there.
+        const archiveLane = boardData.children.findIndex((l) => laneKey(l.data.title) === 'archive');
+        if (archiveLane >= 0 && path[0] !== archiveLane) {
+          return insertEntity(removeEntity(boardData, path), [archiveLane, 0], [item]);
+        }
         try {
           return update(removeEntity(boardData, path), {
             data: {

@@ -6,6 +6,7 @@ import { WebSocketServer } from 'ws';
 
 import {
   addClientLogs,
+  editComment,
   commentsReadAt,
   markCommentsRead,
   listClientLogs,
@@ -60,7 +61,7 @@ function send(res, status, body) {
     'Content-Length': Buffer.byteLength(data),
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   });
   res.end(data);
 }
@@ -330,7 +331,14 @@ route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
   const text = String(body.body || '').trim();
   if (!text) throw new OpError(400, 'comment is empty');
   if (text.length > 20000) throw new OpError(400, 'comment is too long');
-  const comment = addComment(db, user, board.id, params.cardId, text);
+  // A reply must point at a comment on the same card.
+  let replyTo = null;
+  if (body.replyTo) {
+    const parent = getComment(db, board.id, String(body.replyTo));
+    if (!parent || parent.card_id !== params.cardId) throw new OpError(400, 'the comment you replied to is gone');
+    replyTo = parent.id;
+  }
+  const comment = addComment(db, user, board.id, params.cardId, text, replyTo);
   markCommentsRead(db, user, board.id, params.cardId);
   broadcast({ type: 'comments.changed', boardId: board.id, cardId: params.cardId, ts: Date.now() });
   notifyBoardChanged(getBoardMeta(db, board.id), {
@@ -338,6 +346,27 @@ route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
     cards: [params.cardId],
   });
   return { comment };
+});
+route('PATCH', '/api/boards/:id/comments/:commentId', async (req, params) => {
+  const user = requireUser(req);
+  const board = requireBoard(user, params.id);
+  const c = getComment(db, board.id, params.commentId);
+  if (!c) throw new OpError(404, 'comment not found');
+  if (c.user_id !== user.id) throw new OpError(403, 'you can only edit your own comments');
+  const body = await readJson(req);
+  const text = String(body.body || '').trim();
+  if (!text) throw new OpError(400, 'comment is empty');
+  if (text.length > 20000) throw new OpError(400, 'comment is too long');
+  if (text !== c.body) {
+    editComment(db, board.id, c.id, text);
+    markCommentsRead(db, user, board.id, c.card_id);
+    broadcast({ type: 'comments.changed', boardId: board.id, cardId: c.card_id, ts: Date.now() });
+    notifyBoardChanged(getBoardMeta(db, board.id), {
+      users: cardAssignees(db, board.id, c.card_id),
+      cards: [c.card_id],
+    });
+  }
+  return { comment: listComments(db, board.id, c.card_id).find((x) => x.id === c.id) };
 });
 route('DELETE', '/api/boards/:id/comments/:commentId', (req, params) => {
   const user = requireUser(req);
@@ -490,7 +519,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Filename',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     });
     res.end();
     return;

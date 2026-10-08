@@ -8,8 +8,8 @@ import { lableToName } from 'src/parsers/helpers/inlineMetadata';
 
 import { anyToString } from '../Item/MetadataTable';
 import { KanbanContext } from '../context';
-import { c, generateInstanceId } from '../helpers';
-import { EditState, Lane, LaneSort, LaneTemplate } from '../types';
+import { c } from '../helpers';
+import { EditState, Lane, LaneSort } from '../types';
 
 export type LaneAction = 'delete' | 'archive' | 'archive-items' | null;
 
@@ -88,68 +88,13 @@ export function useSettingsMenu({ setEditState, path, lane }: UseSettingsMenuPar
       if (!canSortTags && item.data.metadata.tags?.length) canSortTags = true;
     });
 
+    // Lists are fixed (To Do / In Progress / Done), so they can't be renamed, added or removed.
     const menu = new Menu()
-      .addItem((item) => {
-        item
-          .setIcon('lucide-edit-3')
-          .setTitle(t('Edit list'))
-          .onClick(() => setEditState({ x: 0, y: 0 }));
-      })
       .addItem((item) => {
         item
           .setIcon('lucide-archive')
           .setTitle(t('Archive cards'))
           .onClick(() => setConfirmAction('archive-items'));
-      })
-      .addSeparator()
-      .addItem((i) => {
-        i.setIcon('arrow-left-to-line')
-          .setTitle(t('Insert list before'))
-          .onClick(() =>
-            boardModifiers.insertLane(path, {
-              ...LaneTemplate,
-              id: generateInstanceId(),
-              children: [],
-              data: {
-                title: '',
-                shouldMarkItemsComplete: false,
-                forceEditMode: true,
-              },
-            })
-          );
-      })
-      .addItem((i) => {
-        i.setIcon('arrow-right-to-line')
-          .setTitle(t('Insert list after'))
-          .onClick(() => {
-            const newPath = [...path];
-
-            newPath[newPath.length - 1] = newPath[newPath.length - 1] + 1;
-
-            boardModifiers.insertLane(newPath, {
-              ...LaneTemplate,
-              id: generateInstanceId(),
-              children: [],
-              data: {
-                title: '',
-                shouldMarkItemsComplete: false,
-                forceEditMode: true,
-              },
-            });
-          });
-      })
-      .addSeparator()
-      .addItem((item) => {
-        item
-          .setIcon('lucide-archive')
-          .setTitle(t('Archive list'))
-          .onClick(() => setConfirmAction('archive'));
-      })
-      .addItem((item) => {
-        item
-          .setIcon('lucide-trash-2')
-          .setTitle(t('Delete list'))
-          .onClick(() => setConfirmAction('delete'));
       })
       .addSeparator();
 

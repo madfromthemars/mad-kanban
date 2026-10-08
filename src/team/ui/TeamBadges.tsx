@@ -113,6 +113,14 @@ export const TeamCardExtras = memo(function TeamCardExtras({
           <Icon name="lucide-message-square" />
           {info.card.unreadComments} new
         </span>
+      ) : !detail && (info?.card.editedComments || 0) > 0 ? (
+        <span
+          className={`${c('comment-count')} is-unread is-edited`}
+          title={`${info.card.editedComments} comment${info.card.editedComments === 1 ? ' was' : 's were'} edited since you read ${info.card.editedComments === 1 ? 'it' : 'them'}`}
+        >
+          <Icon name="lucide-message-square" />
+          {info.card.editedComments} edited
+        </span>
       ) : (
         !detail &&
         (info?.card.commentCount || 0) > 0 && (

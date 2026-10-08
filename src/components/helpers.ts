@@ -14,7 +14,7 @@ import {
 } from 'src/parsers/helpers/inlineMetadata';
 
 import { extractCardTitle } from 'src/kanbanFileHelpers';
-import { DateFilterType, FilterContextProps, FilterState, PriorityFilterType, SearchContextProps, StatusFilterType } from './context';
+import { DateFilterType, EMPTY_FILTERS, FilterContextProps, FilterState, PriorityFilterType, SearchContextProps } from './context';
 import { Board, DataKey, Item, Lane, PageData, TagColor } from './types';
 
 export const baseClassName = 'kanban-plugin';
@@ -35,6 +35,13 @@ function extractTagsFromText(text: string, tagSet: Set<string>) {
 }
 
 /** Collect all tag names from an item's metadata, title fields, and optional card body cache. */
+/** Tags of one card (same rules as the tag filter). */
+export function collectItemTagsForFilter(item: Item, cardBodyCache?: Map<string, string>, boardPath?: string) {
+  const set = new Set<string>();
+  collectItemTags(item, set, cardBodyCache, boardPath);
+  return [...set];
+}
+
 export function collectItemTags(
   item: Item,
   tagSet: Set<string>,
@@ -408,6 +415,38 @@ export function groupItemsByTag(
   return result;
 }
 
+export function priorityKey(p: string | undefined): PriorityFilterType {
+  switch (p) {
+    case Priority.Highest:
+      return 'highest';
+    case Priority.High:
+      return 'high';
+    case Priority.Medium:
+      return 'medium';
+    case Priority.Low:
+      return 'low';
+    default:
+      return 'none';
+  }
+}
+
+/** The single due bucket a card falls in ('week' is checked separately, it overlaps 'today'). */
+export function dueKeyOf(item: Item): DateFilterType | null {
+  const d = item.data.metadata?.date;
+  if (!d || !d.isValid?.()) return 'no-date';
+  const today = moment().startOf('day');
+  if (d.isBefore(today, 'day')) return 'overdue';
+  if (d.isSame(today, 'day')) return 'today';
+  return null;
+}
+
+export function isDueThisWeek(item: Item) {
+  const d = item.data.metadata?.date;
+  if (!d || !d.isValid?.()) return false;
+  const today = moment().startOf('day');
+  return d.isBetween(today, moment().add(7, 'days'), 'day', '[]');
+}
+
 // Check if an item matches the current filters
 export function itemMatchesFilters(
   item: Item,
@@ -417,45 +456,19 @@ export function itemMatchesFilters(
   getAssignees?: (item: Item) => string[] | null,
   meId?: string | null
 ): boolean {
-  // Assignee filter (team cards; other cards count as unassigned)
-  if (filters.assignee && filters.assignee !== 'all') {
+  // Assignees (team cards; other cards count as unassigned)
+  if (filters.assignees.length) {
     const assignees = getAssignees?.(item) || [];
-    if (filters.assignee === 'unassigned') {
-      if (assignees.length) return false;
-    } else {
-      const who = filters.assignee === 'me' ? meId : filters.assignee;
-      if (!who || !assignees.includes(who)) return false;
-    }
+    const ok = filters.assignees.some((a) =>
+      a === 'unassigned' ? assignees.length === 0 : assignees.includes(a === 'me' ? meId : a)
+    );
+    if (!ok) return false;
   }
 
-  // Status filter
-  if (filters.statusFilter === 'complete' && !item.data.checked) {
+  if (filters.hideChecked && item.data.checked) return false;
+
+  if (filters.priorities.length && !filters.priorities.includes(priorityKey(item.data.metadata.priority))) {
     return false;
-  }
-  if (filters.statusFilter === 'incomplete' && item.data.checked) {
-    return false;
-  }
-
-  // Priority filter
-  if (filters.priorityFilter !== 'all') {
-    const itemPriority = item.data.metadata.priority;
-    const priorityFilterMap: Record<string, string> = {
-      highest: Priority.Highest,
-      high: Priority.High,
-      medium: Priority.Medium,
-      low: Priority.Low,
-    };
-
-    if (filters.priorityFilter === 'none') {
-      if (itemPriority && itemPriority !== Priority.None) {
-        return false;
-      }
-    } else {
-      const expectedValue = priorityFilterMap[filters.priorityFilter];
-      if (itemPriority !== expectedValue) {
-        return false;
-      }
-    }
   }
 
   // Tag filter
@@ -469,33 +482,9 @@ export function itemMatchesFilters(
     }
   }
 
-  // Date filter
-  if (filters.dateFilter !== 'all') {
-    const itemDate = item.data.metadata?.date;
-    const today = moment().startOf('day');
-
-    switch (filters.dateFilter) {
-      case 'today':
-        if (!itemDate || !itemDate.isSame(today, 'day')) {
-          return false;
-        }
-        break;
-      case 'week':
-        if (!itemDate || !itemDate.isBetween(today, moment().add(7, 'days'), 'day', '[]')) {
-          return false;
-        }
-        break;
-      case 'overdue':
-        if (!itemDate || !itemDate.isBefore(today, 'day')) {
-          return false;
-        }
-        break;
-      case 'no-date':
-        if (itemDate) {
-          return false;
-        }
-        break;
-    }
+  // Due date
+  if (filters.dates.length && !filters.dates.includes(dueKeyOf(item)) && !(filters.dates.includes('week') && isDueThisWeek(item))) {
+    return false;
   }
 
   return true;
@@ -509,13 +498,25 @@ export function useFilterValue(
   getAssignees?: (item: Item) => string[] | null,
   meId?: string | null
 ): FilterContextProps {
-  const [filters, setFilters] = useState<FilterState>({
-    tags: [],
-    dateFilter: 'all',
-    statusFilter: 'all',
-    priorityFilter: 'all',
-    assignee: 'all',
+  // Filters are remembered per board on this device.
+  const storageKey = boardPath ? `kanban-filters:${boardPath}` : null;
+  const [filters, setFilters] = useState<FilterState>(() => {
+    try {
+      const saved = storageKey ? window.localStorage.getItem(storageKey) : null;
+      if (saved) return { ...EMPTY_FILTERS, ...JSON.parse(saved) };
+    } catch {
+      /* ignore */
+    }
+    return EMPTY_FILTERS;
   });
+
+  useEffect(() => {
+    try {
+      if (storageKey) window.localStorage.setItem(storageKey, JSON.stringify(filters));
+    } catch {
+      /* ignore */
+    }
+  }, [filters, storageKey]);
 
   // Track cache size to trigger re-extraction when items load their content
   const [cacheSize, setCacheSize] = useState(cardBodyCache?.size || 0);
@@ -570,42 +571,18 @@ export function useFilterValue(
     return prevTagsRef.current;
   }, [board, cardBodyCache, boardPath, cacheSize]);
 
-  const setTagFilter = useCallback((tags: string[]) => {
-    setFilters((prev) => ({ ...prev, tags }));
+  const updateFilters = useCallback((patch: Partial<FilterState>) => {
+    setFilters((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const setDateFilter = useCallback((dateFilter: DateFilterType) => {
-    setFilters((prev) => ({ ...prev, dateFilter }));
-  }, []);
-
-  const setStatusFilter = useCallback((statusFilter: StatusFilterType) => {
-    setFilters((prev) => ({ ...prev, statusFilter }));
-  }, []);
-
-  const setPriorityFilter = useCallback((priorityFilter: PriorityFilterType) => {
-    setFilters((prev) => ({ ...prev, priorityFilter }));
-  }, []);
-
-  const setAssigneeFilter = useCallback((assignee: string) => {
-    setFilters((prev) => ({ ...prev, assignee }));
-  }, []);
-
-  const clearFilters = useCallback(() => {
-    setFilters({
-      tags: [],
-      dateFilter: 'all',
-      statusFilter: 'all',
-      priorityFilter: 'all',
-      assignee: 'all',
-    });
-  }, []);
+  const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
 
   const hasActiveFilters =
     filters.tags.length > 0 ||
-    filters.dateFilter !== 'all' ||
-    filters.statusFilter !== 'all' ||
-    filters.priorityFilter !== 'all' ||
-    filters.assignee !== 'all';
+    filters.dates.length > 0 ||
+    filters.priorities.length > 0 ||
+    filters.assignees.length > 0 ||
+    filters.hideChecked;
 
   // Tag grouping state
   const [isGroupingByTag, setGroupingByTag] = useState(false);
@@ -626,11 +603,7 @@ export function useFilterValue(
   return {
     filters,
     availableTags,
-    setTagFilter,
-    setDateFilter,
-    setStatusFilter,
-    setPriorityFilter,
-    setAssigneeFilter,
+    updateFilters,
     getAssignees,
     meId,
     clearFilters,

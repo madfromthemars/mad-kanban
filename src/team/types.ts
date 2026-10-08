@@ -39,6 +39,8 @@ export interface TeamCard {
   commentCount?: number;
   /** Comments by others the current user hasn't read yet */
   unreadComments?: number;
+  /** Comments by others edited since the current user last read them */
+  editedComments?: number;
 }
 
 export interface TeamComment {
@@ -49,6 +51,10 @@ export interface TeamComment {
   body: string;
   createdAt: number;
   updatedAt: number;
+  /** Id of the comment this one replies to */
+  replyTo?: string | null;
+  /** Set when the author edited the comment */
+  editedAt?: number | null;
 }
 
 export interface UploadedFile {

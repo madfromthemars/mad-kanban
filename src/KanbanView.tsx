@@ -464,7 +464,8 @@ export class KanbanView extends TextFileView implements HoverParent {
       delete this.actionButtons['show-archive-all'];
     }
 
-    if (stateManager.getSetting('show-add-list') && !this.actionButtons['show-add-list']) {
+    // Lists are fixed, so the "Add a list" header button is never shown.
+    if (false && stateManager.getSetting('show-add-list') && !this.actionButtons['show-add-list']) {
       const btn = this.addAction('lucide-plus-circle', t('Add a list'), () => {
         this.emitter.emit('showLaneForm', undefined);
       });

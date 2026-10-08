@@ -10,6 +10,7 @@ const SYNONYMS = {
     'tekshiruvda', 'tekshirish'],
   done: ['done', 'complete', 'completed', 'finished', 'closed', 'готово', 'сделано', 'выполнено', 'завершено',
     'закрыто', 'tayyor', 'bajarildi', 'tugallandi'],
+  archive: ['archive', 'archived', 'архив', 'в архиве', 'arxiv', 'arxivlangan'],
 };
 
 function squash(s) {

@@ -302,7 +302,7 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   }, A);
   assert.equal(dup.status, 409, JSON.stringify(dup.json));
   const after = (await api('GET', `/api/boards/${dId}`, null, A)).json.board;
-  assert.equal(after.lanes.length, 3);
+  assert.equal(after.lanes.length, 4);
   assert.equal(after.cards.length, 3);
   // duplicating a single card is still fine
   const one = await api('POST', `/api/boards/${dId}/ops`, {
@@ -328,6 +328,31 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, { body: 'third' }, B);
   assert.equal((await unreadOf(A)).unreadComments, 1);
 
+  // replies
+  const parent = (await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, { body: 'question?' }, A)).json.comment;
+  const reply = await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, { body: 'answer', replyTo: parent.id }, B);
+  assert.equal(reply.json.comment.replyTo, parent.id, JSON.stringify(reply.json));
+  const badReply = await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, { body: 'x', replyTo: 'nope123456' }, B);
+  assert.equal(badReply.status, 400);
+  const listed = (await api('GET', `/api/boards/${ub.board.id}/cards/unreadcard1/comments`, null, A)).json.comments;
+  assert.equal(listed.find((c) => c.body === 'answer').replyTo, parent.id);
+
+  // editing: only the author; others see it as edited until they read it
+  await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments/read`, null, A);
+  assert.equal((await unreadOf(A)).editedComments, 0);
+  const notMine = await api('PATCH', `/api/boards/${ub.board.id}/comments/${parent.id}`, { body: 'hacked' }, B);
+  assert.equal(notMine.status, 403);
+  const replyId = listed.find((c) => c.body === 'answer').id;
+  const ed = await api('PATCH', `/api/boards/${ub.board.id}/comments/${replyId}`, { body: 'answer (fixed)' }, B);
+  assert.equal(ed.json.comment.body, 'answer (fixed)', JSON.stringify(ed.json));
+  assert.ok(ed.json.comment.editedAt > 0);
+  const afterEdit = await unreadOf(A);
+  assert.equal(afterEdit.editedComments, 1);
+  assert.equal(afterEdit.unreadComments, 0);
+  assert.equal((await unreadOf(B)).editedComments, 0, 'own edits are not news');
+  await api('POST', `/api/boards/${ub.board.id}/cards/unreadcard1/comments/read`, null, A);
+  assert.equal((await unreadOf(A)).editedComments, 0);
+
   // plugin error reports
   const rep = await api('POST', '/api/client-logs', {
     meta: { pluginVersion: '9.9.9', platform: 'test' },
@@ -341,7 +366,7 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   assert.equal((await api('GET', '/api/admin/client-logs', null, A)).status, 403);
 
   // default lanes
-  assert.deepEqual(d.json.board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done']);
+  assert.deepEqual(d.json.board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done', 'Archive']);
 
   ws.close();
 });

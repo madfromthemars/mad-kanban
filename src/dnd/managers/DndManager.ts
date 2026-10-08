@@ -25,6 +25,16 @@ export class DndManager {
 
     this.resizeObserver = new ResizeObserver(debounce(this.handleResize, 100, true));
     this.dragManager = new DragManager(win, this.emitter, this.hitboxEntities, this.scrollEntities);
+
+    this.emitter.on('zoneDrop', ({ dragEntity, zone }: { dragEntity: Entity; zone: string }) => {
+      const zoneEntity = {
+        scopeId: dragEntity.scopeId,
+        entityId: `${dragEntity.scopeId}-${zone}`,
+        getPath: (): number[] => [],
+        getData: () => ({ type: zone, win: dragEntity.getData().win }),
+      } as unknown as Entity;
+      this.onDrop(dragEntity, zoneEntity);
+    });
   }
 
   destroy() {

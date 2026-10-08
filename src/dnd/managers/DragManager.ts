@@ -118,6 +118,12 @@ export class DragManager {
     this.dragPosition = { x: e.pageX, y: e.pageY };
     this.emitter.emit('dragMove', this.getDragEventData());
     this.calculateDragIntersect();
+    // Highlight a drop zone (e.g. Delete) under the card; hover styles are off while dragging.
+    const over = this.dragEntity ? findDropZoneEl(this.win, e, this.dragEntity) : null;
+    this.win.document.querySelectorAll('[data-kanban-zone].is-over').forEach((el) => {
+      if (el !== over) el.removeClass('is-over');
+    });
+    over?.addClass('is-over');
   }
 
   dragMoveHTML(e: DragEvent) {
@@ -128,7 +134,14 @@ export class DragManager {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   dragEnd(e: PointerEvent) {
+    this.win.document.querySelectorAll('[data-kanban-zone].is-over').forEach((el) => el.removeClass('is-over'));
+    // Dropping a card on the board's Archive / Delete zone is decided by what's under the
+    // pointer (those zones sit outside the list sorting), so the card isn't sorted anywhere.
+    const zone = this.dragEntity ? findDropZone(this.win, e, this.dragEntity) : null;
+    if (zone) this.primaryIntersection = undefined;
+    const dragEntity = this.dragEntity;
     this.emitter.emit('dragEnd', this.getDragEventData());
+    if (zone && dragEntity) this.emitter.emit('zoneDrop', { dragEntity, zone });
     this.dragEntityMargin = undefined;
     this.dragEntity = undefined;
     this.dragEntityId = undefined;
@@ -509,4 +522,24 @@ export function createHTMLDndHandlers(stateManager: StateManager) {
     onDragOver,
     onDrop,
   };
+}
+
+/** The drop zone element (e.g. Delete) of the dragged card's own board under the pointer. */
+function findDropZoneEl(win: Window, e: PointerEvent, dragEntity: Entity): HTMLElement | null {
+  if (dragEntity.scopeId === 'htmldnd' || dragEntity.getData?.()?.type !== 'item') return null;
+  const file = dragEntity.scopeId.split(':::')[1];
+  // Hit-test by geometry: during a drag the board turns pointer events off.
+  const zones = win.document.querySelectorAll<HTMLElement>('[data-kanban-zone]');
+  for (const zone of Array.from(zones)) {
+    if (zone.dataset.kanbanZoneFile !== file) continue;
+    const r = zone.getBoundingClientRect();
+    if (r.width && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+      return zone;
+    }
+  }
+  return null;
+}
+
+function findDropZone(win: Window, e: PointerEvent, dragEntity: Entity): string | null {
+  return findDropZoneEl(win, e, dragEntity)?.dataset.kanbanZone ?? null;
 }

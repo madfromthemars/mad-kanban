@@ -31,7 +31,9 @@ import {
 } from 'src/cardTasks';
 import { Checklist, DuePicker, TagEditor } from './CardChecklist';
 import { PRIORITY_LEVELS, PriorityIcon } from './PriorityIcon';
-import { AttachButton, TeamComments } from 'src/team/ui/CardPanel';
+import { cardWindowEscape, copyInlineCode } from '../copyOnClick';
+import { AttachButton, TeamComments, mediaFilesOf, saveMediaToVault, uploadMedia } from 'src/team/ui/CardPanel';
+import { LocalAttachButton } from './CardChecklist';
 import { parseTeamItemId } from 'src/team/ids';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
@@ -385,6 +387,8 @@ const CardDetailContent = memo(function CardDetailContent({
     (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.hasClass('task-list-item-checkbox')) return;
+      // Double-clicking a copyable `code` chip shouldn't open the editor.
+      if (target.closest('code') && !target.closest('pre')) return;
       if (target.closest('a') && !target.instanceOf(HTMLImageElement)) return;
       if (target.instanceOf(HTMLImageElement) || target.closest('video')) {
         // Media fills the line, so there is no text position under the pointer.
@@ -400,6 +404,7 @@ const CardDetailContent = memo(function CardDetailContent({
   );
 
   const onImageClick = useCallback((e: MouseEvent) => {
+    if (copyInlineCode(e)) return;
     const target = e.target as HTMLElement;
     if (target.instanceOf(HTMLImageElement)) {
       e.preventDefault();
@@ -445,6 +450,27 @@ const CardDetailContent = memo(function CardDetailContent({
   };
 
   // Tags or checklist lines typed into the description go to their own sections.
+  // Images/videos go into the description: uploaded to the server on team cards, saved in the vault otherwise.
+  const addMedia = (md: string) => saveDescription(parts.description ? `${parts.description}\n\n${md}` : md);
+
+  const onEditorPaste = (e: ClipboardEvent, cm: EditorView) => {
+    const files = mediaFilesOf(e.clipboardData);
+    if (!files.length) return;
+    e.preventDefault();
+    const team = stateManager.plugin?.team;
+    const work = teamIds
+      ? uploadMedia(team, teamIds.boardId, files)
+      : saveMediaToVault(stateManager.app, cardFilePath || stateManager.file.path, files);
+    void work.then((md) => {
+      if (!md.length) return;
+      // Put media on its own line.
+      const sel = cm.state.selection.main;
+      const line = cm.state.doc.lineAt(sel.from);
+      const prefix = sel.from > line.from ? '\n' : '';
+      cm.dispatch(cm.state.replaceSelection(prefix + md.join('\n') + '\n'));
+    });
+  };
+
   const saveDescription = (description: string) => {
     const typed = splitCardBody(description);
     const tags = [...parts.tags];
@@ -600,6 +626,7 @@ const CardDetailContent = memo(function CardDetailContent({
                 <MarkdownEditor
                   editState={editState}
                   className={c('item-input')}
+                  onPaste={onEditorPaste}
                   onEnter={onEnter}
                   onEscape={onEscape}
                   onSubmit={onSubmit}
@@ -706,11 +733,13 @@ const CardDetailContent = memo(function CardDetailContent({
             </Field>
           )}
 
-          {teamIds && (
-            <Field label="Attachments">
-              <AttachButton boardId={teamIds.boardId} onUploaded={appendToCard} label="Add image or video" />
-            </Field>
-          )}
+          <Field label="Attachments">
+            {teamIds ? (
+              <AttachButton boardId={teamIds.boardId} onUploaded={addMedia} label="Add image or video" />
+            ) : (
+              <LocalAttachButton sourcePath={cardFilePath || stateManager.file.path} onSaved={addMedia} />
+            )}
+          </Field>
 
           {cardFilePath && (
             <Field label="Note">
@@ -767,6 +796,7 @@ export class CardDetailModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('kanban-plugin__card-detail-modal');
+
     this.modalEl.addClass('kanban-plugin__card-detail-window');
 
     render(
@@ -778,6 +808,17 @@ export class CardDetailModal extends Modal {
       </KanbanContext.Provider>,
       contentEl
     );
+  }
+
+  close() {
+    // Escape first goes to parts of the window that use it (e.g. cancelling a comment reply).
+    const ev = (activeWindow as any).event as Event | undefined;
+    if (ev?.type === 'keydown' && (ev as KeyboardEvent).key === 'Escape') {
+      for (let i = cardWindowEscape.length - 1; i >= 0; i--) {
+        if (cardWindowEscape[i]()) return;
+      }
+    }
+    super.close();
   }
 
   onClose() {

@@ -31,7 +31,7 @@ import { c, generateInstanceId } from '../helpers';
 import { DataTypes, EditState, EditingState, Item, Lane } from '../types';
 import { laneKey } from 'src/team/laneKey';
 
-const STATUS_KEYS = new Set(['todo', 'inprogress', 'review', 'done']);
+const STATUS_KEYS = new Set(['todo', 'inprogress', 'review', 'done', 'archive']);
 
 /** Status family of a list (for its colored dot), based on the same synonyms team boards match on. */
 function laneStatus(title: string) {

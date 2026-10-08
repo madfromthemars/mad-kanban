@@ -21,10 +21,13 @@ export interface LaneTitleProps {
 export function LaneLimitCounter({
   maxItems,
   itemCount,
+  visibleCount,
   editState,
 }: {
   maxItems: number;
   itemCount: number;
+  /** Cards shown while filters are on (null = not filtering) */
+  visibleCount?: number | null;
   editState: EditState;
 }) {
   const { stateManager } = useContext(KanbanContext);
@@ -41,8 +44,16 @@ export function LaneLimitCounter({
         },
       ])}
     >
-      {itemCount}
-      {maxItems > 0 && (
+      {visibleCount != null && visibleCount !== itemCount ? (
+        <span className={c('lane-title-count-filtered')} title={`${visibleCount} of ${itemCount} cards match the filters`}>
+          {visibleCount}
+          <span className={c('lane-title-count-separator')}>/</span>
+          {itemCount}
+        </span>
+      ) : (
+        itemCount
+      )}
+      {maxItems > 0 && visibleCount == null && (
         <>
           <span className={c('lane-title-count-separator')}>/</span>
           <span className={c('lane-title-count-limit')}>{maxItems}</span>

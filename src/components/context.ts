@@ -15,27 +15,31 @@ export interface KanbanContextProps {
 
 export const KanbanContext = createContext<KanbanContextProps>(null);
 
-export type DateFilterType = 'all' | 'today' | 'week' | 'overdue' | 'no-date';
-export type StatusFilterType = 'all' | 'complete' | 'incomplete';
-export type PriorityFilterType = 'all' | 'highest' | 'high' | 'medium' | 'low' | 'none';
+export type DateFilterType = 'overdue' | 'today' | 'week' | 'no-date';
+export type PriorityFilterType = 'highest' | 'high' | 'medium' | 'low' | 'none';
 
+/** Each list is OR-ed inside itself; the lists are AND-ed together. Empty = no filter. */
 export interface FilterState {
   tags: string[];
-  dateFilter: DateFilterType;
-  statusFilter: StatusFilterType;
-  priorityFilter: PriorityFilterType;
-  /** 'all' | 'me' | 'unassigned' | a team user id */
-  assignee: string;
+  dates: DateFilterType[];
+  priorities: PriorityFilterType[];
+  /** 'me' | 'unassigned' | team user ids */
+  assignees: string[];
+  hideChecked: boolean;
 }
+
+export const EMPTY_FILTERS: FilterState = {
+  tags: [],
+  dates: [],
+  priorities: [],
+  assignees: [],
+  hideChecked: false,
+};
 
 export interface FilterContextProps {
   filters: FilterState;
   availableTags: string[];
-  setTagFilter: (tags: string[]) => void;
-  setDateFilter: (filter: DateFilterType) => void;
-  setStatusFilter: (filter: StatusFilterType) => void;
-  setPriorityFilter: (filter: PriorityFilterType) => void;
-  setAssigneeFilter: (assignee: string) => void;
+  updateFilters: (patch: Partial<FilterState>) => void;
   /** Assignees of a team card, or null for a card that isn't a team card. */
   getAssignees?: (item: Item) => string[] | null;
   meId?: string | null;

@@ -1,3 +1,4 @@
+import { laneKey } from './lanes.js';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
@@ -149,6 +150,27 @@ function migrate(db) {
   if (!boardCols.includes('settings')) {
     db.exec("ALTER TABLE boards ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'");
   }
+  // Every board has an Archive list after Done (added once to boards created before it existed).
+  db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)');
+  if (!db.prepare("SELECT value FROM meta WHERE key = 'archive-lane'").get()) {
+    for (const b of db.prepare('SELECT id FROM boards').all()) {
+      const lanes = db.prepare('SELECT title, position FROM lanes WHERE board_id = ?').all(b.id);
+      if (lanes.some((l) => laneKey(l.title) === 'archive')) continue;
+      const pos = lanes.reduce((m, l) => Math.max(m, l.position), -1) + 1;
+      db.prepare(
+        'INSERT INTO lanes (id, board_id, title, position, mark_complete, max_items) VALUES (?, ?, ?, ?, 0, 0)'
+      ).run(newId(10), b.id, 'Archive', pos);
+      db.prepare('UPDATE boards SET version = version + 1 WHERE id = ?').run(b.id);
+    }
+    db.prepare("INSERT INTO meta (key, value) VALUES ('archive-lane', ?)").run(String(Date.now()));
+  }
+  const commentCols = db.prepare('PRAGMA table_info(comments)').all().map((c) => c.name);
+  if (!commentCols.includes('reply_to')) {
+    db.exec('ALTER TABLE comments ADD COLUMN reply_to TEXT');
+  }
+  if (!commentCols.includes('edited_at')) {
+    db.exec('ALTER TABLE comments ADD COLUMN edited_at INTEGER');
+  }
 }
 
 export function parseSettings(str) {
@@ -193,7 +215,7 @@ export function disableUser(db, id) {
 
 // ---------- boards ----------
 
-export const DEFAULT_LANES = ['To Do', 'In Progress', 'Done'];
+export const DEFAULT_LANES = ['To Do', 'In Progress', 'Done', 'Archive'];
 
 export function createBoard(db, user, name, laneTitles = DEFAULT_LANES) {
   if (!laneTitles.length) laneTitles = DEFAULT_LANES;
@@ -293,17 +315,24 @@ export function rowToCard(r) {
     lastMoved: r.last_moved,
     commentCount: r.comment_count || 0,
     ...(r.unread_comments !== undefined ? { unreadComments: r.unread_comments || 0 } : {}),
+    ...(r.edited_comments !== undefined ? { editedComments: r.edited_comments || 0 } : {}),
   };
 }
 
 const COMMENT_COUNT =
   '(SELECT COUNT(*) FROM comments m WHERE m.board_id = c.board_id AND m.card_id = c.id) AS comment_count';
 
-// Comments by others newer than the user's read marker. Binds (userId, userId).
+const READ_AT = `COALESCE((SELECT r.last_read_at FROM comment_reads r
+      WHERE r.user_id = ? AND r.board_id = c.board_id AND r.card_id = c.id), 0)`;
+
+// Comments by others the user hasn't seen: new ones, and old ones edited since they read them.
+// Binds (userId, userId, userId, userId).
 const UNREAD_COMMENTS = `(SELECT COUNT(*) FROM comments m
   WHERE m.board_id = c.board_id AND m.card_id = c.id AND m.user_id != ?
-    AND m.created_at > COALESCE((SELECT r.last_read_at FROM comment_reads r
-      WHERE r.user_id = ? AND r.board_id = c.board_id AND r.card_id = c.id), 0)) AS unread_comments`;
+    AND m.created_at > ${READ_AT}) AS unread_comments,
+  (SELECT COUNT(*) FROM comments m
+  WHERE m.board_id = c.board_id AND m.card_id = c.id AND m.user_id != ?
+    AND m.created_at <= ${READ_AT} AND m.edited_at > ${READ_AT}) AS edited_comments`;
 
 function safeJson(str, fallback) {
   try {
@@ -327,7 +356,7 @@ export function getBoardSnapshot(db, boardId, userId = null) {
           .prepare(
             `SELECT c.*, ${COMMENT_COUNT}, ${UNREAD_COMMENTS} FROM cards c WHERE c.board_id = ? ORDER BY c.archived, c.lane_id, c.position`
           )
-          .all(userId, userId, boardId)
+          .all(userId, userId, userId, userId, userId, boardId)
       : db
           .prepare(`SELECT c.*, ${COMMENT_COUNT} FROM cards c WHERE c.board_id = ? ORDER BY c.archived, c.lane_id, c.position`)
           .all(boardId)
@@ -352,7 +381,7 @@ export function myCards(db, user) {
        WHERE c.archived = 0 AND c.assignees LIKE ?
        ORDER BY b.name, l.position, c.position`
     )
-    .all(user.id, user.id, `%"${user.id}"%`);
+    .all(user.id, user.id, user.id, user.id, user.id, `%"${user.id}"%`);
   return rows
     .map((r) => ({ ...rowToCard(r), boardName: r.board_name, laneTitle: r.lane_title }))
     .filter((c) => c.assignees.includes(user.id));
@@ -368,19 +397,20 @@ export function listComments(db, boardId, cardId) {
   return db
     .prepare(
       `SELECT m.id, m.card_id AS cardId, m.user_id AS userId, u.name AS userName, m.body,
-              m.created_at AS createdAt, m.updated_at AS updatedAt
+              m.created_at AS createdAt, m.updated_at AS updatedAt, m.reply_to AS replyTo,
+              m.edited_at AS editedAt
        FROM comments m LEFT JOIN users u ON u.id = m.user_id
        WHERE m.board_id = ? AND m.card_id = ? ORDER BY m.created_at`
     )
     .all(boardId, cardId);
 }
 
-export function addComment(db, user, boardId, cardId, body) {
+export function addComment(db, user, boardId, cardId, body, replyTo = null) {
   const id = newId(12);
   const now = Date.now();
   db.prepare(
-    'INSERT INTO comments (id, board_id, card_id, user_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, boardId, cardId, user.id, body, now, now);
+    'INSERT INTO comments (id, board_id, card_id, user_id, body, created_at, updated_at, reply_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, boardId, cardId, user.id, body, now, now, replyTo);
   return listComments(db, boardId, cardId).find((c) => c.id === id);
 }
 
@@ -397,6 +427,17 @@ export function markCommentsRead(db, user, boardId, cardId, at = Date.now()) {
     `INSERT INTO comment_reads (user_id, board_id, card_id, last_read_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(user_id, board_id, card_id) DO UPDATE SET last_read_at = MAX(last_read_at, excluded.last_read_at)`
   ).run(user.id, boardId, cardId, at);
+}
+
+export function editComment(db, boardId, id, body) {
+  const now = Date.now();
+  db.prepare('UPDATE comments SET body = ?, updated_at = ?, edited_at = ? WHERE id = ? AND board_id = ?').run(
+    body,
+    now,
+    now,
+    id,
+    boardId
+  );
 }
 
 export function getComment(db, boardId, id) {

@@ -20,6 +20,7 @@ import {
   updateEntity,
 } from './dnd/util/data';
 import { getBoardModifiers } from './helpers/boardModifiers';
+import { TRASH_ZONE, deleteDroppedCard } from './components/BoardZones';
 import {
   addCardLinkToListFile,
   extractCardTitle,
@@ -172,6 +173,15 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
       const dropEntityData = dropEntity.getData();
       const [, sourceFile] = dragEntity.scopeId.split(':::');
       const [, destinationFile] = dropEntity.scopeId.split(':::');
+
+      // Dropped on the floating Delete target.
+      if (dropEntityData.type === TRASH_ZONE) {
+        if (dragEntityData.type !== DataTypes.Item || sourceFile !== destinationFile) return;
+        const view = plugin.getKanbanView(dragEntity.scopeId, dragEntityData.win);
+        const stateManager = plugin.stateManagers.get(view.file);
+        deleteDroppedCard(stateManager, getBoardModifiers(view, stateManager), dragPath);
+        return;
+      }
 
       const inDropArea =
         dropEntityData.acceptsSort && !dropEntityData.acceptsSort.includes(dragEntityData.type);

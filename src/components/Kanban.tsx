@@ -1,4 +1,3 @@
-import animateScrollTo from 'animated-scroll-to';
 import classcat from 'classcat';
 import update from 'immutability-helper';
 import { Notice } from 'obsidian';
@@ -19,14 +18,16 @@ import { Icon } from './Icon/Icon';
 import { cardBodyCache, clearCardCaches } from './Item/ItemContent';
 import { findOrphanedBoardFolder, migrateBoardFolder } from '../kanbanFileHelpers';
 import { Lanes } from './Lane/Lane';
-import { LaneForm } from './Lane/LaneForm';
+import { FIXED_LANES, createListArtifacts } from './Lane/LaneForm';
+import { TrashZone } from './BoardZones';
 import { QuickFilters } from './QuickFilters/QuickFilters';
 import { TeamSyncStatus } from 'src/team/ui/TeamBadges';
 import { TableView } from './Table/Table';
 import { FilterContext, KanbanContext, SearchContext } from './context';
-import { baseClassName, c, useFilterValue, useSearchValue } from './helpers';
-import { DataTypes, Item } from './types';
-import { parseTeamItemId } from 'src/team/ids';
+import { baseClassName, c, generateInstanceId, useFilterValue, useSearchValue } from './helpers';
+import { DataTypes, Item, LaneTemplate } from './types';
+import { isMirrorLane, parseTeamItemId } from 'src/team/ids';
+import { laneKey } from 'src/team/laneKey';
 
 const boardScrollTiggers = [DataTypes.Item, DataTypes.Lane];
 const boardAccepts = [DataTypes.Lane];
@@ -61,45 +62,41 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>('');
   const [isSearching, setIsSearching] = useState<boolean>(false);
-  const [isFiltering, setIsFiltering] = useState<boolean>(false);
-
-  const [isLaneFormVisible, setIsLaneFormVisible] = useState<boolean>(
-    boardData?.children.length === 0
-  );
 
   const filePath = stateManager.file.path;
   const maxArchiveLength = stateManager.useSetting('max-archive-size');
   const tagColors = stateManager.useSetting('tag-colors');
   const boardView = view.useViewState(frontmatterKey);
 
-  const closeLaneForm = useCallback(() => {
-    if (boardData?.children.length > 0) {
-      setIsLaneFormVisible(false);
-    }
-  }, [boardData?.children.length]);
-
+  // Lists are fixed (To Do / In Progress / Done / Archive). A personal board missing any of them
+  // gets them added; team boards get theirs from the server.
+  const creatingLanes = useRef(false);
+  // The "Team" list that mirrored cards fall back to isn't one of the board's own lists.
+  const ownKeys = (boardData?.children || []).filter((l) => !isMirrorLane(l)).map((l) => laneKey(l.data.title));
+  const missingLanes = stateManager.teamSync
+    ? []
+    : FIXED_LANES.filter((title) => !ownKeys.includes(laneKey(title)));
+  const missingKey = missingLanes.join('|');
   useEffect(() => {
-    if (boardData?.children.length === 0 && !stateManager.hasError()) {
-      setIsLaneFormVisible(true);
-    }
-  }, [boardData?.children.length, stateManager]);
-
-  const onNewLane = useCallback(() => {
-    rootRef.current?.win.setTimeout(() => {
-      const board = rootRef.current?.getElementsByClassName(c('board'));
-
-      if (board?.length) {
-        animateScrollTo([board[0].scrollWidth, 0], {
-          elementToScroll: board[0],
-          speed: 300,
-          minDuration: 150,
-          easing: (x: number) => {
-            return x === 1 ? 1 : 1 - Math.pow(2, -10 * x);
-          },
-        });
-      }
-    });
-  }, []);
+    if (!boardData || !missingLanes.length || stateManager.hasError() || creatingLanes.current) return;
+    creatingLanes.current = true;
+    void (async () => {
+      for (const title of missingLanes) await createListArtifacts(stateManager, title);
+      stateManager.setState((board) => {
+        const own = board.children.filter((l) => !isMirrorLane(l));
+        const mirror = board.children.filter((l) => isMirrorLane(l));
+        const keys = own.map((l) => laneKey(l.data.title));
+        const add = FIXED_LANES.filter((t) => !keys.includes(laneKey(t))).map((title) => ({
+          ...LaneTemplate,
+          id: generateInstanceId(),
+          children: [] as Item[],
+          data: { title, shouldMarkItemsComplete: false },
+        }));
+        return add.length ? { ...board, children: [...own, ...add, ...mirror] } : board;
+      });
+      creatingLanes.current = false;
+    })();
+  }, [!!boardData, missingKey, stateManager]);
 
   useEffect(() => {
     const onSearchHotkey = (data: { commandId: string; data: string }) => {
@@ -114,16 +111,10 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
       }
     };
 
-    const showLaneForm = () => {
-      setIsLaneFormVisible(true);
-    };
-
     view.emitter.on('hotkey', onSearchHotkey);
-    view.emitter.on('showLaneForm', showLaneForm);
 
     return () => {
       view.emitter.off('hotkey', onSearchHotkey);
-      view.emitter.off('showLaneForm', showLaneForm);
     };
   }, [view]);
 
@@ -268,19 +259,8 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
               ])}
               {...html5DragHandlers}
             >
-              {(isLaneFormVisible || boardData.children.length === 0) && (
-                <LaneForm onNewLane={onNewLane} closeLaneForm={closeLaneForm} />
-              )}
-              {/* Filter toggle button */}
+              {boardView !== 'table' && <TrashZone />}
               <div className={c('toolbar')}>
-                <button
-                  className={`${c('toolbar-button')} ${isFiltering ? c('toolbar-button-active') : ''} ${filterValue.hasActiveFilters ? c('toolbar-button-has-filters') : ''}`}
-                  onClick={() => setIsFiltering(!isFiltering)}
-                  title="Quick filters"
-                >
-                  <Icon name="lucide-filter" />
-                  {filterValue.hasActiveFilters && <span className={c('filter-badge')} />}
-                </button>
                 <button
                   className={`${c('toolbar-button')} ${isSearching ? c('toolbar-button-active') : ''}`}
                   onClick={() => setIsSearching(!isSearching)}
@@ -289,9 +269,8 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                   <Icon name="lucide-search" />
                 </button>
                 <TeamSyncStatus />
+                <QuickFilters />
               </div>
-              {/* Quick filters */}
-              {isFiltering && <QuickFilters />}
               {isSearching && (
                 <div className={c('search-wrapper')}>
                 <input
@@ -335,7 +314,6 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                   {
                     [c('horizontal')]: boardView !== 'list',
                     [c('vertical')]: boardView === 'list',
-                    'is-adding-lane': isLaneFormVisible,
                   },
                 ])}
                 triggerTypes={boardScrollTiggers}
@@ -349,15 +327,6 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                       index={boardData.children.length}
                     />
                   </Sortable>
-                  {!isLaneFormVisible && boardData.children.length > 0 && (
-                    <button
-                      className={c('add-lane-button')}
-                      onClick={() => setIsLaneFormVisible(true)}
-                    >
-                      <span className={c('add-lane-plus')}>+</span>
-                      {t('Add a list')}
-                    </button>
-                  )}
                 </div>
               </ScrollContainer>
               )}

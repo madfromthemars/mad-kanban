@@ -666,15 +666,6 @@ export default class KanbanPlugin extends Plugin {
             menu
               .addItem((item) => {
                 item
-                  .setTitle(t('Add a list'))
-                  .setIcon('lucide-plus-circle')
-                  .setSection('pane')
-                  .onClick(() => {
-                    kanbanView.emitter.emit('showLaneForm', undefined);
-                  });
-              })
-              .addItem((item) => {
-                item
                   .setTitle(t('Archive completed cards'))
                   .setIcon('lucide-archive')
                   .setSection('pane')
@@ -887,22 +878,6 @@ export default class KanbanPlugin extends Plugin {
               this.setKanbanView(activeView.leaf);
             })
             .catch((e: Error) => { console.error(e); new Notice('Kanban: Error converting note' + (e instanceof Error ? ': ' + e.message : '')); });
-        }
-      },
-    });
-
-    this.addCommand({
-      id: 'add-kanban-lane',
-      name: t('Add a list'),
-      checkCallback: (checking) => {
-        const view = this.app.workspace.getActiveViewOfType(KanbanView);
-
-        if (checking) {
-          return view && view instanceof KanbanView;
-        }
-
-        if (view && view instanceof KanbanView) {
-          view.emitter.emit('showLaneForm', undefined);
         }
       },
     });

@@ -8,8 +8,8 @@ import { parseLaneTitle } from 'src/parsers/helpers/parser';
 
 import { getDropAction } from '../Editor/helpers';
 import { Icon } from '../Icon/Icon';
-import { KanbanContext } from '../context';
-import { c } from '../helpers';
+import { FilterContext, KanbanContext } from '../context';
+import { c, itemMatchesFilters } from '../helpers';
 import { EditState, EditingState, Lane, isEditing } from '../types';
 import { ConfirmAction, useSettingsMenu } from './LaneMenu';
 import { LaneSettings } from './LaneSettings';
@@ -119,6 +119,21 @@ export const LaneHeader = memo(function LaneHeader({
     [boardModifiers, lane, lanePath]
   );
 
+  // With filters on, the count shows how many of the list's cards are visible.
+  const filterContext = useContext(FilterContext);
+  const visibleCount = filterContext?.hasActiveFilters
+    ? lane.children.filter((it) =>
+        itemMatchesFilters(
+          it,
+          filterContext.filters,
+          filterContext.cardBodyCache,
+          filterContext.boardPath,
+          filterContext.getAssignees,
+          filterContext.meId
+        )
+      ).length
+    : null;
+
   // Single click on the name collapses/expands the list; double click renames it.
   const clickTimer = useRef<number | null>(null);
 
@@ -141,7 +156,7 @@ export const LaneHeader = memo(function LaneHeader({
         window.clearTimeout(clickTimer.current);
         clickTimer.current = null;
       }
-      !isCollapsed && setEditState({ x: e.clientX, y: e.clientY });
+      // List names are fixed; a double click is just two clicks on the name.
     },
     [isCollapsed, setEditState]
   );
@@ -171,6 +186,7 @@ export const LaneHeader = memo(function LaneHeader({
         <LaneLimitCounter
           editState={editState}
           itemCount={lane.children.length}
+          visibleCount={visibleCount}
           maxItems={lane.data.maxItems}
         />
 

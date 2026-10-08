@@ -3,6 +3,8 @@ import { useContext, useRef, useState } from 'preact/compat';
 import { addTask, deleteTask, editTask, moveTask, parseTasks, toggleTask } from 'src/cardTasks';
 
 import { KanbanContext } from '../context';
+import { Icon } from '../Icon/Icon';
+import { saveMediaToVault } from 'src/team/ui/CardPanel';
 import { c, useGetTagColorFn } from '../helpers';
 
 /** Interactive checklist built from the `- [ ]` lines of a card body. */
@@ -366,5 +368,42 @@ export function TagEditor({
         </button>
       )}
     </div>
+  );
+}
+
+/** "Add image or video" for personal cards: saves the file into the vault and embeds it. */
+export function LocalAttachButton({ sourcePath, onSaved }: { sourcePath: string; onSaved: (md: string) => void }) {
+  const { stateManager } = useContext(KanbanContext);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        style={{ display: 'none' }}
+        onChange={async (e) => {
+          const files = Array.from((e.target as HTMLInputElement).files || []);
+          if (!files.length) return;
+          setBusy(true);
+          const md = await saveMediaToVault(stateManager.app, sourcePath, files);
+          setBusy(false);
+          if (inputRef.current) inputRef.current.value = '';
+          if (md.length) onSaved(md.join('\n'));
+        }}
+      />
+      <button className={c('attach-button')} disabled={busy} onClick={() => inputRef.current?.click()}>
+        {busy ? (
+          'Saving…'
+        ) : (
+          <>
+            <Icon name="lucide-paperclip" />
+            Add image or video
+          </>
+        )}
+      </button>
+    </>
   );
 }

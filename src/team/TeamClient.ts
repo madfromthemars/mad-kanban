@@ -180,6 +180,14 @@ export class TeamClient {
     ).then((r) => ({ comments: r.comments, lastReadAt: r.lastReadAt ?? 0 }));
   }
 
+  editComment(boardId: string, commentId: string, body: string) {
+    return this.request<{ comment: TeamComment }>(
+      'PATCH',
+      `/api/boards/${encodeURIComponent(boardId)}/comments/${encodeURIComponent(commentId)}`,
+      { body }
+    ).then((r) => r.comment);
+  }
+
   markCommentsRead(boardId: string, cardId: string) {
     return this.request<{ ok: boolean }>(
       'POST',
@@ -187,11 +195,11 @@ export class TeamClient {
     );
   }
 
-  addComment(boardId: string, cardId: string, body: string) {
+  addComment(boardId: string, cardId: string, body: string, replyTo?: string | null) {
     return this.request<{ comment: TeamComment }>(
       'POST',
       `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}/comments`,
-      { body }
+      { body, ...(replyTo ? { replyTo } : {}) }
     ).then((r) => r.comment);
   }
 

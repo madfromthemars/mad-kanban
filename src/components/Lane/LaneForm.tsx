@@ -12,11 +12,33 @@ import {
   sanitizeName,
 } from 'src/kanbanFileHelpers';
 import { parseLaneTitle } from 'src/parsers/helpers/parser';
+import { StateManager } from 'src/StateManager';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
 import { KanbanContext } from '../context';
 import { c, generateInstanceId } from '../helpers';
 import { LaneTemplate } from '../types';
+
+/** Every board has exactly these lists; they can't be added, renamed or removed. */
+export const FIXED_LANES = ['To Do', 'In Progress', 'Done', 'Archive'];
+
+/** Folder + list file a personal board keeps for each list. */
+export async function createListArtifacts(stateManager: StateManager, rawTitle: string) {
+  if (stateManager.teamSync || !sanitizeName(rawTitle)) return;
+  try {
+    const vault = stateManager.app.vault;
+    await ensureFolder(vault, getBoardFolderPath(stateManager.file));
+    await ensureFolder(vault, getListFolderPath(stateManager.file, rawTitle));
+    const listFilePath = getListFilePath(stateManager.file, rawTitle);
+    if (!vault.getAbstractFileByPath(listFilePath)) {
+      await vault.create(listFilePath, '');
+    }
+    await addBoardLinkToListFile(stateManager.app, listFilePath, stateManager.file.path);
+  } catch (e) {
+    console.error('Error creating list artifacts:', e);
+    new Notice('Kanban: Error creating list folder' + (e instanceof Error ? ': ' + e.message : ''));
+  }
+}
 
 interface LaneFormProps {
   onNewLane: () => void;

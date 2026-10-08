@@ -842,46 +842,6 @@ export class SettingsManager {
 
     contentEl.createEl('h4', { text: t('Board Header Buttons') });
 
-    new Setting(contentEl).setName(t('Add a list')).then((setting) => {
-      let toggleComponent: ToggleComponent;
-
-      setting
-        .addToggle((toggle) => {
-          toggleComponent = toggle;
-
-          const [value, globalValue] = this.getSetting('show-add-list', local);
-
-          if (value !== undefined && value !== null) {
-            toggle.setValue(value as boolean);
-          } else if (globalValue !== undefined && globalValue !== null) {
-            toggle.setValue(globalValue as boolean);
-          } else {
-            // default
-            toggle.setValue(true);
-          }
-
-          toggle.onChange((newValue) => {
-            this.applySettingsUpdate({
-              'show-add-list': {
-                $set: newValue,
-              },
-            });
-          });
-        })
-        .addExtraButton((b) => {
-          b.setIcon('lucide-rotate-ccw')
-            .setTooltip(t('Reset to default'))
-            .onClick(() => {
-              const [, globalValue] = this.getSetting('show-add-list', local);
-              toggleComponent.setValue(!!globalValue);
-
-              this.applySettingsUpdate({
-                $unset: ['show-add-list'],
-              });
-            });
-        });
-    });
-
     new Setting(contentEl).setName(t('Archive completed cards')).then((setting) => {
       let toggleComponent: ToggleComponent;
 
