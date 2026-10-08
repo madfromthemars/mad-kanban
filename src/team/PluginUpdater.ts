@@ -51,7 +51,7 @@ export class PluginUpdater {
     if (!manual && this.plugin.settings['team-auto-update'] === false) return;
     const base = this.serverUrl;
     if (!base) {
-      if (manual) new Notice('Kanban: connect to a team server first (Settings → Kanban Custom → Team)');
+      if (manual) new Notice('Kanban: connect to a team server first (Settings → Mad Kanban → Team)');
       return;
     }
     this.busy = true;
@@ -105,7 +105,7 @@ export class PluginUpdater {
 
   private announce(version: string) {
     const frag = document.createDocumentFragment();
-    frag.createDiv({ text: `Kanban Custom was updated to ${version}.` });
+    frag.createDiv({ text: `Mad Kanban was updated to ${version}.` });
     const link = frag.createEl('a', { text: 'Click here to reload it now', href: '#' });
     const notice = new Notice(frag, 0);
     link.addEventListener('click', (e) => {

@@ -1,10 +1,10 @@
 {
 	"id": "kanban-custom",
-	"name": "Kanban Custom",
-	"version": "2.1.29",
+	"name": "Mad Kanban",
+	"version": "2.1.30",
 	"minAppVersion": "1.0.0",
-	"description": "Create markdown-backed Kanban boards in Obsidian.",
-	"author": "mgmeyers",
+	"description": "Team Kanban boards for Obsidian, synced through your own server.",
+	"author": "madfromthemars",
 	"authorUrl": "https://github.com/mgmeyers/obsidian-kanban",
 	"helpUrl": "https://publish.obsidian.md/kanban/Obsidian+Kanban+Plugin",
 	"isDesktopOnly": false

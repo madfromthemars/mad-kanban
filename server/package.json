@@ -1,9 +1,9 @@
 {
-  "name": "kanban-team-server",
+  "name": "mad-kanban-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Sync server for team boards in the Kanban Custom Obsidian plugin",
+  "description": "Sync server for Mad Kanban (team boards for Obsidian)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

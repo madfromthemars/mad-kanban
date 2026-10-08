@@ -1,7 +1,7 @@
 {
-  "name": "kanban-custom",
-  "version": "2.1.29",
-  "description": "Custom Kanban plugin based on Obsidian Kanban.",
+  "name": "mad-kanban",
+  "version": "2.1.30",
+  "description": "Mad Kanban: team Kanban boards for Obsidian, synced through your own server. Based on Obsidian Kanban.",
   "main": "main.js",
   "scripts": {
     "typecheck": "tsc --noemit",

@@ -1,6 +1,16 @@
-# Obsidian Kanban Plugin
+# Mad Kanban
 
-**The Kanban plugin is looking for new maintainers.** Interested? [Read more here.](https://github.com/mgmeyers/obsidian-kanban/blob/main/MAINTAINERS.md)
+Team Kanban boards for [Obsidian](https://obsidian.md), synced through your own server.
+
+- Boards live on a small self-hosted server (`server/`, Docker) and sync live between teammates
+- Fixed lists: To Do, In Progress, Done, Archive; drag a card to the bottom of the screen to delete it
+- Cards: description, checklist, tags, due date, priority, assignees, images/videos, comments with replies
+- Filters by assignee, priority, due date and tags; unread and edited comment badges
+- The plugin updates itself from the team server and reports its errors there
+
+Based on [Obsidian Kanban](https://github.com/mgmeyers/obsidian-kanban) by mgmeyers.
+
+The plugin id stays `kanban-custom` so existing installs keep working and updating.
 
 ---
 

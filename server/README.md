@@ -1,6 +1,6 @@
 # Kanban team server
 
-Sync server for **team boards** in the Kanban Custom Obsidian plugin.
+Sync server for **team boards** in the Mad Kanban Obsidian plugin.
 Node 24 + built-in SQLite + WebSocket. One container, one volume.
 
 ## Run it on your test server
@@ -33,7 +33,7 @@ curl -X POST http://host:8787/api/admin/users \
 
 ## In Obsidian
 
-1. Settings → Kanban Custom → **Team** → paste the join string → *Test connection*.
+1. Settings → Mad Kanban → **Team** → paste the join string → *Test connection*.
 2. Command palette: **Create new team board** or **Open a team board**.
 3. On a team card: right-click → **Assign to...**, or click the `+` on the card.
 4. Any team card assigned to you shows up on your personal boards, in the list
