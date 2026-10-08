@@ -3,7 +3,7 @@ import { memo, useCallback, useContext, useEffect, useRef, useState } from 'prea
 import { KanbanContext } from 'src/components/context';
 import { c } from 'src/components/helpers';
 import { Icon } from 'src/components/Icon/Icon';
-import { cardWindowEscape, copyInlineCode } from 'src/components/copyOnClick';
+import { cardWindowEscape, copyInlineCode, openClickedImage } from 'src/components/copyOnClick';
 
 import { TeamComment, UploadedFile } from '../types';
 import { hueFor, initials } from './TeamBadges';
@@ -139,7 +139,7 @@ const CommentBody = memo(function CommentBody({ markdown, sourcePath }: { markdo
     <div
       ref={ref}
       className={`${c('comment-body')} markdown-rendered`}
-      onClick={(e) => copyInlineCode(e as unknown as MouseEvent)}
+      onClick={(e) => copyInlineCode(e as unknown as MouseEvent) || openClickedImage(e as unknown as MouseEvent)}
     />
   );
 });

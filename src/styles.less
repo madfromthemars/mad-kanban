@@ -4777,3 +4777,133 @@ div.kanban-plugin__lane-title-count {
 .kanban-plugin__card-detail-content button.kanban-plugin__checklist-delete {
   opacity: 0.35;
 }
+
+/* Images and videos in descriptions and comments show as previews; click opens full size */
+.kanban-plugin__card-detail-content .kanban-plugin__card-detail-body img,
+.kanban-plugin__comment-body img {
+  display: block;
+  max-width: min(100%, 420px);
+  max-height: 260px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  margin: 6px 0;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  cursor: zoom-in;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+
+  &:hover {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  }
+}
+
+.kanban-plugin__comment-body img {
+  max-width: min(100%, 300px);
+  max-height: 200px;
+}
+
+.kanban-plugin__card-detail-body video,
+.kanban-plugin__comment-body video {
+  max-width: min(100%, 480px);
+  max-height: 300px;
+}
+
+.kanban-plugin__image-lightbox {
+  z-index: calc(var(--layer-modal) + 10);
+  animation: kanban-lightbox-in 140ms ease;
+}
+
+@keyframes kanban-lightbox-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Team sync status: an icon button colored by state (text is in the tooltip) */
+.kanban-plugin .kanban-plugin__team-status {
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  margin-left: 0;
+  border-radius: 8px;
+  background: transparent;
+
+  &::before {
+    display: none;
+  }
+
+  .kanban-plugin__icon {
+    display: inline-flex;
+    --icon-size: 17px;
+  }
+
+  &:hover {
+    background: var(--background-modifier-hover);
+  }
+
+  &.is-synced {
+    color: var(--color-green, #22c55e);
+  }
+
+  &.is-syncing,
+  &.is-loading {
+    color: var(--color-yellow, #d4a72c);
+
+    .kanban-plugin__icon {
+      animation: kanban-spin 1s linear infinite;
+    }
+  }
+
+  &.is-offline {
+    color: var(--color-orange, #f59e0b);
+  }
+
+  &.is-error {
+    color: var(--color-red, #e5484d);
+  }
+}
+
+@keyframes kanban-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Solid cloud in the state's color */
+.kanban-plugin .kanban-plugin__team-status {
+  .kanban-plugin__icon {
+    --icon-size: 19px;
+    animation: none;
+  }
+
+  svg {
+    fill: currentColor;
+    stroke: currentColor;
+  }
+
+  &.is-synced {
+    color: #00c853;
+  }
+
+  &.is-syncing,
+  &.is-loading {
+    color: #f2b416;
+    animation: kanban-pulse 1s ease-in-out infinite;
+  }
+
+  &.is-offline {
+    color: #f97316;
+  }
+
+  &.is-error {
+    color: #ef4444;
+  }
+}
+
+@keyframes kanban-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}

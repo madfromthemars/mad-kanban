@@ -1,6 +1,7 @@
 import { App, TFile } from 'obsidian';
 import { getDailyNoteSettings, getDateFromFile } from 'obsidian-daily-notes-interface';
 
+import { teamBoardIdKey } from './team/types';
 import { frontmatterKey } from './parsers/common';
 
 export function gotoNextDailyNote(app: App, file: TFile) {
@@ -53,13 +54,15 @@ export function hasFrontmatterKeyRaw(data: string) {
     return false;
   }
 
-  return true;
+  // Only team boards are supported; other kanban files open as plain notes.
+  return match[1].contains(teamBoardIdKey);
 }
 
 export function hasFrontmatterKey(app: App, file: TFile) {
   if (!file) return false;
-  const cache = app.metadataCache.getFileCache(file);
-  return !!cache?.frontmatter?.[frontmatterKey];
+  const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+  // Only team boards are supported; other kanban files open as plain notes.
+  return !!fm?.[frontmatterKey] && !!fm?.[teamBoardIdKey];
 }
 
 export function laneTitleWithMaxItems(title: string, maxItems?: number) {

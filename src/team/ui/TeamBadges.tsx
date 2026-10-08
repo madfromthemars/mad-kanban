@@ -150,27 +150,25 @@ export const TeamSyncStatus = memo(function TeamSyncStatus() {
   const st = team ? team.useSyncState(sync) : null;
   if (!team || !sync || !st) return null;
 
-  const label =
-    st.state === 'synced'
-      ? 'Team · synced'
-      : st.state === 'syncing'
-        ? 'Team · syncing…'
-        : st.state === 'loading'
-          ? 'Team · loading…'
-          : st.state === 'offline'
-            ? 'Team · offline'
-            : 'Team · error';
+  const info: Record<string, { icon: string; text: string }> = {
+    synced: { icon: 'lucide-cloud', text: 'Team board · synced' },
+    syncing: { icon: 'lucide-cloud', text: 'Team board · syncing…' },
+    loading: { icon: 'lucide-cloud', text: 'Team board · loading…' },
+    offline: { icon: 'lucide-cloud', text: 'Team board · offline (showing the last loaded copy)' },
+    error: { icon: 'lucide-cloud', text: 'Team board · sync error' },
+  };
+  const { icon, text } = info[st.state] || info.error;
 
   return (
     <a
       className={classcat([c('team-status'), `is-${st.state}`])}
-      title={st.error || 'Click to resync'}
+      aria-label={`${text}${st.error ? ` — ${st.error}` : ''}. Click to resync.`}
       onClick={(e) => {
         e.preventDefault();
         void sync.load();
       }}
     >
-      {label}
+      <Icon name={icon} />
     </a>
   );
 });

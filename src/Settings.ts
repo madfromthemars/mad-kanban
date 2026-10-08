@@ -236,25 +236,6 @@ export class SettingsManager {
     this.cleanupFns.push(() => this.plugin.team?.emitter.off('user', onUser));
 
     new Setting(contentEl)
-      .setName(t('Fallback list for team cards'))
-      .setDesc(
-        t(
-          'Team cards assigned to you appear in the personal list with the same name as their team list. Cards without a matching list go here.'
-        )
-      )
-      .addText((text) => {
-        text
-          .setPlaceholder('Team')
-          .setValue(this.plugin.settings['team-mirror-lane'] || '')
-          .onChange((value) => {
-            const v = value.trim();
-            this.applySettingsUpdate(
-              v ? { 'team-mirror-lane': { $set: v } } : { $unset: ['team-mirror-lane'] }
-            );
-          });
-      });
-
-    new Setting(contentEl)
       .setName(t('Update plugin from team server'))
       .setDesc(
         `${t('Install new versions of this plugin published on your team server.')} ${t('Installed version')}: ${this.plugin.manifest.version}`

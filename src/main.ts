@@ -30,6 +30,7 @@ import { TeamManager } from './team/TeamManager';
 import { TagColor } from './components/types';
 import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './tagColors';
 import { ErrorReporter } from './ErrorReporter';
+import { teamBoardIdKey } from './team/types';
 import { PluginUpdater } from './team/PluginUpdater';
 
 interface WindowRegistry {
@@ -239,8 +240,8 @@ export default class KanbanPlugin extends Plugin {
       void this.collectTagColorsFromVault();
     });
 
-    this.addRibbonIcon(kanbanIcon, t('Create new board'), () => {
-      this.newKanban();
+    this.addRibbonIcon(kanbanIcon, t('Open a team board'), () => {
+      void this.team.joinTeamBoard();
     });
   }
 
@@ -591,13 +592,6 @@ export default class KanbanPlugin extends Plugin {
 
         // Add a menu item to the folder context menu to create a board
         if (fileIsFolder) {
-          menu.addItem((item) => {
-            item
-              .setSection('action-primary')
-              .setTitle(t('New kanban board'))
-              .setIcon(kanbanIcon)
-              .onClick(() => this.newKanban(file));
-          });
           if (this.team?.isConfigured) {
             menu.addItem((item) => {
               item
@@ -767,12 +761,6 @@ export default class KanbanPlugin extends Plugin {
 
   registerCommands() {
     this.addCommand({
-      id: 'create-new-kanban-board',
-      name: t('Create new board'),
-      callback: () => this.newKanban(),
-    });
-
-    this.addCommand({
       id: 'create-new-team-board',
       name: t('Create new team board'),
       callback: () => this.team.createTeamBoard(),
@@ -838,7 +826,8 @@ export default class KanbanPlugin extends Plugin {
         if (!activeFile) return false;
 
         const fileCache = this.app.metadataCache.getFileCache(activeFile);
-        const fileIsKanban = !!fileCache?.frontmatter && !!fileCache.frontmatter[frontmatterKey];
+        const fileIsKanban =
+          !!fileCache?.frontmatter && !!fileCache.frontmatter[frontmatterKey] && !!fileCache.frontmatter[teamBoardIdKey];
 
         if (checking) {
           return fileIsKanban;
@@ -856,28 +845,6 @@ export default class KanbanPlugin extends Plugin {
             this.kanbanFileModes[activeView.leaf.id || activeFile.path] = kanbanViewType;
             this.setKanbanView(activeView.leaf);
           }
-        }
-      },
-    });
-
-    this.addCommand({
-      id: 'convert-to-kanban',
-      name: t('Convert empty note to Kanban'),
-      checkCallback: (checking) => {
-        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-
-        if (!activeView) return false;
-
-        const isFileEmpty = activeView.file.stat.size === 0;
-
-        if (checking) return isFileEmpty;
-        if (isFileEmpty) {
-          this.app.vault
-            .modify(activeView.file, basicFrontmatter)
-            .then(() => {
-              this.setKanbanView(activeView.leaf);
-            })
-            .catch((e: Error) => { console.error(e); new Notice('Kanban: Error converting note' + (e instanceof Error ? ': ' + e.message : '')); });
         }
       },
     });
@@ -1011,7 +978,8 @@ export default class KanbanPlugin extends Plugin {
               // Then check for the kanban frontMatterKey
               const cache = self.app.metadataCache.getCache(filePath);
 
-              if (cache?.frontmatter && cache.frontmatter[frontmatterKey]) {
+              // Only team boards open as boards; other kanban files stay plain notes.
+              if (cache?.frontmatter && cache.frontmatter[frontmatterKey] && cache.frontmatter[teamBoardIdKey]) {
                 // If we have it, force the view type to kanban
                 const newState = {
                   ...state,

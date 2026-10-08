@@ -31,7 +31,7 @@ import {
 } from 'src/cardTasks';
 import { Checklist, DuePicker, TagEditor } from './CardChecklist';
 import { PRIORITY_LEVELS, PriorityIcon } from './PriorityIcon';
-import { cardWindowEscape, copyInlineCode } from '../copyOnClick';
+import { cardWindowEscape, copyInlineCode, openLightbox } from '../copyOnClick';
 import { AttachButton, TeamComments, mediaFilesOf, saveMediaToVault, uploadMedia } from 'src/team/ui/CardPanel';
 import { LocalAttachButton } from './CardChecklist';
 import { parseTeamItemId } from 'src/team/ids';
@@ -125,7 +125,6 @@ const CardDetailContent = memo(function CardDetailContent({
   const [externalBody, setExternalBody] = useState<string | null>(null);
   const [cardFilePath, setCardFilePath] = useState<string>('');
   const [currentItem, setCurrentItem] = useState(item);
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const board = stateManager.useState();
 
@@ -394,7 +393,6 @@ const CardDetailContent = memo(function CardDetailContent({
         // Media fills the line, so there is no text position under the pointer.
         if (imageClickTimer.current != null) window.clearTimeout(imageClickTimer.current);
         imageClickTimer.current = null;
-        setLightboxSrc(null);
         setEditState({ x: -1, y: -1 });
         return;
       }
@@ -414,7 +412,7 @@ const CardDetailContent = memo(function CardDetailContent({
       if (imageClickTimer.current != null) window.clearTimeout(imageClickTimer.current);
       imageClickTimer.current = window.setTimeout(() => {
         imageClickTimer.current = null;
-        setLightboxSrc(src);
+        openLightbox(src);
       }, 250);
     }
   }, []);
@@ -522,19 +520,6 @@ const CardDetailContent = memo(function CardDetailContent({
       : v;
   }, [parts.description]);
 
-  useEffect(() => {
-    if (!lightboxSrc) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        setLightboxSrc(null);
-      }
-    };
-    window.addEventListener('keydown', handler, { capture: true });
-    return () => window.removeEventListener('keydown', handler, { capture: true });
-  }, [lightboxSrc]);
 
   // The cache only holds bodies of cards stored in their own note.
   const cachedBody = cacheKey && !isTeam && (cardFilePath || cardLinkPath) ? cardBodyCache.get(cacheKey) : undefined;
@@ -754,14 +739,6 @@ const CardDetailContent = memo(function CardDetailContent({
         </aside>
       </div>
 
-      {lightboxSrc && (
-        <div
-          className={c('image-lightbox')}
-          onClick={() => setLightboxSrc(null)}
-        >
-          <img src={lightboxSrc} />
-        </div>
-      )}
     </div>
   );
 });
