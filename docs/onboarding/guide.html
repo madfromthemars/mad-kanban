@@ -1,0 +1,153 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mad Kanban: Getting Started</title>
+<style>
+@page { size: A4; margin: 16mm 16mm 16mm 16mm; }
+:root { --ink:#1d2433; --muted:#5b6475; --line:#e3e6ec; --accent:#6c4cf1; --soft:#f4f2ff; --warn:#fff6e5; --warnline:#f0c36d; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.45; margin: 0; }
+h1 { font-size: 24pt; margin: 0 0 4px; letter-spacing: -0.02em; }
+.sub { color: var(--muted); font-size: 10.5pt; margin: 0 0 12px; }
+h2 { font-size: 13.5pt; margin: 16px 0 6px; padding-top: 4px; display: flex; align-items: center; gap: 10px; break-after: avoid; }
+h2 .n { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11pt; flex: none; }
+h3 { font-size: 11.5pt; margin: 16px 0 6px; break-after: avoid; }
+p { margin: 6px 0; }
+ol, ul { margin: 6px 0; padding-left: 20px; }
+li { margin: 3px 0; }
+b { font-weight: 650; }
+code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9.5pt; background: #f1f2f5; padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+.box { border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin: 8px 0; break-inside: avoid; }
+.soft { background: var(--soft); border-color: #ddd5ff; }
+.warn { background: var(--warn); border-color: var(--warnline); }
+.need { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 8px; margin: 8px 0; }
+.need .box { margin: 0; }
+.need b { display: block; margin-bottom: 2px; }
+.shot { margin: 10px 0 4px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; position: relative; break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.shot img { display: block; max-width: none; }
+.ring { position: absolute; width: 32px; height: 32px; border: 3px solid #e8590c; border-radius: 50%; }
+.tag { position: absolute; background: #e8590c; color: #fff; font-size: 9pt; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+.cap { color: var(--muted); font-size: 9pt; margin: 0 0 10px; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10pt; break-inside: avoid; }
+td, th { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th { font-size: 9pt; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; }
+.page { break-before: page; }
+.keep { break-inside: avoid; }
+.k { display: inline-block; border: 1px solid #cfd3db; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 9pt; background: #fafbfc; }
+</style></head><body>
+
+<h1>Mad Kanban: Getting Started</h1>
+<p class="sub">How to install Obsidian, connect to the team board and work with tasks. About 10 minutes, no experience needed.</p>
+
+<div class="box soft">
+<b>What this is.</b> We keep our tasks on a shared board, like sticky notes on a wall. Each task is a <b>card</b>, and cards move through four columns: <b>To Do</b>, <b>In Progress</b>, <b>Done</b> and <b>Archive</b>. The board runs inside <b>Obsidian</b>, a free app, and stays in sync with everyone: when someone changes a card, you see it within a second.<br><br>
+Every card belongs to a <b>project</b>. You only see the projects you have been added to, so the board may look different for you than for others.
+</div>
+
+<div class="need">
+  <div class="box"><b>A computer</b>Windows or Mac.</div>
+  <div class="box"><b>Your join link</b>Sent by your team host. Looks like<br><span class="mono">http://170.168.60.196:8787/#3f9c…</span></div>
+  <div class="box"><b>10 minutes</b>You only do this once.</div>
+</div>
+
+<div class="box warn"><b>Your join link is your password.</b> It signs you in as you. Don't share it or post it in group chats. If you lose it or think someone else has it, ask your host for a new one; the old link stops working.</div>
+
+<h2><span class="n">1</span> Install Obsidian</h2>
+<ol>
+<li>Open <b>obsidian.md/download</b> in your browser.</li>
+<li>Download the version for your computer and install it like any other app.<br>
+<b>Windows:</b> run the downloaded <span class="mono">.exe</span> file. <b>Mac:</b> open the <span class="mono">.dmg</span> file and drag Obsidian into Applications.</li>
+<li>Don't create a vault yet. Do step 2 first.</li>
+</ol>
+
+<h2><span class="n">2</span> Download the ready-made folder</h2>
+<p>Obsidian works inside a folder called a <b>vault</b>. We have one ready with the Mad Kanban plugin already installed.</p>
+<ol>
+<li>Download it: <b><span class="mono">http://170.168.60.196:8787/download/mad-kanban-vault.zip</span></b></li>
+<li>Move the zip to a place you'll keep it, for example your <b>Documents</b> folder.</li>
+<li>Unzip it. <b>Windows:</b> right-click → <b>Extract All…</b> → <b>Extract</b>. <b>Mac:</b> double-click the zip.<br>You now have a folder called <b>Mad Kanban</b>.</li>
+</ol>
+
+<h2><span class="n">3</span> Open the folder in Obsidian</h2>
+<ol>
+<li>Start Obsidian. On the welcome screen, choose <b>Open folder as vault</b> → <b>Open</b>, and select the <b>Mad Kanban</b> folder.<br>
+(Already used Obsidian before? Click the vault name at the bottom left → <b>Manage vaults…</b> → <b>Open folder as vault</b>.)</li>
+<li>Obsidian asks <b>"Do you trust the author of this vault?"</b> Click <b>Trust author and enable plugins</b>. Without this the board can't load.</li>
+</ol>
+
+<h2 class="page"><span class="n">4</span> Connect with your join link</h2>
+<ol>
+<li>Click the <b>gear icon</b> at the bottom left to open <b>Settings</b>.</li>
+<li>In the left list, under <b>Community plugins</b>, click <b>Mad Kanban</b>.</li>
+<li>Paste your join link into <b>Team server join string</b>.</li>
+<li>A line below it should say <b>Connected as</b> followed by your name. Close Settings.</li>
+</ol>
+<div class="shot" style="width:672px;height:235px"><img src="img/settings.png" style="width:855.3px;margin-left:-91.6px;margin-top:-39.7px"></div>
+<p class="cap">Settings → Mad Kanban. After pasting the link it says "Connected as" with your name.</p>
+
+<h2><span class="n">5</span> Open the team board</h2>
+<ol>
+<li>In the thin icon bar on the far left, click the <b>board icon</b> (it says <b>Open a team board</b> when you point at it).</li>
+<li>Pick the board, for example <b>Dragonfly</b>. It opens and appears in your file list, so next time just click it there.</li>
+</ol>
+<div class="shot" style="width:672px;height:197px"><img src="img/board-picker.png" style="width:887.5px;margin-left:0.0px;margin-top:0.0px"><span class="ring" style="left:-2px;top:166px"></span><span class="tag" style="left:35px;top:171px">Open a team board</span></div>
+<p class="cap">The board icon in the left bar opens the list of team boards.</p>
+
+<p><b>That's it, you're set up.</b> The rest of this guide shows how to work with the board.</p>
+
+<h2 class="page"><span class="n">6</span> Working with the board</h2>
+<div class="shot" style="width:672px;height:255px"><img src="img/board.png" style="width:890.9px;margin-left:-218.9px;margin-top:-25.5px"></div>
+<p class="cap">A board. Cards show their priority, due date, tags and who is working on them.</p>
+
+<table>
+<tr><th style="width:30%">What you see</th><th>What it means</th></tr>
+<tr><td>Columns</td><td><b>To Do</b> → <b>In Progress</b> → <b>Done</b>. <b>Archive</b> is for finished cards worth keeping. <b>Drag a card</b> to move it. Click a column name to fold it.</td></tr>
+<tr><td>Arrow at the top right of a card</td><td>Priority, from <span style="color:#e03131">double arrow up</span> (highest) to <span style="color:#3b5bdb">arrow down</span> (low). Cards are sorted by priority.</td></tr>
+<tr><td>Date chip</td><td>Due date. It turns yellow when due soon and red when overdue.</td></tr>
+<tr><td><span class="mono">#tag</span></td><td>Tags, for grouping and filtering.</td></tr>
+<tr><td>Round initials</td><td>The people assigned to the card.</td></tr>
+<tr><td>Speech bubble</td><td>Number of comments. <b>"2 new"</b> means comments you haven't read yet.</td></tr>
+<tr><td>Coloured chip with a dot</td><td>The card's project (shown when you are in more than one project).</td></tr>
+<tr><td>Cloud at the top left</td><td><span class="dot" style="background:#00c853"></span>green: saved and synced &nbsp; <span class="dot" style="background:#f5b800"></span>yellow: saving &nbsp; <span class="dot" style="background:#ff8c00"></span>orange: offline &nbsp; <span class="dot" style="background:#e03131"></span>red: error. Click it to sync again.</td></tr>
+</table>
+
+<h3>Add a card</h3>
+<div style="display:flex;gap:16px;align-items:flex-start" class="keep"><div style="flex:1"><ol>
+<li>Click <b>+ Add a card</b> under a column.</li>
+<li>Type a title and choose the <b>project</b>. You can only choose projects you are in.</li>
+<li>Press <span class="k">Enter</span> or click <b>Add card</b>.</li>
+</ol></div><div>
+<div class="shot" style="width:360px;height:171px"><img src="img/add-card.png" style="width:900.0px;margin-left:-270.0px;margin-top:-187.7px"></div>
+<p class="cap">The Add card window with the project choice.</p></div></div>
+
+<h2 class="page"><span class="n">7</span> Inside a card</h2>
+<p>Click a card to open it.</p>
+<div class="shot" style="width:672px;height:426px"><img src="img/card-window.png" style="width:904.6px;margin-left:-116.3px;margin-top:-27.1px"></div>
+<p class="cap">The card window: description, checklist and comments on the left, details on the right.</p>
+<ul>
+<li><b>Description</b>: click <b>Edit</b> to write. You can paste screenshots straight in; click an image to see it full size.</li>
+<li><b>Checklist</b>: small steps inside the task. Tick them off as you go.</li>
+<li><b>Comments</b>: talk about the task. Point at a comment to <b>Reply</b> to it or <b>Edit</b> your own. Use <b>Attach</b> for images and videos. <span class="k">Ctrl</span>/<span class="k">⌘</span> + <span class="k">Enter</span> sends.</li>
+<li><b>Right side</b>: Project, Status (column), Priority, Due date, Assignees, Tags and Attachments. Changes save on their own.</li>
+<li>Press <span class="k">Esc</span> or click × to close.</li>
+</ul>
+
+<h3>Find cards quickly</h3>
+<p>The bar above the board filters by <b>Project</b>, <b>Assignee</b>, <b>Priority</b>, <b>Due</b> and <b>Tags</b>. Choose <b>Assignee → Me</b> to see just your work. Your filters are remembered. The magnifier searches card text.</p>
+
+<h3>Archive or delete a card</h3>
+<p><b>Archive:</b> drag the card into the <b>Archive</b> column. <b>Delete:</b> start dragging a card and a <b>Delete</b> area appears at the bottom of the screen; drop the card there and confirm.</p>
+
+<h3>Updates</h3>
+<p>The plugin updates itself. When a new version arrives you'll see <b>"Mad Kanban was updated"</b>. Click <b>Click here to reload it now</b>.</p>
+
+<h2><span class="n">?</span> If something doesn't work</h2>
+<table>
+<tr><th style="width:38%">Problem</th><th>What to do</th></tr>
+<tr><td>The board doesn't open, or there's no board icon</td><td>The plugin is off. Settings → <b>Community plugins</b>: make sure <b>Restricted mode</b> is off and <b>Mad Kanban</b> is switched on.</td></tr>
+<tr><td>"Not connected" or "Connection failed"</td><td>Check your internet, and that you pasted the <b>whole</b> link, including the part after <span class="mono">#</span>.</td></tr>
+<tr><td>"Cannot reach team server", or the cloud is orange</td><td>No connection to the server. You still see the last loaded board. It syncs again when the connection is back.</td></tr>
+<tr><td>"You are not in any project yet"</td><td>Ask your host to add you to a project.</td></tr>
+<tr><td>A card a colleague mentions isn't on your board</td><td>It's in a project you're not in. Ask your host if you need access.</td></tr>
+<tr><td>Lost your link, or new computer</td><td>Ask your host for a new link and paste it in Settings → Mad Kanban. The old link stops working.</td></tr>
+</table>
+
+</body></html>
