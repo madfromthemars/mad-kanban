@@ -107,6 +107,9 @@ export class TeamClient {
         headers: {
           Authorization: `Bearer ${this.conn.token}`,
           'Content-Type': 'application/json',
+          // Obsidian's HTTP cache otherwise replays old answers (e.g. a past
+          // 410 "moved"), which once bounced plugins between two servers.
+          'Cache-Control': 'no-cache',
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         throw: false,

@@ -34,6 +34,7 @@ export interface CardInfo {
 }
 
 const MIRROR_POLL_MS = 120000;
+const RELOCATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Plugin-wide owner of the team connection: one client, the current user, the
@@ -148,7 +149,11 @@ export class TeamManager {
     const base = this.plugin.settings['team-server-url'];
     if (!base || !this.plugin.settings['team-token']) return false;
     try {
-      const res = await requestUrl({ url: `${base}/api/health`, throw: false });
+      const res = await requestUrl({
+        url: `${base}/api/health?t=${Date.now()}`,
+        headers: { 'Cache-Control': 'no-cache' },
+        throw: false,
+      });
       const to = res.status === 200 ? relocationTarget(res.json) : null;
       return to ? await this.relocate(to) : false;
     } catch {
@@ -158,15 +163,31 @@ export class TeamManager {
 
   /** Point this plugin at the team server's new address, keeping the token. */
   async relocate(to: string): Promise<boolean> {
-    if (this.destroyed || this.plugin.settings['team-server-url'] === to) return false;
-    const from = this.plugin.settings['team-server-url'];
-    this.plugin.settings['team-server-url'] = to;
-    await this.plugin.saveSettings();
-    console.log(`[Kanban team] server moved: ${from} -> ${to}`);
-    new Notice(`Mad Kanban: team server moved to ${to}`);
-    await this.configureFromSettings();
-    return true;
+    if (this.destroyed || this.relocating || this.plugin.settings['team-server-url'] === to) return false;
+    // Never bounce straight back: two servers pointing at each other must not
+    // make us rewrite settings in a loop (concurrent saves once emptied data.json).
+    const last = this.lastRelocation;
+    if (last && last.from === to && Date.now() - last.at < RELOCATION_COOLDOWN_MS) {
+      console.warn(`[Kanban team] ignoring move back to ${to} right after leaving it`);
+      return false;
+    }
+    this.relocating = true;
+    try {
+      const from = this.plugin.settings['team-server-url'];
+      this.plugin.settings['team-server-url'] = to;
+      await this.plugin.saveSettings();
+      this.lastRelocation = { from, at: Date.now() };
+      console.log(`[Kanban team] server moved: ${from} -> ${to}`);
+      new Notice(`Mad Kanban: team server moved to ${to}`);
+      await this.configureFromSettings();
+      return true;
+    } finally {
+      this.relocating = false;
+    }
   }
+
+  private relocating = false;
+  private lastRelocation: { from: string; at: number } | null = null;
 
   /** Validate a join string against the server. Returns the user on success. */
   async testConnection(joinString: string): Promise<TeamUser> {
