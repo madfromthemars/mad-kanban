@@ -3,7 +3,7 @@
  * { movedTo }, but the old one speaks plain HTTP, so anyone on the network
  * could fake that answer and collect tokens. Only follow moves to these.
  */
-export const RELOCATION_TARGETS = ['https://kanban.onecatalog.dev'];
+export const RELOCATION_TARGETS = ['https://kanban.onecatalog.dev', 'http://170.168.60.196:8787'];
 
 /** The allowed new server URL announced in a server response, or null. */
 export function relocationTarget(json: unknown): string | null {
