@@ -6,8 +6,8 @@
 set -euo pipefail
 
 VERSION="${1:?usage: scripts/release-plugin.sh <version, e.g. 2.1.1>}"
-HOST="${KANBAN_HOST:-abdulaziz_pensiya@170.168.60.196}"
-REMOTE_DIR="${KANBAN_REMOTE_DIR:-kanban-server}"
+HOST="${KANBAN_HOST:-zephyrus}"
+REMOTE_DIR="${KANBAN_REMOTE_DIR:-/srv/apps/mad-kanban-server}"
 VAULT_PLUGIN="${KANBAN_VAULT_PLUGIN:-$HOME/Documents/MADHause/.obsidian/plugins/kanban-custom}"
 
 cd "$(dirname "$0")/.."
@@ -33,7 +33,7 @@ rm -f "$OUT/kanban-custom.zip"
 (cd "$TMP" && COPYFILE_DISABLE=1 zip -qr -X "$OLDPWD/$OUT/kanban-custom.zip" kanban-custom)
 rm -rf "$TMP"
 
-ssh "$HOST" "mkdir -p ~/$REMOTE_DIR/public/plugin"
+ssh "$HOST" "mkdir -p $REMOTE_DIR/public/plugin"
 scp -q "$OUT/kanban-custom.zip" "$HOST:$REMOTE_DIR/public/"
 scp -q "$OUT/plugin/manifest.json" "$OUT/plugin/main.js" "$OUT/plugin/styles.css" "$HOST:$REMOTE_DIR/public/plugin/"
 
