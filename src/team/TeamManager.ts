@@ -1,5 +1,5 @@
 import EventEmitter from 'eventemitter3';
-import { Notice, TFile, TFolder, normalizePath } from 'obsidian';
+import { Notice, TFile, TFolder, normalizePath, requestUrl } from 'obsidian';
 import { useEffect, useState } from 'preact/compat';
 import { StateManager } from 'src/StateManager';
 import { kanbanViewType } from 'src/KanbanView';
@@ -8,6 +8,7 @@ import { frontmatterKey } from 'src/parsers/common';
 import { indentNewLines } from 'src/parsers/helpers/parser';
 
 import { ConnectionStatus, TeamApiError, TeamClient, parseJoinString } from './TeamClient';
+import { relocationTarget } from './relocation';
 import { TeamMirror } from './TeamMirror';
 import { SyncState, TeamSync } from './TeamSync';
 import { newTeamId } from './ids';
@@ -64,6 +65,7 @@ export class TeamManager {
     }
     this.client = new TeamClient(plugin.settings['team-client-id']);
     this.client.emitter.on('event', (ev: TeamServerEvent) => this.onServerEvent(ev));
+    this.client.emitter.on('moved', (to: string) => void this.relocate(to));
     this.client.emitter.on('status', (s: ConnectionStatus) => {
       this.emitter.emit('status', s);
       if (s === 'connected') {
@@ -136,6 +138,34 @@ export class TeamManager {
       console.error('[Kanban team] cannot load user directory', e);
       this.emitter.emit('user', null);
     }
+  }
+
+  /**
+   * Ask the server whether it moved (its /api/health carries { movedTo }) and
+   * follow it. Used by the updater, since a socket to a moved server just fails.
+   */
+  async checkRelocation(): Promise<boolean> {
+    const base = this.plugin.settings['team-server-url'];
+    if (!base || !this.plugin.settings['team-token']) return false;
+    try {
+      const res = await requestUrl({ url: `${base}/api/health`, throw: false });
+      const to = res.status === 200 ? relocationTarget(res.json) : null;
+      return to ? await this.relocate(to) : false;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Point this plugin at the team server's new address, keeping the token. */
+  async relocate(to: string): Promise<boolean> {
+    if (this.destroyed || this.plugin.settings['team-server-url'] === to) return false;
+    const from = this.plugin.settings['team-server-url'];
+    this.plugin.settings['team-server-url'] = to;
+    await this.plugin.saveSettings();
+    console.log(`[Kanban team] server moved: ${from} -> ${to}`);
+    new Notice(`Mad Kanban: team server moved to ${to}`);
+    await this.configureFromSettings();
+    return true;
   }
 
   /** Validate a join string against the server. Returns the user on success. */

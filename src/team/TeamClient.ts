@@ -1,6 +1,8 @@
 import EventEmitter from 'eventemitter3';
 import { requestUrl } from 'obsidian';
 
+import { relocationTarget } from './relocation';
+
 import {
   TeamComment,
   TeamDirectory,
@@ -121,6 +123,10 @@ export class TeamClient {
       } catch {
         json = {};
       }
+    }
+    if (res.status === 410) {
+      const to = relocationTarget(json);
+      if (to) this.emitter.emit('moved', to);
     }
     if (res.status >= 400) {
       throw new TeamApiError(res.status, json?.error || `Server error ${res.status}`, json);

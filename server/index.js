@@ -60,6 +60,10 @@ const PORT = Number(process.env.PORT || 8787);
 const DATA_DIR = process.env.DATA_DIR || './data';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
+// Set on the old host after a server move: plugin releases keep being served (so
+// stragglers can update), attachment links redirect, everything else answers 410
+// with { movedTo } and plugins >= 2.1.35 switch over by themselves.
+const MOVED_TO = (process.env.MOVED_TO || '').replace(/\/+$/, '');
 
 const db = openDb(DATA_DIR);
 const FILES_DIR = path.join(DATA_DIR, 'files');
@@ -738,6 +742,22 @@ function handleStatic(req, res, pathname) {
   return false;
 }
 
+/** Old-host behaviour once MOVED_TO is set. Returns false for requests still served here. */
+function handleMoved(req, res, url) {
+  if (/^\/(plugin|download)\//.test(url.pathname)) return false;
+  if (url.pathname.startsWith('/files/')) {
+    res.writeHead(301, { Location: `${MOVED_TO}${url.pathname}` });
+    res.end();
+    return true;
+  }
+  if (url.pathname === '/api/health') {
+    send(res, 200, { ok: true, ts: Date.now(), movedTo: MOVED_TO });
+    return true;
+  }
+  send(res, 410, { error: `the team server moved to ${MOVED_TO}`, movedTo: MOVED_TO });
+  return true;
+}
+
 // ---------- server ----------
 
 const server = http.createServer(async (req, res) => {
@@ -751,6 +771,7 @@ const server = http.createServer(async (req, res) => {
     res.end();
     return;
   }
+  if (MOVED_TO && handleMoved(req, res, url)) return;
   try {
     if (handleStatic(req, res, url.pathname)) return;
     for (const r of routes) {
@@ -779,6 +800,11 @@ const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname !== '/ws') {
+    socket.destroy();
+    return;
+  }
+  if (MOVED_TO) {
+    socket.write('HTTP/1.1 410 Gone\r\n\r\n');
     socket.destroy();
     return;
   }

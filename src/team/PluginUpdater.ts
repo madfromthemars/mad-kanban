@@ -60,6 +60,8 @@ export class PluginUpdater {
 
   async check(manual: boolean) {
     if (this.busy) return;
+    // Follow a server move before anything else (also when auto-update is off).
+    await this.plugin.team?.checkRelocation();
     if (!manual && this.plugin.settings['team-auto-update'] === false) return;
     const base = this.serverUrl;
     if (!base) {
