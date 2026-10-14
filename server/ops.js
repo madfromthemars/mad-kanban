@@ -1,4 +1,4 @@
-import { newId, parseSettings, rowToCard, transaction } from './db.js';
+import { defaultProjectId, newId, parseSettings, rowToCard, transaction, visibleProjectIds } from './db.js';
 import { laneKey } from './lanes.js';
 
 /** Lanes first, so cards created in a new lane in the same batch can find it. */
@@ -66,6 +66,11 @@ export function applyOps(db, board, user, ops) {
   const conflicts = [];
   const affectedUsers = new Set();
   const touchedCards = new Set();
+  // Cards in projects the user isn't in are invisible to them: ops treat them as missing,
+  // and reorders/inserts keep them where they are.
+  const vis = visibleProjectIds(db, user);
+  const sees = (row) => !!row && (vis === null || vis.has(row.project_id));
+  const projectOk = (id) => typeof id === 'string' && (vis === null ? !!q.project.get(id) : vis.has(id));
 
   const q = {
     lane: db.prepare('SELECT * FROM lanes WHERE id = ? AND board_id = ?'),
@@ -84,6 +89,10 @@ export function applyOps(db, board, user, ops) {
       'SELECT * FROM cards WHERE board_id = ? AND lane_id = ? AND archived = 0 ORDER BY position'
     ),
     card: db.prepare('SELECT * FROM cards WHERE id = ? AND board_id = ?'),
+    project: db.prepare('SELECT id FROM projects WHERE id = ?'),
+    setCardProject: db.prepare(
+      'UPDATE cards SET project_id = ?, version = version + 1, updated_at = ? WHERE id = ? AND board_id = ?'
+    ),
     insLane: db.prepare(
       'INSERT INTO lanes (id, board_id, title, position, mark_complete, max_items) VALUES (?, ?, ?, ?, ?, ?)'
     ),
@@ -135,8 +144,11 @@ export function applyOps(db, board, user, ops) {
 
   const placeCard = (cardRow, laneId, index) => {
     // Insert card into lane at index (index < 0 or too large = end), shifting others.
+    // The index counts only the cards the user can see.
     const others = q.laneCards.all(board.id, laneId).filter((c) => c.id !== cardRow.id);
-    const idx = index == null || index < 0 || index > others.length ? others.length : index;
+    const shown = others.filter(sees);
+    let idx = others.length;
+    if (index != null && index >= 0 && index < shown.length) idx = others.indexOf(shown[index]);
     others.splice(idx, 0, cardRow);
     others.forEach((c, i) => {
       q.setCardPos.run(laneId, i, laneId, now, c.id, board.id);
@@ -187,6 +199,12 @@ export function applyOps(db, board, user, ops) {
             r.error = 'lane not found';
             break;
           }
+          // It would archive cards of projects the user can't see.
+          if (user.role !== 'owner') {
+            r.ok = false;
+            r.error = 'only the owner can delete lists';
+            break;
+          }
           for (const c of q.laneCards.all(board.id, lane.id)) touch(c);
           q.archiveLaneCards.run(now, board.id, lane.id);
           q.delLane.run(lane.id, board.id);
@@ -214,15 +232,17 @@ export function applyOps(db, board, user, ops) {
           // cards the client doesn't know about keep their relative place at the end.
           const wanted = Array.isArray(op.cardIds) ? op.cardIds : [];
           const existing = q.laneCards.all(board.id, lane.id);
-          const inLane = new Map(existing.map((c) => [c.id, c]));
+          const inLane = new Map(existing.filter(sees).map((c) => [c.id, c]));
           const seen = new Set();
-          const ordered = [];
+          const mine = [];
           for (const id of wanted) {
             if (seen.has(id) || !inLane.has(id)) continue;
             seen.add(id);
-            ordered.push(inLane.get(id));
+            mine.push(inLane.get(id));
           }
-          for (const c of existing) if (!seen.has(c.id)) ordered.push(c);
+          for (const c of existing) if (sees(c) && !seen.has(c.id)) mine.push(c);
+          // Cards the user can't see keep their slots; visible slots take the new order.
+          const ordered = existing.map((c) => (sees(c) ? mine.shift() : c));
           ordered.forEach((c, p) => {
             if (c.position !== p) q.setCardPos.run(lane.id, p, lane.id, now, c.id, board.id);
           });
@@ -242,6 +262,12 @@ export function applyOps(db, board, user, ops) {
             r.error = 'lane not found';
             break;
           }
+          let projectId = op.projectId != null ? String(op.projectId) : defaultProjectId(db, user);
+          if (!projectOk(projectId)) {
+            r.ok = false;
+            r.error = projectId ? 'you are not in that project' : 'you are not in any project';
+            break;
+          }
           const assignees = Array.isArray(op.assignees) ? op.assignees.map(String) : [];
           q.insCard.run(
             id,
@@ -257,6 +283,7 @@ export function applyOps(db, board, user, ops) {
             now,
             now
           );
+          q.setCardProject.run(projectId, now, id, board.id);
           const row = q.card.get(id, board.id);
           placeCard(row, lane.id, op.index);
           touch(q.card.get(id, board.id));
@@ -265,7 +292,7 @@ export function applyOps(db, board, user, ops) {
         }
         case 'card.update': {
           const card = q.card.get(op.id, board.id);
-          if (!card) {
+          if (!sees(card)) {
             r.ok = false;
             r.error = 'card not found';
             break;
@@ -290,12 +317,20 @@ export function applyOps(db, board, user, ops) {
             card.id,
             board.id
           );
+          if (op.projectId != null && String(op.projectId) !== card.project_id) {
+            if (!projectOk(String(op.projectId))) {
+              r.ok = false;
+              r.error = 'you are not in that project';
+            } else {
+              q.setCardProject.run(String(op.projectId), now, card.id, board.id);
+            }
+          }
           touch(q.card.get(card.id, board.id));
           break;
         }
         case 'card.assign': {
           const card = q.card.get(op.id, board.id);
-          if (!card) {
+          if (!sees(card)) {
             r.ok = false;
             r.error = 'card not found';
             break;
@@ -311,7 +346,7 @@ export function applyOps(db, board, user, ops) {
         }
         case 'card.move': {
           const card = q.card.get(op.id, board.id);
-          if (!card) {
+          if (!sees(card)) {
             r.ok = false;
             r.error = 'card not found';
             break;
@@ -345,7 +380,7 @@ export function applyOps(db, board, user, ops) {
         }
         case 'card.archive': {
           const card = q.card.get(op.id, board.id);
-          if (!card) {
+          if (!sees(card)) {
             r.ok = false;
             r.error = 'card not found';
             break;
@@ -358,7 +393,7 @@ export function applyOps(db, board, user, ops) {
         }
         case 'card.delete': {
           const card = q.card.get(op.id, board.id);
-          if (!card) {
+          if (!sees(card)) {
             r.ok = false;
             r.error = 'card not found';
             break;

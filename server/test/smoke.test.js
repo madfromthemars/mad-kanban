@@ -370,3 +370,112 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
 
   ws.close();
 });
+
+test('projects: hosts, users and card visibility', async () => {
+  // Alice was the first user on this server, so she is the owner.
+  assert.equal((await api('GET', '/api/users')).status, 401);
+  const users = await api('GET', '/api/admin/users', null, ADMIN);
+  const aliceRow = users.json.users.find((u) => u.name === 'Alice');
+  assert.equal(aliceRow.role, 'owner');
+  // A plain user can't manage the team.
+  const T = (await api('POST', '/api/admin/users', { name: 'Temp' }, ADMIN)).json.token;
+  assert.equal((await api('GET', '/api/team', null, T)).status, 403);
+
+  // The first test kept no owner token around; issue a fresh one.
+  const db = await import('../db.js');
+  const conn = db.openDb(dataDir);
+  const O = db.resetToken(conn, aliceRow.id);
+  conn.close();
+
+  const team0 = await api('GET', '/api/team', null, O);
+  assert.equal(team0.status, 200);
+  const general = team0.json.projects.find((p) => p.name === 'General');
+  assert.ok(general);
+
+  // Owner makes a project and a host who isn't in General.
+  let t = await api('POST', '/api/team/projects', { name: 'Vidora' }, O);
+  const vidora = t.json.projects.find((p) => p.name === 'Vidora');
+  assert.ok(vidora);
+  const host = await api('POST', '/api/team/users', { name: 'Hana', role: 'host', projectIds: [vidora.id] }, O);
+  assert.equal(host.status, 200);
+  const H = host.json.join.split('#')[1];
+  // The host makes a plain user in Vidora.
+  const uma = await api('POST', '/api/team/users', { name: 'Uma', projectIds: [vidora.id] }, H);
+  assert.equal(uma.status, 200);
+  const U = uma.json.join.split('#')[1];
+  // ...but can't hand out a project she isn't in.
+  assert.equal((await api('POST', '/api/team/users', { name: 'X', projectIds: [general.id] }, H)).status, 404);
+  // Users can't use the team API; hosts can't remove hosts or touch the owner.
+  assert.equal((await api('POST', '/api/team/projects', { name: 'Nope' }, U)).status, 403);
+  assert.equal((await api('DELETE', `/api/team/users/${aliceRow.id}`, null, H)).status, 403);
+
+  // A board with a General card and a Vidora card, interleaved in To Do.
+  const board = (await api('POST', '/api/boards', { name: 'Shared' }, O)).json.board;
+  const todo = board.lanes[0].id;
+  const ops = await api('POST', `/api/boards/${board.board.id}/ops`, {
+    ops: [
+      { type: 'card.create', id: 'gen1', laneId: todo, index: 0, content: 'general one', projectId: general.id },
+      { type: 'card.create', id: 'vid1', laneId: todo, index: 1, content: 'vidora one', projectId: vidora.id },
+      { type: 'card.create', id: 'gen2', laneId: todo, index: 2, content: 'general two', projectId: general.id },
+      { type: 'card.create', id: 'vid2', laneId: todo, index: 3, content: 'vidora two', projectId: vidora.id },
+    ],
+  }, O);
+  assert.equal(ops.json.ok, true, JSON.stringify(ops.json));
+
+  // Uma joins the board (the plugin does this on its first 403) and sees only Vidora cards, and only people in her projects.
+  assert.equal((await api('POST', `/api/boards/${board.board.id}/join`, null, U)).status, 200);
+  const snapU = (await api('GET', `/api/boards/${board.board.id}`, null, U)).json.board;
+  assert.deepEqual(snapU.cards.map((c) => c.id).sort(), ['vid1', 'vid2']);
+  assert.deepEqual(snapU.projects.map((p) => p.name), ['Vidora']);
+  assert.equal(snapU.role, 'user');
+  assert.ok(!snapU.members.some((m) => m.name === 'Temp'));
+  // Owner sees everything.
+  const snapO = (await api('GET', `/api/boards/${board.board.id}`, null, O)).json.board;
+  assert.equal(snapO.cards.length, 4);
+
+  // Hidden cards: not found for ops, comments; card.create can't target a foreign project.
+  const bad = await api('POST', `/api/boards/${board.board.id}/ops`, {
+    ops: [
+      { type: 'card.update', id: 'gen1', content: 'hacked' },
+      { type: 'card.create', id: 'sneak', laneId: todo, index: 0, content: 'x', projectId: general.id },
+    ],
+  }, U);
+  assert.equal(bad.json.results[0].error, 'card not found');
+  assert.equal(bad.json.results[1].error, 'you are not in that project');
+  assert.equal((await api('GET', `/api/boards/${board.board.id}/cards/gen1/comments`, null, U)).status, 404);
+
+  // Uma swaps her two cards; the General cards keep their slots.
+  await api('POST', `/api/boards/${board.board.id}/ops`, {
+    ops: [{ type: 'lane.setCards', laneId: todo, cardIds: ['vid2', 'vid1'] }],
+  }, U);
+  // And adds one at the top of what she sees: it lands before vid2, after gen1.
+  await api('POST', `/api/boards/${board.board.id}/ops`, {
+    ops: [{ type: 'card.create', id: 'vid3', laneId: todo, index: 0, content: 'vidora three' }],
+  }, U);
+  const order = (await api('GET', `/api/boards/${board.board.id}`, null, O)).json.board.cards
+    .filter((c) => c.laneId === todo)
+    .sort((a, b) => a.position - b.position)
+    .map((c) => c.id);
+  assert.deepEqual(order, ['gen1', 'vid3', 'vid2', 'gen2', 'vid1']);
+  // Created without projectId: goes to her only project.
+  assert.equal(snapO.cards.length + 1, (await api('GET', `/api/boards/${board.board.id}`, null, O)).json.board.cards.length);
+  const vid3 = (await api('GET', `/api/boards/${board.board.id}`, null, O)).json.board.cards.find((c) => c.id === 'vid3');
+  assert.equal(vid3.projectId, vidora.id);
+
+  // Taking Uma out of Vidora hides everything from her.
+  await api('DELETE', `/api/team/projects/${vidora.id}/members/${uma.json.user.id}`, null, H);
+  assert.equal((await api('GET', `/api/boards/${board.board.id}`, null, U)).json.board.cards.length, 0);
+
+  // A project with cards can't be deleted; an empty one can.
+  assert.equal((await api('DELETE', `/api/team/projects/${vidora.id}`, null, H)).status, 409);
+  t = await api('POST', '/api/team/projects', { name: 'Empty' }, H);
+  const empty = t.json.projects.find((p) => p.name === 'Empty');
+  assert.equal((await api('DELETE', `/api/team/projects/${empty.id}`, null, H)).status, 200);
+  // Hana only sees her own projects.
+  assert.deepEqual((await api('GET', '/api/team', null, H)).json.projects.map((p) => p.name), ['Vidora']);
+
+  // A reset token replaces the old one.
+  const reset = await api('POST', `/api/team/users/${uma.json.user.id}/token`, null, H);
+  assert.equal((await api('GET', '/api/me', null, U)).status, 401);
+  assert.equal((await api('GET', '/api/me', null, reset.json.join.split('#')[1])).json.user.name, 'Uma');
+});

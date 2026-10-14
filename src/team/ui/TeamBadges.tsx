@@ -80,11 +80,14 @@ export const TeamCardExtras = memo(function TeamCardExtras({
 
   const isMirror = !stateManager.teamSync;
   const assignees = info?.card.assignees || [];
+  const project = team.project(info?.card.projectId);
 
   const openPicker = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    new AssigneeModal(stateManager.app, team.users, assignees, (user) => {
+    // Only people in the card's project can see it, so only they can be assigned.
+    const people = project ? team.users.filter((u) => project.memberIds.includes(u.id)) : team.users;
+    new AssigneeModal(stateManager.app, people, assignees, (user) => {
       void team.toggleAssignee(parsed.boardId, parsed.cardId, user.id);
     }).open();
   };
@@ -97,6 +100,7 @@ export const TeamCardExtras = memo(function TeamCardExtras({
 
   return (
     <div className={c('team-extras')} data-ignore-drag={true}>
+      {!detail && <ProjectChip projectId={info?.card.projectId} />}
       {isMirror && (
         <a className={c('team-badge')} onClick={openBoard} title="Open team board">
           <span className={c('team-badge-board')}>
@@ -141,6 +145,57 @@ export const TeamCardExtras = memo(function TeamCardExtras({
     </div>
   );
 });
+
+/** The card's project, on cards; hidden when the user only has one project. */
+export const ProjectChip = memo(function ProjectChip({ projectId }: { projectId?: string | null }) {
+  const { stateManager } = useContext(KanbanContext);
+  const team = stateManager.plugin?.team;
+  const projects = team ? team.useProjects() : [];
+  const project = projectId ? projects.find((p) => p.id === projectId) : null;
+  if (!project || projects.length < 2) return null;
+  return (
+    <span
+      className={c('project-chip')}
+      style={{ '--project-color': project.color || 'var(--text-muted)' }}
+      title={`Project: ${project.name}`}
+    >
+      <span className={c('project-dot')} />
+      {project.name}
+    </span>
+  );
+});
+
+/** Project field in the card window: shows the project and moves the card to another one. */
+export function ProjectSelect({ item }: { item: Item }) {
+  const { stateManager } = useContext(KanbanContext);
+  const team = stateManager.plugin?.team;
+  const parsed = parseTeamItemId(item.id);
+  const info = team ? team.useCardInfo(parsed?.cardId ?? null) : null;
+  const projects = team ? team.useProjects() : [];
+  if (!team || !parsed || !projects.length) return null;
+  const current = info?.card.projectId || '';
+  const project = projects.find((p) => p.id === current);
+  return (
+    <div className={c('cd-project')} style={{ '--project-color': project?.color || 'var(--text-faint)' }}>
+      <span className={c('project-dot')} />
+      <select
+        className={`dropdown ${c('cd-select')}`}
+        value={current}
+        onChange={(e) => {
+          const next = (e.target as HTMLSelectElement).value;
+          if (next && next !== current) void team.setCardProject(parsed.boardId, parsed.cardId, next);
+        }}
+      >
+        {!project && <option value="">No project</option>}
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 /** Small status pill shown in the toolbar of a team board. */
 export const TeamSyncStatus = memo(function TeamSyncStatus() {

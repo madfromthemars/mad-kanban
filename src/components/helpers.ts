@@ -454,8 +454,11 @@ export function itemMatchesFilters(
   cardBodyCache?: Map<string, string>,
   boardPath?: string,
   getAssignees?: (item: Item) => string[] | null,
-  meId?: string | null
+  meId?: string | null,
+  getProject?: (item: Item) => string | null
 ): boolean {
+  if (filters.projects?.length && !filters.projects.includes(getProject?.(item) || '')) return false;
+
   // Assignees (team cards; other cards count as unassigned)
   if (filters.assignees.length) {
     const assignees = getAssignees?.(item) || [];
@@ -496,7 +499,8 @@ export function useFilterValue(
   cardBodyCache?: Map<string, string>,
   boardPath?: string,
   getAssignees?: (item: Item) => string[] | null,
-  meId?: string | null
+  meId?: string | null,
+  getProject?: (item: Item) => string | null
 ): FilterContextProps {
   // Filters are remembered per board on this device.
   const storageKey = boardPath ? `kanban-filters:${boardPath}` : null;
@@ -582,6 +586,7 @@ export function useFilterValue(
     filters.dates.length > 0 ||
     filters.priorities.length > 0 ||
     filters.assignees.length > 0 ||
+    filters.projects.length > 0 ||
     filters.hideChecked;
 
   // Tag grouping state
@@ -605,6 +610,7 @@ export function useFilterValue(
     availableTags,
     updateFilters,
     getAssignees,
+    getProject,
     meId,
     clearFilters,
     hasActiveFilters,

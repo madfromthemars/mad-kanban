@@ -59,22 +59,6 @@ ${content}`;
   }
 }
 
-// Calculate card age in days
-export function calculateCardAge(lastMoved: Date | null): number {
-  if (!lastMoved) return 0;
-  const now = new Date();
-  const diffMs = now.getTime() - lastMoved.getTime();
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
-}
-
-// Get age class based on days
-export function getCardAgeClass(ageDays: number): string {
-  if (ageDays >= 14) return 'card-age-old';
-  if (ageDays >= 7) return 'card-age-stale';
-  if (ageDays >= 3) return 'card-age-aging';
-  return '';
-}
-
 export function sanitizeName(rawTitle: string) {
   return rawTitle
     .replace(illegalCharsRegEx, ' ')

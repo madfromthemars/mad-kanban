@@ -25,6 +25,8 @@ export interface FilterState {
   priorities: PriorityFilterType[];
   /** 'me' | 'unassigned' | team user ids */
   assignees: string[];
+  /** Team project ids */
+  projects: string[];
   hideChecked: boolean;
 }
 
@@ -33,6 +35,7 @@ export const EMPTY_FILTERS: FilterState = {
   dates: [],
   priorities: [],
   assignees: [],
+  projects: [],
   hideChecked: false,
 };
 
@@ -42,6 +45,8 @@ export interface FilterContextProps {
   updateFilters: (patch: Partial<FilterState>) => void;
   /** Assignees of a team card, or null for a card that isn't a team card. */
   getAssignees?: (item: Item) => string[] | null;
+  /** Project of a team card, or null. */
+  getProject?: (item: Item) => string | null;
   meId?: string | null;
   clearFilters: () => void;
   hasActiveFilters: boolean;

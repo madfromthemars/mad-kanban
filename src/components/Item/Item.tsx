@@ -20,7 +20,7 @@ import { Icon } from '../Icon/Icon';
 import { TagGroup } from '../Lane/TagGroup';
 import { EditState, EditingState, Item, isEditing } from '../types';
 import { ItemCheckbox } from './ItemCheckbox';
-import { ItemContent, Tags, getCardCacheKey, getCardAgeClassFromCache, cardBodyCache } from './ItemContent';
+import { ItemContent, Tags, getCardCacheKey, cardBodyCache } from './ItemContent';
 import { extractCardLinkPath, extractCardTitle, findCardFileInVault } from 'src/kanbanFileHelpers';
 import { TFile } from 'obsidian';
 import { isTeamItem } from 'src/team/ids';
@@ -406,11 +406,6 @@ export const DraggableItem = memo(function DraggableItem(props: DraggableItemPro
     },
     [stateManager.file.path, cardLinkPath, cardTitle]
   );
-  const ageClass = cacheKey ? getCardAgeClassFromCache(cacheKey) : '';
-  if (ageClass) {
-    classModifiers.push(ageClass);
-  }
-
   // Check if item matches filters
   const matchesFilter = filterContext?.hasActiveFilters
     ? itemMatchesFilters(
@@ -419,7 +414,8 @@ export const DraggableItem = memo(function DraggableItem(props: DraggableItemPro
         filterContext.cardBodyCache,
         filterContext.boardPath,
         filterContext.getAssignees,
-        filterContext.meId
+        filterContext.meId,
+        filterContext.getProject
       )
     : true;
 

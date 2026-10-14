@@ -1,6 +1,25 @@
+export type TeamRole = 'owner' | 'host' | 'user';
+
 export interface TeamUser {
   id: string;
   name: string;
+  role?: TeamRole;
+}
+
+/** Every card belongs to one project; people see only cards of projects they're in. */
+export interface TeamProject {
+  id: string;
+  name: string;
+  color: string;
+  memberIds: string[];
+  cardCount?: number;
+}
+
+/** What GET /api/team returns to a host or the owner. */
+export interface TeamDirectory {
+  me: TeamUser;
+  users: Array<TeamUser & { projectIds: string[] }>;
+  projects: TeamProject[];
 }
 
 export interface TeamBoardMeta {
@@ -36,6 +55,7 @@ export interface TeamCard {
   createdAt: number;
   updatedAt: number;
   lastMoved: number;
+  projectId?: string | null;
   commentCount?: number;
   /** Comments by others the current user hasn't read yet */
   unreadComments?: number;
@@ -76,6 +96,9 @@ export interface TeamBoardSnapshot {
   cards: TeamCard[];
   archive: TeamCard[];
   members: TeamUser[];
+  /** Projects the current user is in (all of them for the owner). */
+  projects?: TeamProject[];
+  role?: TeamRole;
 }
 
 export type TeamOp =
@@ -93,6 +116,7 @@ export type TeamOp =
       checked?: boolean;
       checkChar?: string;
       assignees?: string[];
+      projectId?: string;
     }
   | {
       type: 'card.update';
@@ -102,6 +126,7 @@ export type TeamOp =
       checked?: boolean;
       checkChar?: string;
       assignees?: string[];
+      projectId?: string;
     }
   | { type: 'card.assign'; id: string; userId?: string; assigned: boolean }
   | {
@@ -138,6 +163,8 @@ export type TeamServerEvent =
     }
   | { type: 'boards.changed'; boardId?: string; deleted?: boolean }
   | { type: 'comments.changed'; boardId: string; cardId: string }
+  | { type: 'plugin.released'; version: string }
+  | { type: 'team.changed' }
   | { type: 'pong' };
 
 /** Frontmatter keys written into a team board's markdown file. */

@@ -17,7 +17,7 @@ import {
 } from 'src/kanbanFileHelpers';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
 import { isTeamItem } from 'src/team/ids';
-import { TeamCardExtras } from 'src/team/ui/TeamBadges';
+import { TeamCardExtras, ProjectSelect } from 'src/team/ui/TeamBadges';
 import { moveEntity } from 'src/dnd/util/data';
 import { setPriorityInTitle } from 'src/kanbanFileHelpers';
 import {
@@ -396,7 +396,7 @@ const CardDetailContent = memo(function CardDetailContent({
         setEditState({ x: -1, y: -1 });
         return;
       }
-      setEditState({ x: e.clientX, y: e.clientY });
+      // On text, a double click selects a word like anywhere else; use Edit to change it.
     },
     []
   );
@@ -664,6 +664,12 @@ const CardDetailContent = memo(function CardDetailContent({
         </div>
 
         <aside className={c('cd-sidebar')}>
+          {isTeam && stateManager.teamSync && (
+            <Field label="Project">
+              <ProjectSelect item={currentItem} />
+            </Field>
+          )}
+
           {lanes.length > 0 && (
             <Field label="Status">
               <select

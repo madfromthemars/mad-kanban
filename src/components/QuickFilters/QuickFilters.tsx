@@ -124,6 +124,7 @@ export function QuickFilters() {
   const getTagColor = useGetTagColorFn(stateManager);
   const team = stateManager.plugin?.team;
   const users = team ? team.useUsers() : [];
+  const projects = team ? team.useProjects() : [];
   const board = stateManager.useState();
 
   const items = useMemo(() => {
@@ -133,7 +134,7 @@ export function QuickFilters() {
   }, [board]);
 
   if (!filterContext) return null;
-  const { filters, updateFilters, clearFilters, hasActiveFilters, getAssignees, meId } = filterContext;
+  const { filters, updateFilters, clearFilters, hasActiveFilters, getAssignees, getProject, meId } = filterContext;
   const set = (patch: Partial<FilterState>) => updateFilters(patch);
 
   // Options, each with how many cards on the board it matches.
@@ -160,6 +161,17 @@ export function QuickFilters() {
         { value: 'unassigned', label: 'Unassigned', count: items.filter((i) => assigneesOf(i).length === 0).length },
       ]
     : [];
+
+  // Only worth a filter when the user can see more than one project.
+  const projectOptions: Option<string>[] =
+    hasTeamCards && projects.length > 1
+      ? projects.map((p) => ({
+          value: p.id,
+          label: p.name,
+          icon: <span className={c('filter-tag-dot')} style={{ background: p.color || 'var(--text-faint)' }} />,
+          count: items.filter((i) => getProject?.(i) === p.id).length,
+        }))
+      : [];
 
   const priorityOptions: Option<PriorityFilterType>[] = PRIORITY_OPTIONS.map((p) => ({
     value: p.value,
@@ -194,12 +206,21 @@ export function QuickFilters() {
 
   const shown = hasActiveFilters
     ? items.filter((i) =>
-        itemMatchesFilters(i, filters, filterContext.cardBodyCache, filterContext.boardPath, getAssignees, meId)
+        itemMatchesFilters(i, filters, filterContext.cardBodyCache, filterContext.boardPath, getAssignees, meId, getProject)
       ).length
     : items.length;
 
   return (
     <div className={c('filter-bar')}>
+      {(projectOptions.length > 0 || filters.projects.length > 0) && (
+        <FilterMenu
+          label="Project"
+          icon="lucide-folder"
+          options={projectOptions}
+          selected={filters.projects}
+          onChange={(projects) => set({ projects })}
+        />
+      )}
       {hasTeamCards && (
         <FilterMenu
           label="Assignee"

@@ -16,12 +16,14 @@ import {
   TeamBoardMeta,
   TeamBoardSnapshot,
   TeamCard,
+  TeamProject,
   TeamServerEvent,
   TeamUser,
   teamBoardIdKey,
   teamBoardNameKey,
 } from './types';
 import { JoinBoardModal, promptText } from './ui/modals';
+import { ManageTeamModal } from './ui/ManageTeam';
 
 export interface CardInfo {
   card: TeamCard;
@@ -43,6 +45,8 @@ export class TeamManager {
 
   user: TeamUser | null = null;
   users: TeamUser[] = [];
+  /** Projects the current user is in (all of them for the owner), from the latest board snapshot. */
+  projects: TeamProject[] = [];
   boardNames = new Map<string, string>();
   cards = new Map<string, CardInfo>();
 
@@ -66,6 +70,8 @@ export class TeamManager {
         this.syncs.forEach((s) => s.onConnected());
         this.mirrors.forEach((m) => m.onConnected());
         void this.refreshDirectory();
+        // Catch releases published while we were offline.
+        this.plugin.updater?.checkSoon(3000);
       }
     });
   }
@@ -190,6 +196,13 @@ export class TeamManager {
     this.mirrors.forEach((m) => m.onServerEvent(ev));
     if (ev.type === 'boards.changed') this.emitter.emit('boards');
     if (ev.type === 'comments.changed') this.emitter.emit('comments', ev.boardId, ev.cardId);
+    // Roles, people or project membership changed; boards reload through their own board.changed.
+    if (ev.type === 'team.changed') {
+      void this.refreshDirectory();
+      this.emitter.emit('team');
+    }
+    // A new plugin build was published: fetch it now (spread out a little so clients don't all hit at once).
+    if (ev.type === 'plugin.released') this.plugin.updater?.checkSoon(Math.random() * 5000);
   }
 
   // ---------- card index (for badges / assignee chips) ----------
@@ -197,6 +210,14 @@ export class TeamManager {
   indexSnapshot(snapshot: TeamBoardSnapshot) {
     const boardId = snapshot.board.id;
     this.boardNames.set(boardId, snapshot.board.name);
+    if (snapshot.projects) {
+      this.projects = snapshot.projects;
+      this.emitter.emit('projects', this.projects);
+    }
+    if (snapshot.role && this.user && this.user.role !== snapshot.role) {
+      this.user = { ...this.user, role: snapshot.role };
+      this.emitter.emit('user', this.user);
+    }
     const laneTitles = new Map(snapshot.lanes.map((l) => [l.id, l.title]));
     for (const [id, info] of this.cards) {
       if (info.boardId === boardId) this.cards.delete(id);
@@ -253,6 +274,33 @@ export class TeamManager {
     this.emitter.emit('cards');
   }
 
+  get isHost() {
+    return this.user?.role === 'owner' || this.user?.role === 'host';
+  }
+
+  project(projectId: string | null | undefined): TeamProject | null {
+    return (projectId && this.projects.find((p) => p.id === projectId)) || null;
+  }
+
+  openManageTeam() {
+    new ManageTeamModal(this.plugin.app, this).open();
+  }
+
+  /** Move a card to another project, straight to the server. */
+  async setCardProject(boardId: string, cardId: string, projectId: string) {
+    try {
+      const res = await this.client.applyOps(boardId, [{ type: 'card.update', id: cardId, projectId }]);
+      const err = res.results.find((r) => !r.ok);
+      if (err) throw new Error(err.error);
+      this.updateCard(cardId, { projectId });
+      const sync = this.syncFor(boardId);
+      for (const [id, v] of Object.entries(res.versions || {})) sync?.versions.set(id, v);
+      sync?.requestReload(0);
+    } catch (e) {
+      new Notice(`Kanban: could not change the project (${e?.message || e})`);
+    }
+  }
+
   userName(userId: string) {
     return this.users.find((u) => u.id === userId)?.name || userId;
   }
@@ -293,6 +341,32 @@ export class TeamManager {
       };
     }, []);
     return users;
+  }
+
+  useProjects(): TeamProject[] {
+    const [projects, setProjects] = useState(this.projects);
+    useEffect(() => {
+      const fn = (p: TeamProject[]) => setProjects(p);
+      this.emitter.on('projects', fn);
+      setProjects(this.projects);
+      return () => {
+        this.emitter.off('projects', fn);
+      };
+    }, []);
+    return projects;
+  }
+
+  useIsHost(): boolean {
+    const [host, setHost] = useState(this.isHost);
+    useEffect(() => {
+      const fn = () => setHost(this.isHost);
+      this.emitter.on('user', fn);
+      fn();
+      return () => {
+        this.emitter.off('user', fn);
+      };
+    }, []);
+    return host;
   }
 
   useCardInfo(cardId: string | null): CardInfo | null {

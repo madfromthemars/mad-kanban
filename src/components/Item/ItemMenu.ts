@@ -43,6 +43,10 @@ export function useItemMenu({
       const team = stateManager.plugin?.team;
       const isTeam = !!teamInfo && !!team;
       const isMirror = isTeam && !stateManager.teamSync;
+      // Cards made from this one (insert, split) go to the same project.
+      const srcProject = teamInfo ? team?.getCard(teamInfo.cardId)?.projectId : null;
+      const inProject = (it: Item): Item =>
+        srcProject ? { ...it, data: { ...it.data, teamProject: srcProject } } : it;
 
       const menu = new Menu().addItem((i) => {
         i.setIcon('lucide-edit')
@@ -216,7 +220,7 @@ export function useItemMenu({
               const titles = item.data.titleRaw.split(/[\r\n]+/g).map((t) => t.trim());
               const newItems = await Promise.all(
                 titles.map((title) => {
-                  return stateManager.getNewItem(title, ' ');
+                  return inProject(stateManager.getNewItem(title, ' '));
                 })
               );
 
@@ -235,7 +239,7 @@ export function useItemMenu({
           i.setIcon('lucide-list-start')
             .setTitle(t('Insert card before'))
             .onClick(() =>
-              boardModifiers.insertItems(path, [stateManager.getNewItem('', ' ', true)])
+              boardModifiers.insertItems(path, [inProject(stateManager.getNewItem('', ' ', true))])
             );
         })
         .addItem((i) => {
@@ -246,7 +250,7 @@ export function useItemMenu({
 
               newPath[newPath.length - 1] = newPath[newPath.length - 1] + 1;
 
-              boardModifiers.insertItems(newPath, [stateManager.getNewItem('', ' ', true)]);
+              boardModifiers.insertItems(newPath, [inProject(stateManager.getNewItem('', ' ', true))]);
             });
         })
         .addItem((i) => {

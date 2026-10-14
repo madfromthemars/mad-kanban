@@ -1,13 +1,7 @@
 import update from 'immutability-helper';
 import { StateManager } from 'src/StateManager';
-import { cardAgeCache, getCardCacheKey } from 'src/components/Item/ItemContent';
 import { Board, Item, Lane, LaneTemplate } from 'src/components/types';
-import {
-  calculateCardAge,
-  extractCardTitle,
-  getCardAgeClass,
-  setPriorityInTitle,
-} from 'src/kanbanFileHelpers';
+import { setPriorityInTitle } from 'src/kanbanFileHelpers';
 
 import { isTeamItem, isTeamLane, teamItemId, teamLaneId } from './ids';
 import { TeamBoardSnapshot, TeamCard } from './types';
@@ -31,14 +25,6 @@ export function cardToItem(stateManager: StateManager, boardId: string, card: Te
       forceEditMode: { $set: false },
     },
   });
-
-  // Card age coloring reuses the same cache the file-backed cards use.
-  const title = extractCardTitle(item.data.titleRaw);
-  if (title) {
-    const key = getCardCacheKey(stateManager.file.path, title);
-    const age = calculateCardAge(card.lastMoved ? new Date(card.lastMoved) : null);
-    cardAgeCache.set(key, getCardAgeClass(age));
-  }
 
   return item;
 }

@@ -15,6 +15,7 @@ import {
 
 import { generateInstanceId } from '../components/helpers';
 import { laneKey } from 'src/team/laneKey';
+import { parseTeamItemId } from 'src/team/ids';
 import { Board, DataTypes, Item, Lane } from '../components/types';
 
 export interface BoardModifiers {
@@ -243,11 +244,15 @@ export function getBoardModifiers(view: KanbanView, stateManager: StateManager):
     duplicateEntity: (path: Path) => {
       stateManager.setState((boardData) => {
         const entity = getEntityFromPath(boardData, path);
-        const entityWithNewID = update(entity, {
+        let entityWithNewID = update(entity, {
           id: {
             $set: generateInstanceId(),
           },
         });
+        // A copy of a team card stays in the original's project.
+        const teamIds = entity.type === DataTypes.Item ? parseTeamItemId(entity.id) : null;
+        const projectId = teamIds && stateManager.plugin?.team?.getCard(teamIds.cardId)?.projectId;
+        if (projectId) entityWithNewID = { ...entityWithNewID, data: { ...entityWithNewID.data, teamProject: projectId } };
 
         if (entity.type === DataTypes.Lane) {
           const collapseState = view.getViewState('list-collapse');

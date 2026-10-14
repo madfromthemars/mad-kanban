@@ -424,9 +424,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
                   </div>
                 </div>
               ) : (
-                <div onDblClick={(e) => !(e.target as HTMLElement).closest('code, a, img, video') && startReply(cm)}>
-                  <CommentBody markdown={cm.body} sourcePath={stateManager.file.path} />
-                </div>
+                <CommentBody markdown={cm.body} sourcePath={stateManager.file.path} />
               )}
             </div>
           </div>

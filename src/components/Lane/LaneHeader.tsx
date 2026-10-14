@@ -129,7 +129,8 @@ export const LaneHeader = memo(function LaneHeader({
           filterContext.cardBodyCache,
           filterContext.boardPath,
           filterContext.getAssignees,
-          filterContext.meId
+          filterContext.meId,
+          filterContext.getProject
         )
       ).length
     : null;

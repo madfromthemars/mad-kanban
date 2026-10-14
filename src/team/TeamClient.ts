@@ -3,6 +3,8 @@ import { requestUrl } from 'obsidian';
 
 import {
   TeamComment,
+  TeamDirectory,
+  TeamRole,
   UploadedFile,
   MyCard,
   OpsResponse,
@@ -237,6 +239,47 @@ export class TeamClient {
     }
     if (res.status >= 400) throw new TeamApiError(res.status, json?.error || `Upload failed (${res.status})`);
     return json as UploadedFile;
+  }
+
+  // ---------- team management (hosts and the owner) ----------
+
+  team() {
+    return this.request<TeamDirectory>('GET', '/api/team');
+  }
+
+  createUser(name: string, role: TeamRole, projectIds: string[]) {
+    return this.request<{ user: TeamUser; join: string }>('POST', '/api/team/users', { name, role, projectIds });
+  }
+
+  updateUser(id: string, patch: { name?: string; role?: TeamRole }) {
+    return this.request<TeamDirectory>('PATCH', `/api/team/users/${encodeURIComponent(id)}`, patch);
+  }
+
+  resetUserToken(id: string) {
+    return this.request<{ join: string }>('POST', `/api/team/users/${encodeURIComponent(id)}/token`);
+  }
+
+  removeUser(id: string) {
+    return this.request<TeamDirectory>('DELETE', `/api/team/users/${encodeURIComponent(id)}`);
+  }
+
+  createProject(name: string) {
+    return this.request<TeamDirectory>('POST', '/api/team/projects', { name });
+  }
+
+  updateProject(id: string, patch: { name?: string; color?: string }) {
+    return this.request<TeamDirectory>('PATCH', `/api/team/projects/${encodeURIComponent(id)}`, patch);
+  }
+
+  deleteProject(id: string) {
+    return this.request<TeamDirectory>('DELETE', `/api/team/projects/${encodeURIComponent(id)}`);
+  }
+
+  setProjectMember(projectId: string, userId: string, member: boolean) {
+    return this.request<TeamDirectory>(
+      member ? 'PUT' : 'DELETE',
+      `/api/team/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`
+    );
   }
 
   myCards() {

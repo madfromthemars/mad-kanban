@@ -171,7 +171,62 @@ function migrate(db) {
   if (!commentCols.includes('edited_at')) {
     db.exec('ALTER TABLE comments ADD COLUMN edited_at INTEGER');
   }
+
+  // Roles: one owner (sees everything), hosts (manage people and their own projects), users.
+  const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!userCols.includes('role')) {
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
+  }
+  if (!db.prepare("SELECT 1 FROM users WHERE role = 'owner'").get()) {
+    const first = db.prepare('SELECT id FROM users WHERE disabled = 0 ORDER BY created_at, rowid LIMIT 1').get();
+    if (first) db.prepare("UPDATE users SET role = 'owner' WHERE id = ?").run(first.id);
+  }
+
+  // Projects: every card belongs to one; people see only cards of projects they're in.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      color TEXT NOT NULL DEFAULT '',
+      created_by TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS project_members (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      added_at INTEGER NOT NULL,
+      PRIMARY KEY (project_id, user_id)
+    );
+  `);
+  const cardCols = db.prepare('PRAGMA table_info(cards)').all().map((c) => c.name);
+  if (!cardCols.includes('project_id')) {
+    db.exec('ALTER TABLE cards ADD COLUMN project_id TEXT');
+  }
+  // Cards made before projects existed go to "General", which everyone is in.
+  if (!db.prepare("SELECT value FROM meta WHERE key = 'projects'").get()) {
+    transaction(db, () => {
+      const now = Date.now();
+      let general = db.prepare("SELECT id FROM projects WHERE name = 'General'").get();
+      if (!general) {
+        general = { id: newId(10) };
+        db.prepare('INSERT INTO projects (id, name, color, created_by, created_at) VALUES (?, ?, ?, NULL, ?)').run(
+          general.id,
+          'General',
+          PROJECT_COLORS[0],
+          now
+        );
+      }
+      db.prepare('UPDATE cards SET project_id = ? WHERE project_id IS NULL').run(general.id);
+      db.prepare(
+        'INSERT OR IGNORE INTO project_members (project_id, user_id, added_at) SELECT ?, id, ? FROM users WHERE disabled = 0'
+      ).run(general.id, now);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('projects', ?)").run(String(now));
+    });
+  }
 }
+
+export const ROLES = ['owner', 'host', 'user'];
+export const PROJECT_COLORS = ['#5c7cfa', '#20c997', '#f76707', '#e64980', '#7950f2', '#fab005', '#15aabf', '#82c91e', '#fa5252', '#868e96'];
 
 export function parseSettings(str) {
   try {
@@ -184,29 +239,167 @@ export function parseSettings(str) {
 
 // ---------- users ----------
 
-export function createUser(db, name) {
+export function createUser(db, name, role = 'user') {
   const token = newToken();
-  const user = { id: newId(8), name: name.trim(), created_at: Date.now() };
-  db.prepare('INSERT INTO users (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)').run(
+  if (!ROLES.includes(role)) role = 'user';
+  // The first person on a fresh server owns it.
+  if (!db.prepare("SELECT 1 FROM users WHERE role = 'owner' AND disabled = 0").get()) role = 'owner';
+  const user = { id: newId(8), name: name.trim(), role, created_at: Date.now() };
+  db.prepare('INSERT INTO users (id, name, token_hash, created_at, role) VALUES (?, ?, ?, ?, ?)').run(
     user.id,
     user.name,
     hashToken(token),
-    user.created_at
+    user.created_at,
+    role
   );
   return { ...user, token };
+}
+
+/** Users made with the admin token or the CLI start in "General", like everyone did before projects. */
+export function addToGeneral(db, userId) {
+  const g = db.prepare("SELECT id FROM projects WHERE name = 'General'").get();
+  if (g) addProjectMember(db, g.id, userId);
+}
+
+/** Issue a new token for a user; the old one stops working. */
+export function resetToken(db, id) {
+  const token = newToken();
+  const ok = db.prepare('UPDATE users SET token_hash = ? WHERE id = ? AND disabled = 0').run(hashToken(token), id).changes > 0;
+  return ok ? token : null;
+}
+
+export function getUser(db, id) {
+  return db.prepare('SELECT id, name, role, disabled FROM users WHERE id = ?').get(id) || null;
+}
+
+export function setUserRole(db, id, role) {
+  return db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id).changes > 0;
 }
 
 export function userByToken(db, token) {
   if (!token) return null;
   return (
     db
-      .prepare('SELECT id, name FROM users WHERE token_hash = ? AND disabled = 0')
+      .prepare('SELECT id, name, role FROM users WHERE token_hash = ? AND disabled = 0')
       .get(hashToken(token)) || null
   );
 }
 
 export function listUsers(db) {
-  return db.prepare('SELECT id, name FROM users WHERE disabled = 0 ORDER BY name').all();
+  return db.prepare('SELECT id, name, role FROM users WHERE disabled = 0 ORDER BY name').all();
+}
+
+/** Users the given user may see: everyone for the owner, otherwise people who share a project. */
+export function visibleUsers(db, user) {
+  if (user.role === 'owner') return listUsers(db);
+  return db
+    .prepare(
+      `SELECT DISTINCT u.id, u.name, u.role FROM users u
+       WHERE u.disabled = 0 AND (u.id = ? OR u.id IN (
+         SELECT b.user_id FROM project_members a JOIN project_members b ON b.project_id = a.project_id
+         WHERE a.user_id = ?))
+       ORDER BY u.name`
+    )
+    .all(user.id, user.id);
+}
+
+// ---------- projects ----------
+
+/** Project ids the user can see, or null when they can see every project (the owner). */
+export function visibleProjectIds(db, user) {
+  if (user.role === 'owner') return null;
+  return new Set(
+    db.prepare('SELECT project_id FROM project_members WHERE user_id = ?').all(user.id).map((r) => r.project_id)
+  );
+}
+
+export function canSeeProject(db, user, projectId) {
+  const vis = visibleProjectIds(db, user);
+  return vis === null ? !!getProject(db, projectId) : vis.has(projectId);
+}
+
+export function getProject(db, id) {
+  return db.prepare('SELECT id, name, color, created_by, created_at FROM projects WHERE id = ?').get(id) || null;
+}
+
+/** Projects visible to the user, with member ids and card counts. */
+export function listProjects(db, user) {
+  const vis = visibleProjectIds(db, user);
+  const members = new Map();
+  for (const r of db
+    .prepare('SELECT m.project_id, m.user_id FROM project_members m JOIN users u ON u.id = m.user_id WHERE u.disabled = 0')
+    .all()) {
+    if (!members.has(r.project_id)) members.set(r.project_id, []);
+    members.get(r.project_id).push(r.user_id);
+  }
+  return db
+    .prepare(
+      `SELECT p.id, p.name, p.color, p.created_at AS createdAt,
+              (SELECT COUNT(*) FROM cards c WHERE c.project_id = p.id) AS cardCount
+       FROM projects p ORDER BY p.name COLLATE NOCASE`
+    )
+    .all()
+    .filter((p) => vis === null || vis.has(p.id))
+    .map((p) => ({ ...p, memberIds: members.get(p.id) || [] }));
+}
+
+export function createProject(db, user, name, color) {
+  const id = newId(10);
+  const count = db.prepare('SELECT COUNT(*) AS n FROM projects').get().n;
+  transaction(db, () => {
+    db.prepare('INSERT INTO projects (id, name, color, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run(
+      id,
+      name.trim(),
+      color || PROJECT_COLORS[count % PROJECT_COLORS.length],
+      user.id,
+      Date.now()
+    );
+    db.prepare('INSERT INTO project_members (project_id, user_id, added_at) VALUES (?, ?, ?)').run(id, user.id, Date.now());
+  });
+  return getProject(db, id);
+}
+
+export function updateProject(db, id, { name, color }) {
+  const p = getProject(db, id);
+  if (!p) return false;
+  db.prepare('UPDATE projects SET name = ?, color = ? WHERE id = ?').run(
+    name != null ? String(name).trim() : p.name,
+    color != null ? String(color) : p.color,
+    id
+  );
+  return true;
+}
+
+export function deleteProject(db, id) {
+  return db.prepare('DELETE FROM projects WHERE id = ?').run(id).changes > 0;
+}
+
+export function projectCardCount(db, id) {
+  return db.prepare('SELECT COUNT(*) AS n FROM cards WHERE project_id = ?').get(id).n;
+}
+
+export function addProjectMember(db, projectId, userId) {
+  db.prepare('INSERT OR IGNORE INTO project_members (project_id, user_id, added_at) VALUES (?, ?, ?)').run(
+    projectId,
+    userId,
+    Date.now()
+  );
+}
+
+export function removeProjectMember(db, projectId, userId) {
+  return db.prepare('DELETE FROM project_members WHERE project_id = ? AND user_id = ?').run(projectId, userId).changes > 0;
+}
+
+export function userProjectIds(db, userId) {
+  return db.prepare('SELECT project_id FROM project_members WHERE user_id = ?').all(userId).map((r) => r.project_id);
+}
+
+/** Project a card made without one goes to: General if the user is in it, else their first project. */
+export function defaultProjectId(db, user) {
+  const vis = visibleProjectIds(db, user);
+  const all = db.prepare('SELECT id, name FROM projects ORDER BY name COLLATE NOCASE').all();
+  const mine = vis === null ? all : all.filter((p) => vis.has(p.id));
+  return (mine.find((p) => p.name === 'General') || mine[0])?.id ?? null;
 }
 
 export function disableUser(db, id) {
@@ -313,6 +506,7 @@ export function rowToCard(r) {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastMoved: r.last_moved,
+    projectId: r.project_id || null,
     commentCount: r.comment_count || 0,
     ...(r.unread_comments !== undefined ? { unreadComments: r.unread_comments || 0 } : {}),
     ...(r.edited_comments !== undefined ? { editedComments: r.edited_comments || 0 } : {}),
@@ -343,13 +537,15 @@ function safeJson(str, fallback) {
   }
 }
 
-export function getBoardSnapshot(db, boardId, userId = null) {
+export function getBoardSnapshot(db, boardId, user = null) {
   const board = getBoardMeta(db, boardId);
   if (!board) return null;
   const lanes = db
     .prepare('SELECT * FROM lanes WHERE board_id = ? ORDER BY position')
     .all(boardId)
     .map(rowToLane);
+  const userId = user?.id ?? null;
+  const vis = user ? visibleProjectIds(db, user) : null;
   const cards = (
     userId
       ? db
@@ -360,13 +556,21 @@ export function getBoardSnapshot(db, boardId, userId = null) {
       : db
           .prepare(`SELECT c.*, ${COMMENT_COUNT} FROM cards c WHERE c.board_id = ? ORDER BY c.archived, c.lane_id, c.position`)
           .all(boardId)
-  ).map(rowToCard);
+  )
+    .filter((r) => vis === null || vis.has(r.project_id))
+    .map(rowToCard);
+  let members = boardMembers(db, boardId);
+  if (user && user.role !== 'owner') {
+    const seen = new Set(visibleUsers(db, user).map((u) => u.id));
+    members = members.filter((m) => seen.has(m.id));
+  }
   return {
     board,
     lanes,
     cards: cards.filter((c) => !c.archived),
     archive: cards.filter((c) => c.archived),
-    members: boardMembers(db, boardId),
+    members,
+    ...(user ? { projects: listProjects(db, user).map(({ cardCount, ...p }) => p), role: user.role } : {}),
   };
 }
 
@@ -382,7 +586,9 @@ export function myCards(db, user) {
        ORDER BY b.name, l.position, c.position`
     )
     .all(user.id, user.id, user.id, user.id, user.id, `%"${user.id}"%`);
+  const vis = visibleProjectIds(db, user);
   return rows
+    .filter((r) => vis === null || vis.has(r.project_id))
     .map((r) => ({ ...rowToCard(r), boardName: r.board_name, laneTitle: r.lane_title }))
     .filter((c) => c.assignees.includes(user.id));
 }
@@ -450,6 +656,14 @@ export function deleteComment(db, boardId, id) {
 
 export function cardExists(db, boardId, cardId) {
   return !!db.prepare('SELECT 1 FROM cards WHERE id = ? AND board_id = ?').get(cardId, boardId);
+}
+
+/** True when the card exists and the user may see it. */
+export function canSeeCard(db, user, boardId, cardId) {
+  const r = db.prepare('SELECT project_id FROM cards WHERE id = ? AND board_id = ?').get(cardId, boardId);
+  if (!r) return false;
+  const vis = visibleProjectIds(db, user);
+  return vis === null || vis.has(r.project_id);
 }
 
 export function cardAssignees(db, boardId, cardId) {

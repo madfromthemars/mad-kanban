@@ -773,6 +773,16 @@ export default class KanbanPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'manage-team',
+      name: 'Manage team (people and projects)',
+      checkCallback: (checking) => {
+        if (!this.team?.isHost) return false;
+        if (!checking) this.team.openManageTeam();
+        return true;
+      },
+    });
+
+    this.addCommand({
       id: 'check-plugin-updates',
       name: t('Check for plugin updates'),
       callback: () => void this.updater.check(true),

@@ -233,6 +233,7 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     setIsSearching
   );
   const team = stateManager.plugin?.team;
+  const isHost = team ? team.useIsHost() : false;
   const getAssignees = useCallback(
     (item: Item) => {
       const ids = parseTeamItemId(item.id);
@@ -241,7 +242,15 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     },
     [team]
   );
-  const filterValue = useFilterValue(boardData, cardBodyCache, filePath, getAssignees, team?.user?.id);
+  const getProject = useCallback(
+    (item: Item) => {
+      const ids = parseTeamItemId(item.id);
+      if (!ids || !team) return null;
+      return team.getCard(ids.cardId)?.projectId || null;
+    },
+    [team]
+  );
+  const filterValue = useFilterValue(boardData, cardBodyCache, filePath, getAssignees, team?.user?.id, getProject);
 
   return (
     <DndScope id={view.id}>
@@ -269,6 +278,15 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                   <Icon name="lucide-search" />
                 </button>
                 <TeamSyncStatus />
+                {isHost && (
+                  <button
+                    className={c('toolbar-button')}
+                    onClick={() => team?.openManageTeam()}
+                    title="Manage team: people and projects"
+                  >
+                    <Icon name="lucide-users" />
+                  </button>
+                )}
                 <QuickFilters />
               </div>
               {isSearching && (

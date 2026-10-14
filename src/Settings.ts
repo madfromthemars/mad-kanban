@@ -230,8 +230,23 @@ export class SettingsManager {
 
     // Move the status line under the setting row it describes.
     contentEl.appendChild(status);
+
+    // Hosts and the owner manage people and projects.
+    const manageEl = contentEl.createDiv();
+    const renderManage = () => {
+      manageEl.empty();
+      if (!this.plugin.team?.isHost) return;
+      new Setting(manageEl)
+        .setName('People and projects')
+        .setDesc('Add people, make hosts, and choose which projects each person can see.')
+        .addButton((btn) => btn.setButtonText('Manage team').setCta().onClick(() => this.plugin.team.openManageTeam()));
+    };
+    renderManage();
     renderStatus();
-    const onUser = () => renderStatus();
+    const onUser = () => {
+      renderStatus();
+      renderManage();
+    };
     this.plugin.team?.emitter.on('user', onUser);
     this.cleanupFns.push(() => this.plugin.team?.emitter.off('user', onUser));
 

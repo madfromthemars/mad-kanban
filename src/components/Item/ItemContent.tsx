@@ -18,17 +18,14 @@ import { useNestedEntityPath } from 'src/dnd/components/Droppable';
 import { Path } from 'src/dnd/types';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
 import {
-  calculateCardAge,
   compactCardBody,
   extractCardLinkPath,
   extractCardTitle,
   findCardFileInVault,
   findCardFilePathInListFile,
   findCardFilePathInListFolder,
-  getCardAgeClass,
   getListFilePath,
   getListFolderPath,
-  parseLastMoved,
 } from 'src/kanbanFileHelpers';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
@@ -42,19 +39,13 @@ import { EditState, EditingState, Item, isEditing } from '../types';
 import { InlineMetadata } from './InlineMetadata';
 
 export const cardBodyCache = new Map<string, string>();
-export const cardAgeCache = new Map<string, string>();
 
 export function getCardCacheKey(boardPath: string, cardTitle: string) {
   return `${boardPath}::${cardTitle}`;
 }
 
-export function getCardAgeClassFromCache(cacheKey: string): string {
-  return cardAgeCache.get(cacheKey) || '';
-}
-
 export function clearCardCaches() {
   cardBodyCache.clear();
-  cardAgeCache.clear();
 }
 
 export interface ItemContentProps {
@@ -402,11 +393,6 @@ export const ItemContent = memo(function ItemContent({
       lastExternalBodyRef.current = content;
       if (cacheKey) {
         cardBodyCache.set(cacheKey, content);
-        // Calculate and cache card age
-        const lastMoved = parseLastMoved(content);
-        const ageDays = calculateCardAge(lastMoved);
-        const ageClass = getCardAgeClass(ageDays);
-        cardAgeCache.set(cacheKey, ageClass);
       }
     });
 

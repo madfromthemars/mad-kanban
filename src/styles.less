@@ -1227,19 +1227,6 @@ button.kanban-plugin__new-item-button {
   border-color: rgba(124, 133, 148, 0.5);
 }
 
-// Card aging styles - faded appearance for old cards
-.kanban-plugin__item.card-age-aging {
-  opacity: 0.85;
-}
-
-.kanban-plugin__item.card-age-stale {
-  opacity: 0.65;
-}
-
-.kanban-plugin__item.card-age-old {
-  opacity: 0.45;
-}
-
 .kanban-plugin__item-content-wrapper {
   background: var(--background-primary);
 }
@@ -2538,7 +2525,7 @@ body:not(.native-scrollbars) .kanban-plugin__scroll-container::-webkit-scrollbar
   }
 
   // Only the hover "+ assign" button: no extra row, float it over the card corner.
-  &:not(:has(.kanban-plugin__item-footer, .kanban-plugin__assignees, .kanban-plugin__team-badge, .kanban-plugin__comment-count)) {
+  &:not(:has(.kanban-plugin__item-footer, .kanban-plugin__assignees, .kanban-plugin__team-badge, .kanban-plugin__comment-count, .kanban-plugin__project-chip)) {
     position: relative;
     height: 0;
     padding: 0;
@@ -4906,4 +4893,439 @@ div.kanban-plugin__lane-title-count {
   50% {
     opacity: 0.4;
   }
+}
+
+/* Text in the card window can be selected and copied (Obsidian turns selection off for its UI) */
+.kanban-plugin__card-detail-content {
+  .kanban-plugin__card-detail-body,
+  .kanban-plugin__comment-body,
+  .kanban-plugin__comment-quote-text {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+}
+
+// ---------- projects ----------
+
+.kanban-plugin__project-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--project-color, var(--text-faint));
+}
+
+.kanban-plugin__new-card-projects {
+  margin: -2px 0 16px;
+}
+
+.kanban-plugin__new-card-label,
+.kanban-plugin__mt-form-label {
+  margin-bottom: 6px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.kanban-plugin__project-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button.kanban-plugin__project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 14px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--text-normal);
+    border-color: var(--project-color);
+  }
+
+  &.is-selected {
+    color: var(--text-normal);
+    font-weight: 600;
+    border-color: var(--project-color);
+    background: color-mix(in srgb, var(--project-color) 16%, var(--background-primary));
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  .kanban-plugin__project-dot {
+    background: var(--project-color);
+  }
+}
+
+// Chip on the card footer
+.kanban-plugin__project-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 140px;
+  height: 20px;
+  padding: 0 8px 0 6px;
+  border-radius: 10px;
+  font-size: 0.72em;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--project-color) 14%, transparent);
+
+  .kanban-plugin__project-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--project-color);
+  }
+}
+
+.kanban-plugin__team-extras .kanban-plugin__project-chip {
+  margin-right: auto;
+}
+
+// Project field in the card window
+.kanban-plugin__cd-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .kanban-plugin__project-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--project-color);
+  }
+}
+
+// ---------- manage team window ----------
+
+.kanban-plugin__manage-team-modal {
+  width: min(720px, 94vw);
+
+  .modal-content {
+    padding-top: 4px;
+  }
+}
+
+.kanban-plugin__mt-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--background-modifier-border);
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    margin-bottom: -1px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    font-weight: 600;
+    cursor: pointer;
+
+    svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    &.is-active {
+      color: var(--text-normal);
+      border-bottom-color: var(--interactive-accent);
+    }
+  }
+}
+
+.kanban-plugin__mt-count {
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 0.8em;
+  background: var(--background-modifier-hover);
+}
+
+.kanban-plugin__mt-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kanban-plugin__mt-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  overflow: hidden;
+
+  > * + * {
+    border-top: 1px solid var(--background-modifier-border);
+  }
+}
+
+button.kanban-plugin__mt-add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.kanban-plugin__mt-form,
+.kanban-plugin__mt-join {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background: var(--background-secondary);
+}
+
+.kanban-plugin__mt-form-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  input[type='text'] {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.kanban-plugin__mt-form-hint,
+.kanban-plugin__mt-join-hint {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.kanban-plugin__mt-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.kanban-plugin__mt-segment {
+  display: inline-flex;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+
+  button {
+    height: 30px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 0;
+    background: var(--background-primary);
+    box-shadow: none;
+    color: var(--text-muted);
+    cursor: pointer;
+
+    &.is-active {
+      color: var(--text-on-accent);
+      background: var(--interactive-accent);
+    }
+  }
+}
+
+.kanban-plugin__mt-join-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.kanban-plugin__mt-join-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.kanban-plugin__mt-join-code {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: var(--background-primary);
+  font-size: var(--font-ui-smaller);
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.kanban-plugin__mt-person {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.kanban-plugin__mt-person-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  .kanban-plugin__assignee {
+    width: 28px;
+    height: 28px;
+    font-size: 0.7em;
+  }
+}
+
+.kanban-plugin__mt-person-name {
+  font-weight: 600;
+}
+
+.kanban-plugin__mt-role {
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 0.72em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+
+  &.is-owner {
+    color: #fff;
+    background: #7950f2;
+  }
+
+  &.is-host {
+    color: #fff;
+    background: #1c7ed6;
+  }
+}
+
+.kanban-plugin__mt-person-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.kanban-plugin__mt-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--font-ui-small);
+}
+
+a.kanban-plugin__mt-link {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-normal);
+  }
+
+  &.is-danger,
+  &.mod-warning {
+    color: var(--text-error);
+  }
+
+  &.mod-warning {
+    font-weight: 600;
+  }
+
+  &.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.kanban-plugin__mt-project {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+
+  input[type='text'] {
+    flex: 0 1 220px;
+  }
+}
+
+button.kanban-plugin__mt-color {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.kanban-plugin__mt-project-name {
+  font-weight: 600;
+  cursor: text;
+}
+
+.kanban-plugin__mt-project-meta {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.kanban-plugin__mt-project-members {
+  display: flex;
+  margin-left: auto;
+
+  .kanban-plugin__assignee + .kanban-plugin__assignee {
+    margin-left: -6px;
+  }
+}
+
+.kanban-plugin__mt-muted {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.kanban-plugin__mt-error {
+  color: var(--text-error);
+}
+
+@media (max-width: 560px) {
+  .kanban-plugin__mt-person-actions {
+    margin-left: 38px;
+    width: 100%;
+  }
+
+  .kanban-plugin__mt-project {
+    flex-wrap: wrap;
+  }
+}
+
+// With a project chip the extras row spans the card: chip on the left, people/comments on the right.
+.kanban-plugin__item-bottom .kanban-plugin__team-extras:has(.kanban-plugin__project-chip) {
+  flex: 1 1 auto;
+  margin-left: 0;
 }

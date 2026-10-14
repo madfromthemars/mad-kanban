@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Usage (inside the container: docker compose exec kanban node cli.js ...):
 //   node cli.js add-user <name>      create a user and print their join string
-//   node cli.js list-users           list users
+//   node cli.js list-users           list users with their roles and projects
+//   node cli.js set-role <id> <owner|host|user>
 //   node cli.js remove-user <id>     disable a user (their token stops working)
 //   node cli.js rename-user <id> <name>
 //   node cli.js list-boards          list boards
 //   node cli.js client-logs [hours] [user name]   errors reported by plugins (default 72h)
-import { createUser, disableUser, listClientLogs, listUsers, openDb, renameUser } from './db.js';
+import { addToGeneral, createUser, disableUser, listClientLogs, listUsers, openDb, renameUser, setUserRole } from './db.js';
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 const PORT = Number(process.env.PORT || 8787);
@@ -21,6 +22,7 @@ switch (cmd) {
     if (!name) die('usage: add-user <name>');
     try {
       const u = createUser(db, name);
+      addToGeneral(db, u.id);
       console.log(`created user ${u.name} (${u.id})`);
       console.log(`join string (paste into Obsidian > Kanban settings > Team):`);
       console.log(`${PUBLIC_URL}/#${u.token}`);
@@ -29,9 +31,20 @@ switch (cmd) {
     }
     break;
   }
-  case 'list-users':
-    for (const u of listUsers(db)) console.log(`${u.id}\t${u.name}`);
+  case 'list-users': {
+    const projects = new Map(db.prepare('SELECT id, name FROM projects').all().map((p) => [p.id, p.name]));
+    for (const u of listUsers(db)) {
+      const mine = db.prepare('SELECT project_id FROM project_members WHERE user_id = ?').all(u.id);
+      console.log(`${u.id}\t${u.name}\t${u.role}\t${mine.map((m) => projects.get(m.project_id)).join(', ')}`);
+    }
     break;
+  }
+  case 'set-role': {
+    const [id, role] = args;
+    if (!id || !['owner', 'host', 'user'].includes(role)) die('usage: set-role <id> <owner|host|user>');
+    console.log(setUserRole(db, id, role) ? `${id} is now ${role}` : 'no such user');
+    break;
+  }
   case 'remove-user': {
     const id = args[0];
     if (!id) die('usage: remove-user <id>');
@@ -71,7 +84,7 @@ switch (cmd) {
     break;
   }
   default:
-    die('commands: add-user <name> | list-users | rename-user <id> <name> | remove-user <id> | list-boards | client-logs [hours] [user]');
+    die('commands: add-user <name> | list-users | set-role <id> <role> | rename-user <id> <name> | remove-user <id> | list-boards | client-logs [hours] [user]');
 }
 
 db.close();

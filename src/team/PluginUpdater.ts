@@ -1,7 +1,7 @@
 import { Notice, requestUrl } from 'obsidian';
 import type KanbanPlugin from 'src/main';
 
-const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+const CHECK_EVERY_MS = 30 * 60 * 1000;
 const FIRST_CHECK_DELAY_MS = 15 * 1000;
 
 /** "2.10.0" > "2.9.3" */
@@ -40,6 +40,18 @@ export class PluginUpdater {
   destroy() {
     if (this.firstTimer != null) window.clearTimeout(this.firstTimer);
     if (this.timer != null) window.clearInterval(this.timer);
+    if (this.soonTimer != null) window.clearTimeout(this.soonTimer);
+  }
+
+  private soonTimer: number | null = null;
+
+  /** Check shortly (used when the server announces a release or we reconnect). */
+  checkSoon(delayMs = 0) {
+    if (this.soonTimer != null) return;
+    this.soonTimer = window.setTimeout(() => {
+      this.soonTimer = null;
+      void this.check(false);
+    }, delayMs);
   }
 
   private get serverUrl() {

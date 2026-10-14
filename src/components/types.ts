@@ -77,6 +77,8 @@ export interface ItemData {
   titleSearchRaw: string;
   metadata: ItemMetadata;
   forceEditMode?: boolean;
+  /** Team boards: project picked when the card was created, sent with card.create. */
+  teamProject?: string;
 }
 
 export interface ErrorReport {
