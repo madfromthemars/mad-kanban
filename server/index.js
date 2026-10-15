@@ -643,9 +643,13 @@ route('POST', '/api/boards/:id/files', async (req, params) => {
       }
     });
     req.pipe(out);
-    out.on('finish', () => resolve(total));
+    out.on('finish', () => (req.complete ? resolve(total) : reject(new OpError(400, 'upload interrupted'))));
     out.on('error', reject);
     req.on('error', reject);
+  }).catch((e) => {
+    // A cancelled or broken upload leaves no partial file behind.
+    fs.rm(dest, { force: true }, () => {});
+    throw e;
   });
   if (!size) {
     fs.rm(dest, { force: true }, () => {});

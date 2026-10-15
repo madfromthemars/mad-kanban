@@ -41,6 +41,12 @@ export function parseJoinString(raw: string): TeamConnection | null {
   return { url, token };
 }
 
+export class UploadCancelled extends Error {
+  constructor() {
+    super('Upload cancelled');
+  }
+}
+
 export class TeamApiError extends Error {
   status: number;
   body: any;
@@ -221,7 +227,70 @@ export class TeamClient {
     );
   }
 
-  async upload(boardId: string, file: File): Promise<UploadedFile> {
+  /**
+   * Upload with progress (0..1) when the platform allows a direct request;
+   * otherwise falls back to requestUrl, which can't report progress.
+   */
+  async upload(
+    boardId: string,
+    file: File,
+    opts: { onProgress?: (fraction: number | null) => void; signal?: AbortSignal } = {}
+  ): Promise<UploadedFile> {
+    if (!this.conn) throw new TeamApiError(0, 'Team server is not configured');
+    try {
+      return await this.uploadXhr(boardId, file, opts);
+    } catch (e) {
+      if (!(e instanceof TeamApiError && e.body === 'xhr-blocked')) throw e;
+    }
+    opts.onProgress?.(null);
+    return this.uploadRequestUrl(boardId, file);
+  }
+
+  private uploadXhr(
+    boardId: string,
+    file: File,
+    { onProgress, signal }: { onProgress?: (fraction: number | null) => void; signal?: AbortSignal }
+  ): Promise<UploadedFile> {
+    const conn = this.conn!;
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let sent = 0;
+      xhr.open('POST', `${conn.url}/api/boards/${encodeURIComponent(boardId)}/files`);
+      xhr.setRequestHeader('Authorization', `Bearer ${conn.token}`);
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name || 'file'));
+      xhr.upload.onprogress = (e) => {
+        sent = e.loaded;
+        if (e.lengthComputable && e.total) onProgress?.(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        let json: any = {};
+        try {
+          json = JSON.parse(xhr.responseText);
+        } catch {
+          json = {};
+        }
+        if (xhr.status >= 400 || xhr.status === 0) {
+          reject(new TeamApiError(xhr.status, json?.error || `Upload failed (${xhr.status})`));
+        } else resolve(json as UploadedFile);
+      };
+      // Nothing sent at all usually means the request was blocked (CORS, mixed content): retry another way.
+      xhr.onerror = () =>
+        reject(
+          sent > 0
+            ? new TeamApiError(0, 'Connection to the team server was lost')
+            : new TeamApiError(0, 'Upload request was blocked', 'xhr-blocked')
+        );
+      xhr.onabort = () => reject(new UploadCancelled());
+      if (signal) {
+        if (signal.aborted) return reject(new UploadCancelled());
+        signal.addEventListener('abort', () => xhr.abort(), { once: true });
+      }
+      xhr.send(file);
+    });
+  }
+
+  private async uploadRequestUrl(boardId: string, file: File): Promise<UploadedFile> {
     if (!this.conn) throw new TeamApiError(0, 'Team server is not configured');
     const data = await file.arrayBuffer();
     let res;

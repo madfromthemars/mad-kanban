@@ -1,3 +1,4 @@
+import classcat from 'classcat';
 import { Component, MarkdownRenderer, Notice } from 'obsidian';
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'preact/compat';
 import { KanbanContext } from 'src/components/context';
@@ -5,6 +6,7 @@ import { c } from 'src/components/helpers';
 import { Icon } from 'src/components/Icon/Icon';
 import { cardWindowEscape, copyInlineCode, openClickedImage } from 'src/components/copyOnClick';
 
+import { UploadCancelled } from '../TeamClient';
 import { TeamComment, UploadedFile } from '../types';
 import { hueFor, initials } from './TeamBadges';
 
@@ -27,23 +29,126 @@ export function filesOf(data: DataTransfer | null): File[] {
   return Array.from(data?.files || []);
 }
 
-/** Upload files to the team server; returns markdown for the ones that worked. */
-export async function uploadFiles(team: any, boardId: string, files: File[]): Promise<string[]> {
+interface ActiveUpload {
+  id: number;
+  target: string;
+  name: string;
+  size: number;
+  /** 0..1, or null when the platform can't report progress */
+  progress: number | null;
+  cancel: () => void;
+}
+
+/** Uploads in flight, keyed by where their markdown will go (a card's description or comment box). */
+const activeUploads = new Map<number, ActiveUpload>();
+const uploadListeners = new Set<() => void>();
+let nextUploadId = 1;
+const emitUploads = () => uploadListeners.forEach((fn) => fn());
+
+export function useUploads(target: string): ActiveUpload[] {
+  const read = () => [...activeUploads.values()].filter((u) => u.target === target);
+  const [list, setList] = useState(read);
+  useEffect(() => {
+    const fn = () => setList(read());
+    uploadListeners.add(fn);
+    fn();
+    return () => {
+      uploadListeners.delete(fn);
+    };
+  }, [target]);
+  return list;
+}
+
+export const uploadTarget = (kind: 'description' | 'comment', boardId: string, cardId: string) =>
+  `${kind}:${boardId}:${cardId}`;
+
+/** Upload files to the team server, showing progress at `target`; returns markdown for the ones that worked. */
+export async function uploadFiles(team: any, boardId: string, files: File[], target: string): Promise<string[]> {
   const parts: string[] = [];
-  for (const file of files) {
-    const notice = new Notice(`Uploading ${file.name}…`, 0);
-    try {
-      const uploaded = await team.client.upload(boardId, file);
-      parts.push(fileMarkdown(uploaded));
-    } catch (e) {
-      new Notice(`Kanban: upload failed for ${file.name} (${e?.message || e})`);
-      team.plugin.reportError('upload', e, { type: file.type, size: file.size });
-    } finally {
-      notice.hide();
-    }
-  }
+  await Promise.all(
+    files.map(async (file) => {
+      const ctrl = new AbortController();
+      const entry: ActiveUpload = {
+        id: nextUploadId++,
+        target,
+        name: file.name || 'file',
+        size: file.size,
+        progress: 0,
+        cancel: () => ctrl.abort(),
+      };
+      activeUploads.set(entry.id, entry);
+      emitUploads();
+      try {
+        const uploaded = await team.client.upload(boardId, file, {
+          signal: ctrl.signal,
+          onProgress: (p: number | null) => {
+            activeUploads.set(entry.id, { ...entry, progress: p });
+            emitUploads();
+          },
+        });
+        parts.push(fileMarkdown(uploaded));
+      } catch (e) {
+        if (e instanceof UploadCancelled) return;
+        new Notice(`Kanban: upload failed for ${file.name} (${e?.message || e})`);
+        team.plugin.reportError('upload', e, { type: file.type, size: file.size });
+      } finally {
+        activeUploads.delete(entry.id);
+        emitUploads();
+      }
+    })
+  );
   return parts;
 }
+
+export function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+/** One row per upload in flight: name, size, progress bar, cancel. */
+export const UploadProgress = memo(function UploadProgress({ target }: { target: string }) {
+  const uploads = useUploads(target);
+  if (!uploads.length) return null;
+  return (
+    <div className={c('uploads')}>
+      {uploads.map((u) => {
+        const pct = u.progress == null ? null : Math.round(u.progress * 100);
+        return (
+          <div key={u.id} className={c('upload')} title={u.name}>
+            <Icon name="lucide-upload" />
+            <div className={c('upload-main')}>
+              <div className={c('upload-line')}>
+                <span className={c('upload-name')}>{u.name}</span>
+                <span className={c('upload-meta')}>
+                  {pct == null
+                    ? `${formatSize(u.size)} · uploading…`
+                    : pct >= 100
+                      ? 'Processing…'
+                      : `${formatSize(u.size * u.progress!)} of ${formatSize(u.size)} · ${pct}%`}
+                </span>
+              </div>
+              <div className={`${c('upload-bar')}${pct == null || pct >= 100 ? ' is-indeterminate' : ''}`}>
+                <div style={{ width: `${pct == null || pct >= 100 ? 100 : pct}%` }} />
+              </div>
+            </div>
+            <button
+              className={`${c('upload-cancel')} clickable-icon`}
+              aria-label="Cancel upload"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                u.cancel();
+              }}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+});
 
 /** Save files into the vault (personal cards); media embeds like ![[file.png]], other files link. */
 export async function saveFilesToVault(app: any, sourcePath: string, files: File[]): Promise<string[]> {
@@ -67,30 +172,39 @@ function useTeam() {
   return { team: stateManager.plugin?.team, stateManager };
 }
 
-/** Button that opens a file picker, uploads images/videos, and returns embed markdown. */
+/** Button that opens a file picker, uploads the files, and returns their markdown. */
 export const AttachButton = memo(function AttachButton({
   boardId,
+  target,
   onUploaded,
   label = 'Attach',
 }: {
   boardId: string;
+  target: string;
   onUploaded: (markdown: string) => void;
   label?: string;
 }) {
   const { team } = useTeam();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const uploads = useUploads(target);
+  const total = uploads.reduce((n, u) => n + u.size, 0);
+  const done = uploads.reduce((n, u) => n + u.size * (u.progress ?? 0), 0);
+  const known = uploads.every((u) => u.progress != null);
+  const busy = uploads.length
+    ? known && total
+      ? `Uploading ${Math.min(99, Math.round((done / total) * 100))}%`
+      : 'Uploading…'
+    : null;
 
   const onFiles = useCallback(
     async (files: FileList | null) => {
       if (!team || !files?.length) return;
-      setBusy('Uploading…');
-      const parts = await uploadFiles(team, boardId, Array.from(files));
-      setBusy(null);
+      const picked = Array.from(files);
       if (inputRef.current) inputRef.current.value = '';
+      const parts = await uploadFiles(team, boardId, picked, target);
       if (parts.length) onUploaded(parts.join('\n'));
     },
-    [team, boardId, onUploaded]
+    [team, boardId, target, onUploaded]
   );
 
   if (!team) return null;
@@ -105,8 +219,7 @@ export const AttachButton = memo(function AttachButton({
         onChange={(e) => void onFiles((e.target as HTMLInputElement).files)}
       />
       <button
-        className={c('attach-button')}
-        disabled={!!busy}
+        className={classcat([c('attach-button'), { 'is-busy': !!busy }])}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -178,6 +291,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const commentTarget = uploadTarget('comment', boardId, cardId);
 
   const startEdit = (cm: TeamComment) => {
     setReplyTo(null);
@@ -447,6 +561,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
             </button>
           </div>
         )}
+        <UploadProgress target={commentTarget} />
         <textarea
           ref={inputRef}
           className={c('comment-input')}
@@ -458,7 +573,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
             const files = filesOf((e as ClipboardEvent).clipboardData);
             if (!files.length) return;
             e.preventDefault();
-            void uploadFiles(team, boardId, files).then((md) => {
+            void uploadFiles(team, boardId, files, commentTarget).then((md) => {
               if (md.length) setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md.join('\n')}` : md.join('\n')));
             });
           }}
@@ -466,7 +581,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
             const files = filesOf((e as DragEvent).dataTransfer);
             if (!files.length) return;
             e.preventDefault();
-            void uploadFiles(team, boardId, files).then((md) => {
+            void uploadFiles(team, boardId, files, commentTarget).then((md) => {
               if (md.length) setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md.join('\n')}` : md.join('\n')));
             });
           }}
@@ -481,6 +596,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
         <div className={c('comment-actions')}>
           <AttachButton
             boardId={boardId}
+            target={commentTarget}
             label="Attach"
             onUploaded={(md) => setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md}` : md))}
           />

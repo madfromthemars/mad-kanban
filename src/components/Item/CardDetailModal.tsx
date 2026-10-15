@@ -32,7 +32,15 @@ import {
 import { Checklist, DuePicker, TagEditor } from './CardChecklist';
 import { PRIORITY_LEVELS, PriorityIcon } from './PriorityIcon';
 import { cardWindowEscape, copyInlineCode, openLightbox } from '../copyOnClick';
-import { AttachButton, TeamComments, filesOf, saveFilesToVault, uploadFiles } from 'src/team/ui/CardPanel';
+import {
+  AttachButton,
+  TeamComments,
+  UploadProgress,
+  filesOf,
+  saveFilesToVault,
+  uploadFiles,
+  uploadTarget,
+} from 'src/team/ui/CardPanel';
 import { LocalAttachButton } from './CardChecklist';
 import { parseTeamItemId } from 'src/team/ids';
 
@@ -451,10 +459,12 @@ const CardDetailContent = memo(function CardDetailContent({
   // Files go into the description: uploaded to the server on team cards, saved in the vault otherwise.
   const addFiles = (md: string) => saveDescription(parts.description ? `${parts.description}\n\n${md}` : md);
 
+  const descriptionTarget = teamIds ? uploadTarget('description', teamIds.boardId, teamIds.cardId) : '';
+
   const storeFiles = (files: File[]) => {
     const team = stateManager.plugin?.team;
     return teamIds
-      ? uploadFiles(team, teamIds.boardId, files)
+      ? uploadFiles(team, teamIds.boardId, files, descriptionTarget)
       : saveFilesToVault(stateManager.app, cardFilePath || stateManager.file.path, files);
   };
 
@@ -669,6 +679,7 @@ const CardDetailContent = memo(function CardDetailContent({
                 )}
               </div>
             )}
+            {teamIds && <UploadProgress target={descriptionTarget} />}
           </section>
 
           <section className={c('cd-section')}>
@@ -748,7 +759,12 @@ const CardDetailContent = memo(function CardDetailContent({
 
           <Field label="Attachments">
             {teamIds ? (
-              <AttachButton boardId={teamIds.boardId} onUploaded={addFiles} label="Attach file" />
+              <AttachButton
+                boardId={teamIds.boardId}
+                target={descriptionTarget}
+                onUploaded={addFiles}
+                label="Attach file"
+              />
             ) : (
               <LocalAttachButton sourcePath={cardFilePath || stateManager.file.path} onSaved={addFiles} />
             )}
