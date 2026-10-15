@@ -17,7 +17,8 @@ import { getDropAction } from '../Editor/helpers';
 import { KanbanContext } from '../context';
 import { c } from '../helpers';
 import { EditState, EditingState, Item, isEditing } from '../types';
-import { TeamProject } from 'src/team/types';
+import { TeamProject, TeamUser } from 'src/team/types';
+import { hueFor, initials } from 'src/team/ui/TeamBadges';
 
 interface ItemFormProps {
   addItems: (items: Item[]) => void;
@@ -30,6 +31,7 @@ interface ItemFormProps {
 interface NewCard {
   name: string;
   projectId?: string;
+  assignees: string[];
 }
 
 const lastProjectKey = (boardId: string) => `mad-kanban:last-project:${boardId}`;
@@ -42,15 +44,23 @@ class NewCardModal extends Modal {
   projects: TeamProject[];
   boardId: string | null;
   projectId: string | undefined;
+  users: TeamUser[];
+  meId: string | null;
+  assignees = new Set<string>();
+  drawPeople: () => void = () => {};
 
   constructor(
     app: App,
     defaultValue: string,
     onSubmit: (value: NewCard | null) => void,
     projects: TeamProject[] = [],
-    boardId: string | null = null
+    boardId: string | null = null,
+    users: TeamUser[] = [],
+    meId: string | null = null
   ) {
     super(app);
+    this.users = users;
+    this.meId = meId;
     this.defaultValue = defaultValue;
     this.onSubmit = onSubmit;
     this.projects = projects;
@@ -82,11 +92,54 @@ class NewCardModal extends Modal {
         pill.addEventListener('click', () => {
           this.projectId = p.id;
           draw();
+          this.drawPeople();
           this.inputEl.focus();
         });
       }
     };
     draw();
+  }
+
+  /** People who can be assigned: members of the chosen project, me first. */
+  assignable() {
+    const project = this.projects.find((p) => p.id === this.projectId);
+    const people = project ? this.users.filter((u) => project.memberIds.includes(u.id)) : this.users;
+    return [...people].sort((a, b) => (a.id === this.meId ? -1 : b.id === this.meId ? 1 : a.name.localeCompare(b.name)));
+  }
+
+  renderPeople(parent: HTMLElement) {
+    if (!this.users.length) return;
+    const field = parent.createDiv({ cls: 'kanban-plugin__new-card-projects' });
+    field.createDiv({ cls: 'kanban-plugin__new-card-label', text: 'Assign to' });
+    const pills = field.createDiv({ cls: 'kanban-plugin__project-pills' });
+    this.drawPeople = () => {
+      pills.empty();
+      const people = this.assignable();
+      // Switching project drops people who could no longer see the card.
+      for (const id of [...this.assignees]) if (!people.some((u) => u.id === id)) this.assignees.delete(id);
+      if (!people.length) {
+        pills.createSpan({ cls: 'kanban-plugin__new-card-empty', text: 'No one is in this project yet.' });
+        return;
+      }
+      for (const u of people) {
+        const on = this.assignees.has(u.id);
+        const pill = pills.createEl('button', {
+          cls: `kanban-plugin__project-pill kanban-plugin__person-pill${on ? ' is-selected' : ''}`,
+          attr: { type: 'button', 'aria-pressed': String(on) },
+        });
+        pill.style.setProperty('--project-color', `hsl(${hueFor(u.id)}, 55%, 50%)`);
+        pill.style.setProperty('--assignee-hue', String(hueFor(u.id)));
+        pill.createSpan({ cls: 'kanban-plugin__assignee', text: initials(u.name) });
+        pill.createSpan({ text: u.id === this.meId ? `${u.name} (me)` : u.name });
+        pill.addEventListener('click', () => {
+          if (on) this.assignees.delete(u.id);
+          else this.assignees.add(u.id);
+          this.drawPeople();
+          this.inputEl.focus();
+        });
+      }
+    };
+    this.drawPeople();
   }
 
   onOpen() {
@@ -109,6 +162,7 @@ class NewCardModal extends Modal {
       }
     });
     this.renderProjects(contentEl);
+    this.renderPeople(contentEl);
 
     const actions = contentEl.createDiv({ cls: 'kanban-plugin__new-board-actions' });
     const createButton = actions.createEl('button', { text: t('Add card'), cls: 'mod-cta' });
@@ -130,7 +184,7 @@ class NewCardModal extends Modal {
         /* storage unavailable */
       }
     }
-    this.onSubmit({ name: this.inputEl.value, projectId: this.projectId });
+    this.onSubmit({ name: this.inputEl.value, projectId: this.projectId, assignees: [...this.assignees] });
     this.close();
   }
 
@@ -146,10 +200,20 @@ function promptNewCard(
   app: App,
   defaultValue: string,
   projects?: TeamProject[],
-  boardId?: string | null
+  boardId?: string | null,
+  users?: TeamUser[],
+  meId?: string | null
 ): Promise<NewCard | null> {
   return new Promise((resolve) => {
-    const modal = new NewCardModal(app, defaultValue, (value) => resolve(value), projects, boardId);
+    const modal = new NewCardModal(
+      app,
+      defaultValue,
+      (value) => resolve(value),
+      projects,
+      boardId,
+      users,
+      meId
+    );
     modal.open();
   });
 }
@@ -176,8 +240,10 @@ export function ItemForm({
     const picked = await promptNewCard(
       stateManager.app,
       defaultName,
-      sync ? stateManager.plugin?.team?.projects : undefined,
-      sync?.boardId
+      sync ? team?.projects : undefined,
+      sync?.boardId,
+      sync ? team?.users : undefined,
+      team?.user?.id
     );
     if (picked === null) return;
     const name = picked.name;
@@ -190,7 +256,10 @@ export function ItemForm({
       const body = description.trim();
       const content = body && body !== trimmedName ? `${trimmedName}\n${body}` : trimmedName;
       const item = stateManager.getNewItem(content, ' ');
-      addItems([picked.projectId ? { ...item, data: { ...item.data, teamProject: picked.projectId } } : item]);
+      const data = { ...item.data };
+      if (picked.projectId) data.teamProject = picked.projectId;
+      if (picked.assignees.length) data.teamAssignees = picked.assignees;
+      addItems([{ ...item, data }]);
       return;
     }
 

@@ -258,6 +258,32 @@ export class TeamSync {
       const res = await this.manager.client.applyOps(this.boardId, ops);
       for (const [id, v] of Object.entries(res.versions || {})) this.versions.set(id, v);
       if (this.snapshot) this.snapshot.board.version = res.version;
+      // New cards reach the card index (assignee and project chips) without waiting for a reload.
+      for (const r of res.results) {
+        const op = ops[r.i];
+        if (!r.ok || op?.type !== 'card.create') continue;
+        const now = Date.now();
+        this.manager.indexNewCard(
+          {
+            id: op.id,
+            boardId: this.boardId,
+            laneId: op.laneId,
+            position: op.index,
+            content: op.content,
+            checked: !!op.checked,
+            checkChar: op.checkChar || ' ',
+            assignees: op.assignees || [],
+            version: res.versions?.[op.id] ?? 1,
+            archived: false,
+            createdBy: this.manager.user?.id,
+            createdAt: now,
+            updatedAt: now,
+            lastMoved: now,
+            projectId: op.projectId ?? null,
+          },
+          this.snapshot?.lanes.find((l) => l.id === op.laneId)?.title ?? null
+        );
+      }
       // Our own broadcasts are ignored, so refresh to learn the server's settings after a settings change.
       if (ops.some((o) => o.type === 'board.settings' || o.type === 'board.addTagColors')) {
         this.reloadRequested = true;

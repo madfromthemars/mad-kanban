@@ -79,6 +79,7 @@ export interface ItemData {
   forceEditMode?: boolean;
   /** Team boards: project picked when the card was created, sent with card.create. */
   teamProject?: string;
+  teamAssignees?: string[];
 }
 
 export interface ErrorReport {

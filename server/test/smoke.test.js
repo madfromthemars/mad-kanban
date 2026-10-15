@@ -478,4 +478,19 @@ test('projects: hosts, users and card visibility', async () => {
   const reset = await api('POST', `/api/team/users/${uma.json.user.id}/token`, null, H);
   assert.equal((await api('GET', '/api/me', null, U)).status, 401);
   assert.equal((await api('GET', '/api/me', null, reset.json.join.split('#')[1])).json.user.name, 'Uma');
+
+  // Assignees picked at creation are kept only if they can see the card's project
+  // (Uma was taken out of Vidora above, so only Hana sticks).
+  const umaId = snapU.members.find((m) => m.name === 'Uma').id;
+  const hanaId = (await api('GET', '/api/team', null, O)).json.users.find((u) => u.name === 'Hana').id;
+  const asg = await api('POST', `/api/boards/${board.board.id}/ops`, {
+    ops: [
+      { type: 'card.create', id: 'vid9', laneId: todo, index: 0, content: 'assigned', projectId: vidora.id, assignees: [umaId, hanaId, 'nobody'] },
+      { type: 'card.create', id: 'gen9', laneId: todo, index: 0, content: 'not hers', projectId: general.id, assignees: [hanaId] },
+    ],
+  }, O);
+  assert.equal(asg.json.ok, true, JSON.stringify(asg.json));
+  const snapA = (await api('GET', `/api/boards/${board.board.id}`, null, O)).json.board;
+  assert.deepEqual(snapA.cards.find((c) => c.id === 'vid9').assignees, [hanaId]);
+  assert.deepEqual(snapA.cards.find((c) => c.id === 'gen9').assignees, []);
 });

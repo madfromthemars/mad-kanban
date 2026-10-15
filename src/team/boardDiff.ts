@@ -132,6 +132,7 @@ export function diffTeamBoard(
         checked: !!pos.item.data.checked,
         checkChar: pos.item.data.checkChar || ' ',
         ...(pos.item.data.teamProject ? { projectId: pos.item.data.teamProject } : {}),
+        ...(pos.item.data.teamAssignees?.length ? { assignees: pos.item.data.teamAssignees } : {}),
       });
       continue;
     }

@@ -1,4 +1,4 @@
-import { defaultProjectId, newId, parseSettings, rowToCard, transaction, visibleProjectIds } from './db.js';
+import { canSeeProject, defaultProjectId, getUser, newId, parseSettings, rowToCard, transaction, visibleProjectIds } from './db.js';
 import { laneKey } from './lanes.js';
 
 /** Lanes first, so cards created in a new lane in the same batch can find it. */
@@ -268,7 +268,13 @@ export function applyOps(db, board, user, ops) {
             r.error = projectId ? 'you are not in that project' : 'you are not in any project';
             break;
           }
-          const assignees = Array.isArray(op.assignees) ? op.assignees.map(String) : [];
+          // Only people who can see the card's project can be assigned to it.
+          const assignees = (Array.isArray(op.assignees) ? [...new Set(op.assignees.map(String))] : []).filter(
+            (a) => {
+              const u = getUser(db, a);
+              return !!u && !u.disabled && canSeeProject(db, u, projectId);
+            }
+          );
           q.insCard.run(
             id,
             board.id,

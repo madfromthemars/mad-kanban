@@ -318,6 +318,17 @@ export class TeamManager {
     return this.cards.get(cardId) ?? null;
   }
 
+  indexNewCard(card: TeamCard, laneTitle: string | null) {
+    if (this.cards.has(card.id)) return;
+    this.cards.set(card.id, {
+      card,
+      boardId: card.boardId,
+      boardName: this.boardNames.get(card.boardId),
+      laneTitle,
+    });
+    this.emitter.emit('cards');
+  }
+
   updateCard(cardId: string, patch: Partial<TeamCard>) {
     const info = this.cards.get(cardId);
     if (!info) return;
