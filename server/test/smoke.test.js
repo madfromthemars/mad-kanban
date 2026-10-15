@@ -245,12 +245,14 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   const part = await fetch(fileUrl, { headers: { Range: 'bytes=2-5' } });
   assert.equal(part.status, 206);
   assert.deepEqual(Buffer.from(await part.arrayBuffer()), png.subarray(2, 6));
-  const badUp = await fetch(`${BASE}/api/boards/${boardId}/files`, {
+  // Any type uploads; the 'uploads' test checks how non-media files are served.
+  const htmlUp = await fetch(`${BASE}/api/boards/${boardId}/files`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${A}`, 'Content-Type': 'text/html' },
     body: '<b>x</b>',
   });
-  assert.equal(badUp.status, 415);
+  assert.equal(htmlUp.status, 200);
+  await htmlUp.json();
 
   // shared board settings + tag color union
   const st = await api(
@@ -493,4 +495,44 @@ test('projects: hosts, users and card visibility', async () => {
   const snapA = (await api('GET', `/api/boards/${board.board.id}`, null, O)).json.board;
   assert.deepEqual(snapA.cards.find((c) => c.id === 'vid9').assignees, [hanaId]);
   assert.deepEqual(snapA.cards.find((c) => c.id === 'gen9').assignees, []);
+});
+
+test('uploads: any file type; only plain images and videos open in place', async () => {
+  const T = (await api('POST', '/api/admin/users', { name: 'Uploader' }, ADMIN)).json.token;
+  const board = (await api('POST', '/api/boards', { name: 'Files' }, T)).json.board.board;
+  const upload = async (name, type, body) => {
+    const res = await fetch(`${BASE}/api/boards/${board.id}/files`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${T}`, 'Content-Type': type, 'X-Filename': encodeURIComponent(name) },
+      body,
+    });
+    return { status: res.status, json: await res.json() };
+  };
+  const fetchFile = (f) => fetch(BASE + new URL(f.url).pathname);
+
+  const pdf = await upload('Отчёт (final).pdf', 'application/pdf', '%PDF-1.4 test');
+  assert.equal(pdf.status, 200, JSON.stringify(pdf.json));
+  let res = await fetchFile(pdf.json);
+  assert.equal(res.headers.get('content-type'), 'application/octet-stream');
+  assert.match(res.headers.get('content-disposition'), /^attachment; filename\*=UTF-8''/);
+  assert.ok(decodeURIComponent(res.headers.get('content-disposition').split("''")[1]) === 'Отчёт (final).pdf');
+  assert.equal(await res.text(), '%PDF-1.4 test');
+
+  // Pages that could run script are never served as themselves.
+  for (const [name, type] of [['x.html', 'text/html'], ['x.svg', 'image/svg+xml']]) {
+    const up = await upload(name, type, '<script>alert(1)</script>');
+    assert.equal(up.status, 200);
+    res = await fetchFile(up.json);
+    assert.equal(res.headers.get('content-type'), 'application/octet-stream');
+    assert.match(res.headers.get('content-disposition'), /^attachment/);
+    await res.text();
+  }
+
+  const png = await upload('a.png', 'image/png', 'PNGDATA');
+  res = await fetchFile(png.json);
+  assert.equal(res.headers.get('content-type'), 'image/png');
+  assert.equal(res.headers.get('content-disposition'), null);
+  await res.text();
+
+  assert.equal((await upload('empty.txt', 'text/plain', '')).status, 400);
 });

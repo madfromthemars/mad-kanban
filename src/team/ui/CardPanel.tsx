@@ -8,32 +8,33 @@ import { cardWindowEscape, copyInlineCode, openClickedImage } from 'src/componen
 import { TeamComment, UploadedFile } from '../types';
 import { hueFor, initials } from './TeamBadges';
 
-/** Markdown/HTML snippet that embeds an uploaded file. */
-export function mediaMarkdown(f: UploadedFile) {
-  if (f.mime.startsWith('video/')) {
+/** Types the team server shows in place; it serves every other upload as a download. */
+const INLINE_IMAGE = /^image\/(png|jpe?g|gif|webp|avif|bmp)$/;
+const INLINE_VIDEO = /^video\/(mp4|webm|ogg|quicktime|x-m4v)$/;
+
+/** Markdown/HTML for an uploaded file: images and videos embed, anything else is a download link. */
+export function fileMarkdown(f: UploadedFile) {
+  if (INLINE_VIDEO.test(f.mime)) {
     return `<video src="${f.url}" controls preload="metadata" style="max-width:100%"></video>`;
   }
-  const alt = f.name.replace(/[[\]]/g, '');
-  return `![${alt}](${f.url})`;
+  const name = f.name.replace(/[[\]]/g, '');
+  const url = f.url.replace(/\(/g, '%28').replace(/\)/g, '%29');
+  return INLINE_IMAGE.test(f.mime) ? `![${name}](${url})` : `[📎 ${name}](${url})`;
 }
 
-/** Image/video files in a paste or drop, if any. */
-export function mediaFilesOf(data: DataTransfer | null): File[] {
-  return Array.from(data?.files || []).filter((f) => /^(image|video)\//.test(f.type));
+/** Files in a paste or drop, if any. */
+export function filesOf(data: DataTransfer | null): File[] {
+  return Array.from(data?.files || []);
 }
 
-/** Upload images/videos to the team server; returns markdown embeds for the ones that worked. */
-export async function uploadMedia(team: any, boardId: string, files: File[]): Promise<string[]> {
+/** Upload files to the team server; returns markdown for the ones that worked. */
+export async function uploadFiles(team: any, boardId: string, files: File[]): Promise<string[]> {
   const parts: string[] = [];
   for (const file of files) {
-    if (!/^(image|video)\//.test(file.type)) {
-      new Notice(`Kanban: ${file.name} is not an image or video`);
-      continue;
-    }
     const notice = new Notice(`Uploading ${file.name}…`, 0);
     try {
       const uploaded = await team.client.upload(boardId, file);
-      parts.push(mediaMarkdown(uploaded));
+      parts.push(fileMarkdown(uploaded));
     } catch (e) {
       new Notice(`Kanban: upload failed for ${file.name} (${e?.message || e})`);
       team.plugin.reportError('upload', e, { type: file.type, size: file.size });
@@ -44,15 +45,16 @@ export async function uploadMedia(team: any, boardId: string, files: File[]): Pr
   return parts;
 }
 
-/** Save images/videos into the vault (personal cards); returns embeds like ![[file.png]]. */
-export async function saveMediaToVault(app: any, sourcePath: string, files: File[]): Promise<string[]> {
+/** Save files into the vault (personal cards); media embeds like ![[file.png]], other files link. */
+export async function saveFilesToVault(app: any, sourcePath: string, files: File[]): Promise<string[]> {
   const parts: string[] = [];
   for (const file of files) {
     try {
       const name = file.name && file.name !== 'image.png' ? file.name : `Pasted image ${window.moment().format('YYYYMMDDHHmmss')}.png`;
       const path = await app.fileManager.getAvailablePathForAttachment(name, sourcePath);
       const created = await app.vault.createBinary(path, await file.arrayBuffer());
-      parts.push('!' + app.fileManager.generateMarkdownLink(created, sourcePath));
+      const embed = /^(image|video|audio)\//.test(file.type) || file.type === 'application/pdf';
+      parts.push((embed ? '!' : '') + app.fileManager.generateMarkdownLink(created, sourcePath));
     } catch (e) {
       new Notice(`Kanban: could not save ${file.name} (${e?.message || e})`);
     }
@@ -83,7 +85,7 @@ export const AttachButton = memo(function AttachButton({
     async (files: FileList | null) => {
       if (!team || !files?.length) return;
       setBusy('Uploading…');
-      const parts = await uploadMedia(team, boardId, Array.from(files));
+      const parts = await uploadFiles(team, boardId, Array.from(files));
       setBusy(null);
       if (inputRef.current) inputRef.current.value = '';
       if (parts.length) onUploaded(parts.join('\n'));
@@ -98,7 +100,6 @@ export const AttachButton = memo(function AttachButton({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*,video/*"
         multiple
         style={{ display: 'none' }}
         onChange={(e) => void onFiles((e.target as HTMLInputElement).files)}
@@ -454,18 +455,18 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
           rows={2}
           onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
           onPaste={(e) => {
-            const files = mediaFilesOf((e as ClipboardEvent).clipboardData);
+            const files = filesOf((e as ClipboardEvent).clipboardData);
             if (!files.length) return;
             e.preventDefault();
-            void uploadMedia(team, boardId, files).then((md) => {
+            void uploadFiles(team, boardId, files).then((md) => {
               if (md.length) setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md.join('\n')}` : md.join('\n')));
             });
           }}
           onDrop={(e) => {
-            const files = mediaFilesOf((e as DragEvent).dataTransfer);
+            const files = filesOf((e as DragEvent).dataTransfer);
             if (!files.length) return;
             e.preventDefault();
-            void uploadMedia(team, boardId, files).then((md) => {
+            void uploadFiles(team, boardId, files).then((md) => {
               if (md.length) setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md.join('\n')}` : md.join('\n')));
             });
           }}

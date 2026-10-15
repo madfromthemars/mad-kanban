@@ -32,7 +32,7 @@ import {
 import { Checklist, DuePicker, TagEditor } from './CardChecklist';
 import { PRIORITY_LEVELS, PriorityIcon } from './PriorityIcon';
 import { cardWindowEscape, copyInlineCode, openLightbox } from '../copyOnClick';
-import { AttachButton, TeamComments, mediaFilesOf, saveMediaToVault, uploadMedia } from 'src/team/ui/CardPanel';
+import { AttachButton, TeamComments, filesOf, saveFilesToVault, uploadFiles } from 'src/team/ui/CardPanel';
 import { LocalAttachButton } from './CardChecklist';
 import { parseTeamItemId } from 'src/team/ids';
 
@@ -448,20 +448,39 @@ const CardDetailContent = memo(function CardDetailContent({
   };
 
   // Tags or checklist lines typed into the description go to their own sections.
-  // Images/videos go into the description: uploaded to the server on team cards, saved in the vault otherwise.
-  const addMedia = (md: string) => saveDescription(parts.description ? `${parts.description}\n\n${md}` : md);
+  // Files go into the description: uploaded to the server on team cards, saved in the vault otherwise.
+  const addFiles = (md: string) => saveDescription(parts.description ? `${parts.description}\n\n${md}` : md);
 
-  const onEditorPaste = (e: ClipboardEvent, cm: EditorView) => {
-    const files = mediaFilesOf(e.clipboardData);
+  const storeFiles = (files: File[]) => {
+    const team = stateManager.plugin?.team;
+    return teamIds
+      ? uploadFiles(team, teamIds.boardId, files)
+      : saveFilesToVault(stateManager.app, cardFilePath || stateManager.file.path, files);
+  };
+
+  // Files dropped on the description while it's not being edited are appended to it.
+  const onDescriptionDrop = (e: DragEvent) => {
+    const files = filesOf(e.dataTransfer);
     if (!files.length) return;
     e.preventDefault();
-    const team = stateManager.plugin?.team;
-    const work = teamIds
-      ? uploadMedia(team, teamIds.boardId, files)
-      : saveMediaToVault(stateManager.app, cardFilePath || stateManager.file.path, files);
+    e.stopPropagation();
+    void storeFiles(files).then((md) => md.length && addFiles(md.join('\n')));
+  };
+
+  const onEditorPaste = (e: ClipboardEvent | DragEvent, cm: EditorView) => {
+    // instanceof is unreliable across Obsidian's popout windows.
+    const drop = 'dataTransfer' in e ? e : null;
+    const files = filesOf(drop ? drop.dataTransfer : (e as ClipboardEvent).clipboardData);
+    if (!files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // A drop goes where the file was let go; a paste goes at the cursor.
+    const dropAt = drop ? cm.posAtCoords({ x: drop.clientX, y: drop.clientY }) : null;
+    if (dropAt != null) cm.dispatch({ selection: { anchor: dropAt } });
+    const work = storeFiles(files);
     void work.then((md) => {
       if (!md.length) return;
-      // Put media on its own line.
+      // Put files on their own line.
       const sel = cm.state.selection.main;
       const line = cm.state.doc.lineAt(sel.from);
       const prefix = sel.from > line.from ? '\n' : '';
@@ -612,6 +631,7 @@ const CardDetailContent = memo(function CardDetailContent({
                   editState={editState}
                   className={c('item-input')}
                   onPaste={onEditorPaste}
+                  onDrop={onEditorPaste}
                   onEnter={onEnter}
                   onEscape={onEscape}
                   onSubmit={onSubmit}
@@ -627,6 +647,8 @@ const CardDetailContent = memo(function CardDetailContent({
             ) : (
               <div
                 className={c('card-detail-body')}
+                onDragOver={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
+                onDrop={onDescriptionDrop}
                 onDblClick={onDoubleClick}
                 onClick={onImageClick}
                 onPointerUp={onCheckboxContainerClick}
@@ -726,9 +748,9 @@ const CardDetailContent = memo(function CardDetailContent({
 
           <Field label="Attachments">
             {teamIds ? (
-              <AttachButton boardId={teamIds.boardId} onUploaded={addMedia} label="Add image or video" />
+              <AttachButton boardId={teamIds.boardId} onUploaded={addFiles} label="Attach file" />
             ) : (
-              <LocalAttachButton sourcePath={cardFilePath || stateManager.file.path} onSaved={addMedia} />
+              <LocalAttachButton sourcePath={cardFilePath || stateManager.file.path} onSaved={addFiles} />
             )}
           </Field>
 

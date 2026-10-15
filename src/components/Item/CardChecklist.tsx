@@ -4,7 +4,7 @@ import { addTask, deleteTask, editTask, moveTask, parseTasks, toggleTask } from 
 
 import { KanbanContext } from '../context';
 import { Icon } from '../Icon/Icon';
-import { saveMediaToVault } from 'src/team/ui/CardPanel';
+import { saveFilesToVault } from 'src/team/ui/CardPanel';
 import { c, useGetTagColorFn } from '../helpers';
 
 /** Interactive checklist built from the `- [ ]` lines of a card body. */
@@ -371,7 +371,7 @@ export function TagEditor({
   );
 }
 
-/** "Add image or video" for personal cards: saves the file into the vault and embeds it. */
+/** "Attach file" for personal cards: saves the file into the vault and embeds it. */
 export function LocalAttachButton({ sourcePath, onSaved }: { sourcePath: string; onSaved: (md: string) => void }) {
   const { stateManager } = useContext(KanbanContext);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -381,14 +381,13 @@ export function LocalAttachButton({ sourcePath, onSaved }: { sourcePath: string;
       <input
         ref={inputRef}
         type="file"
-        accept="image/*,video/*"
         multiple
         style={{ display: 'none' }}
         onChange={async (e) => {
           const files = Array.from((e.target as HTMLInputElement).files || []);
           if (!files.length) return;
           setBusy(true);
-          const md = await saveMediaToVault(stateManager.app, sourcePath, files);
+          const md = await saveFilesToVault(stateManager.app, sourcePath, files);
           setBusy(false);
           if (inputRef.current) inputRef.current.value = '';
           if (md.length) onSaved(md.join('\n'));
@@ -400,7 +399,7 @@ export function LocalAttachButton({ sourcePath, onSaved }: { sourcePath: string;
         ) : (
           <>
             <Icon name="lucide-paperclip" />
-            Add image or video
+            Attach file
           </>
         )}
       </button>

@@ -28,6 +28,7 @@ interface MarkdownEditorProps {
   onEscape: (cm: EditorView) => void;
   onSubmit: (cm: EditorView) => void;
   onPaste?: (e: ClipboardEvent, cm: EditorView) => void;
+  onDrop?: (e: DragEvent, cm: EditorView) => void;
   onChange?: (update: ViewUpdate) => void;
   value?: string;
   className: string;
@@ -108,6 +109,7 @@ export function MarkdownEditor({
   onEscape,
   onChange,
   onPaste,
+  onDrop,
   className,
   onSubmit,
   editState,
@@ -169,11 +171,12 @@ export function MarkdownEditor({
         );
 
         if (placeholder) extensions.push(placeholderExt(placeholder));
-        if (onPaste) {
+        if (onPaste || onDrop) {
           extensions.push(
             Prec.high(
               EditorView.domEventHandlers({
-                paste: onPaste,
+                ...(onPaste ? { paste: onPaste } : {}),
+                ...(onDrop ? { drop: onDrop } : {}),
               })
             )
           );

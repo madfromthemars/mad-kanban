@@ -621,7 +621,6 @@ route('POST', '/api/boards/:id/files', async (req, params) => {
   const user = requireUser(req);
   const board = requireBoard(user, params.id);
   const mime = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim();
-  if (!/^(image|video)\//.test(mime)) throw new OpError(415, 'only images and videos can be uploaded');
   let name = 'file';
   try {
     name = decodeURIComponent(String(req.headers['x-filename'] || 'file'));
@@ -707,6 +706,9 @@ function serveFile(req, res, filePath, mime, extraHeaders = {}) {
   fs.createReadStream(filePath).pipe(res);
 }
 
+/** Uploads shown in place (embedded images and videos); everything else is served as a download. */
+const INLINE_MIME = /^(image\/(png|jpe?g|gif|webp|avif|bmp)|video\/(mp4|webm|ogg|quicktime|x-m4v))$/;
+
 function handleStatic(req, res, pathname) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
   let m = /^\/files\/([a-z0-9]{24})(?:\/[^/]*)?$/.exec(pathname);
@@ -716,7 +718,16 @@ function handleStatic(req, res, pathname) {
       send(res, 404, { error: 'not found' });
       return true;
     }
-    serveFile(req, res, path.join(FILES_DIR, f.id), f.mime);
+    if (INLINE_MIME.test(f.mime)) {
+      serveFile(req, res, path.join(FILES_DIR, f.id), f.mime, { 'X-Content-Type-Options': 'nosniff' });
+    } else {
+      // Anything else downloads; HTML, SVG and the like never run on this origin.
+      serveFile(req, res, path.join(FILES_DIR, f.id), 'application/octet-stream', {
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(f.name || 'file')}`,
+      });
+    }
     return true;
   }
   m = /^\/plugin\/(manifest\.json|main\.js|styles\.css)$/.exec(pathname);
