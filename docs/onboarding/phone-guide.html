@@ -40,11 +40,11 @@ th { font-size: 9pt; color: var(--muted); font-weight: 600; text-transform: uppe
 
 <div class="need">
   <div class="box"><b>A phone</b>iPhone (iOS) or Android.</div>
-  <div class="box"><b>Your join link</b>The same link you used on your computer. Lost it? Ask your team host.</div>
+  <div class="box"><b>Your computer</b>Already signed in to Mad Kanban. It shows a QR code for the phone. (No computer? Use the join link from your host.)</div>
   <div class="box"><b>Internet</b>Wi-Fi or mobile data.</div>
 </div>
 
-<div class="box warn"><b>Your join link is your password.</b> It signs you in as you. Don't post it in group chats or share it with anyone.</div>
+<div class="box warn"><b>QR codes and join links sign in as you.</b> Don't post them in group chats or share them with anyone. A QR code works once and expires after 10 minutes.</div>
 
 <h2><span class="n">1</span> Install Obsidian</h2>
 <div class="os">
@@ -88,13 +88,14 @@ th { font-size: 9pt; color: var(--muted); font-weight: 600; text-transform: uppe
 </ol>
 <div class="box"><b>Mad Kanban doesn't show up?</b> Go to <b>Settings → Community plugins</b>, find <b>Mad Kanban</b> under <b>Installed plugins</b> and switch it on. If it isn't in the list, close Obsidian completely and open it again.</div>
 
-<h2><span class="n">6</span> Sign in with your join link</h2>
+<h2><span class="n">6</span> Sign in: scan the QR code</h2>
 <ol>
-<li>Get your join link onto the phone. The easiest way is to send it to yourself in <b>Telegram → Saved Messages</b>, then copy it from there on the phone. Copy the <b>whole</b> link.</li>
-<li>In Obsidian, open <b>Settings</b> and tap <b>Mad Kanban</b> in the plugin list.</li>
-<li>Paste the link into <b>Team server join string</b>.</li>
-<li>Below it you should see <b>Connected as</b> and your name. If not, tap <b>Test connection</b>.</li>
+<li><b>On your computer</b>, in Obsidian: <b>Settings → Mad Kanban → Add a device</b>. A QR code appears.</li>
+<li><b>On the phone</b>, open the <b>Camera</b> and point it at the QR code. Tap the link that pops up.</li>
+<li>A page opens. Tap <b>Open in Obsidian</b>, then <b>Sign in</b>.</li>
+<li>Your computer says <b>"… is signed in"</b>. Done. The phone has its own sign-in, and your computer stays signed in.</li>
 </ol>
+<div class="box"><b>No computer, or the camera doesn't work?</b> Get the link onto the phone (the easiest way is <b>Telegram → Saved Messages</b>), copy it, then in Obsidian on the phone go to <b>Settings → Mad Kanban</b> and paste it into <b>Team server join string</b>. This works with the QR link and with the join link from your host. Below the field it should say <b>Connected as</b> and your name.</div>
 
 <h2><span class="n">7</span> Open the team board</h2>
 <ol>
@@ -123,9 +124,11 @@ Can't find it? Swipe <b>down</b> in the middle of the screen to open the command
 <tr><th style="width:32%">Problem</th><th>What to do</th></tr>
 <tr><td>BRAT says it can't find the plugin</td><td>Check the spelling: <span class="mono">madfromthemars/mad-kanban</span>, with no spaces. Check your internet.</td></tr>
 <tr><td>"That does not look like a join string"</td><td>Part of the link is missing. Copy the whole link again.</td></tr>
+<tr><td>"This code is invalid, used or expired"</td><td>A QR code works once, for 10 minutes. On your computer tap <b>New code</b> and scan again.</td></tr>
+<tr><td>"Open in Obsidian" does nothing</td><td>Mad Kanban isn't installed on the phone yet (steps 3–5), or use the paste method in step 6.</td></tr>
 <tr><td>"Connection failed"</td><td>Check your internet. If it still fails, tell your host. The server may be down.</td></tr>
 <tr><td>No boards, or the board is empty</td><td>You haven't been added to a project yet. Ask your host.</td></tr>
-<tr><td>Lost your phone</td><td>Tell your host right away. They'll give you a new join link. You'll then need to paste the new link on your other devices too.</td></tr>
+<tr><td>Lost your phone</td><td>On your computer: <b>Settings → Mad Kanban → Your devices</b> → <b>Remove</b> next to the phone. Only the phone is signed out. No computer at hand? Ask your host to remove it in <b>Manage team → Devices</b>.</td></tr>
 </table>
 
 </body></html>
