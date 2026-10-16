@@ -107,11 +107,58 @@ function combineTitleAndBody(titleLine: string, body: string) {
 
 const PRIORITIES = PRIORITY_LEVELS;
 
-function Field({ label, children }: { label: string; children: any }) {
+/**
+ * One property of the card. Desktop: label above the control in the sidebar.
+ * Phones: a list row, label on the left. Compact controls sit in the row; bigger
+ * editors (`expand`) show a summary and open under the row when tapped.
+ */
+function Field({
+  label,
+  children,
+  summary,
+  expand,
+  onRowClick,
+}: {
+  label: string;
+  children?: any;
+  summary?: any;
+  expand?: boolean;
+  onRowClick?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!Platform.isPhone) {
+    return (
+      <div className={c('cd-field')}>
+        <div className={c('cd-field-label')}>{label}</div>
+        <div className={c('cd-field-value')}>{children}</div>
+      </div>
+    );
+  }
+  if (onRowClick) {
+    return (
+      <button className={c('cd-row')} onClick={onRowClick}>
+        <span className={c('cd-row-label')}>{label}</span>
+        <span className={c('cd-row-summary')}>{summary}</span>
+        <Icon name="lucide-chevron-right" className={c('cd-row-chevron')} />
+      </button>
+    );
+  }
+  if (expand) {
+    return (
+      <div className={`${c('cd-row-group')} ${open ? 'is-open' : ''}`}>
+        <button className={c('cd-row')} onClick={() => setOpen(!open)} aria-expanded={open}>
+          <span className={c('cd-row-label')}>{label}</span>
+          <span className={c('cd-row-summary')}>{summary}</span>
+          <Icon name={open ? 'lucide-chevron-up' : 'lucide-chevron-down'} className={c('cd-row-chevron')} />
+        </button>
+        {open && <div className={c('cd-row-editor')}>{children}</div>}
+      </div>
+    );
+  }
   return (
-    <div className={c('cd-field')}>
-      <div className={c('cd-field-label')}>{label}</div>
-      <div className={c('cd-field-value')}>{children}</div>
+    <div className={c('cd-row')}>
+      <span className={c('cd-row-label')}>{label}</span>
+      <div className={c('cd-row-control')}>{children}</div>
     </div>
   );
 }
@@ -120,12 +167,14 @@ interface CardDetailContentProps {
   item: Item;
   path: Path;
   onItemUpdate?: (item: Item) => void;
+  onClose?: () => void;
 }
 
 const CardDetailContent = memo(function CardDetailContent({
   item,
   path,
   onItemUpdate,
+  onClose,
 }: CardDetailContentProps) {
   const { stateManager, filePath, boardModifiers } = useContext(KanbanContext);
   const [editState, setEditState] = useState<EditState>(EditingState.cancel);
@@ -135,9 +184,7 @@ const CardDetailContent = memo(function CardDetailContent({
   const [cardFilePath, setCardFilePath] = useState<string>('');
   const [currentItem, setCurrentItem] = useState(item);
   const [isRenaming, setIsRenaming] = useState(false);
-  // Phones: project/status/priority/date/... fold into a one-line summary, so the
-  // description, checklist and comments aren't pushed two screens down.
-  const [detailsOpen, setDetailsOpen] = useState(!Platform.isPhone);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const board = stateManager.useState();
 
   // Keep showing the latest version of this card (server syncs, edits from the board).
@@ -611,39 +658,6 @@ const CardDetailContent = memo(function CardDetailContent({
       </div>
 
       <div className={c('cd-layout')}>
-        {Platform.isPhone && (
-          <button
-            className={`${c('cd-details-toggle')} ${detailsOpen ? 'is-open' : ''}`}
-            onClick={() => setDetailsOpen(!detailsOpen)}
-            aria-expanded={detailsOpen}
-          >
-            <span className={c('cd-details-summary')}>
-              <span className={c('cd-details-chip')}>{lanes[laneIndex]?.data.title || laneTitle}</span>
-              {currentPriority && (
-                <span className={c('cd-details-chip')}>
-                  <PriorityIcon value={currentPriority} />
-                  {PRIORITIES.find((p) => p.value === currentPriority)?.label}
-                </span>
-              )}
-              {currentItem.data.metadata.date?.isValid() && (
-                <span className={c('cd-details-chip')}>
-                  <Icon name="lucide-calendar" />
-                  {currentItem.data.metadata.date.format('MMM D')}
-                </span>
-              )}
-              {allTags.length > 0 && (
-                <span className={c('cd-details-chip')}>
-                  <Icon name="lucide-tag" />
-                  {allTags.length}
-                </span>
-              )}
-            </span>
-            <span className={c('cd-details-more')}>
-              {detailsOpen ? 'Hide' : 'Details'}
-              <Icon name={detailsOpen ? 'lucide-chevron-up' : 'lucide-chevron-down'} />
-            </span>
-          </button>
-        )}
         <div className={c('cd-main')}>
           <section className={c('cd-section')}>
             <div className={c('cd-section-head')}>
@@ -731,9 +745,40 @@ const CardDetailContent = memo(function CardDetailContent({
               <TeamComments boardId={teamIds.boardId} cardId={teamIds.cardId} />
             </section>
           )}
+
+          {/* Phones have no card menu on the board, so the card's own actions live here. */}
+          {Platform.isPhone && (
+            <section className={`${c('cd-section')} ${c('cd-actions')}`}>
+              <button
+                className={c('cd-action')}
+                onClick={() => {
+                  boardModifiers.archiveItem(resolvePath());
+                  onClose?.();
+                }}
+              >
+                <Icon name="lucide-archive" />
+                Archive card
+              </button>
+              <button
+                className={`${c('cd-action')} is-danger`}
+                onClick={() => {
+                  if (!confirmDelete) {
+                    setConfirmDelete(true);
+                    window.setTimeout(() => setConfirmDelete(false), 4000);
+                    return;
+                  }
+                  boardModifiers.deleteEntity(resolvePath());
+                  onClose?.();
+                }}
+              >
+                <Icon name="lucide-trash-2" />
+                {confirmDelete ? 'Tap again to delete' : 'Delete card'}
+              </button>
+            </section>
+          )}
         </div>
 
-        <aside className={`${c('cd-sidebar')} ${detailsOpen ? '' : 'is-collapsed'}`}>
+        <aside className={c('cd-sidebar')}>
           {isTeam && stateManager.teamSync && (
             <Field label="Project">
               <ProjectSelect item={currentItem} />
@@ -772,7 +817,17 @@ const CardDetailContent = memo(function CardDetailContent({
             </div>
           </Field>
 
-          <Field label="Due date">
+          <Field
+            label="Due date"
+            expand
+            summary={
+              currentItem.data.metadata.date?.isValid() ? (
+                currentItem.data.metadata.date.format('ddd, MMM D')
+              ) : (
+                <span className={c('cd-row-empty')}>None</span>
+              )
+            }
+          >
             <DuePicker date={currentItem.data.metadata.date} onChange={setDue} />
           </Field>
 
@@ -782,19 +837,29 @@ const CardDetailContent = memo(function CardDetailContent({
             </Field>
           )}
 
-          <Field label="Tags">
+          <Field
+            label="Tags"
+            expand
+            summary={
+              allTags.length ? (
+                <span className={c('cd-row-tags')}>{allTags.join(' ')}</span>
+              ) : (
+                <span className={c('cd-row-empty')}>None</span>
+              )
+            }
+          >
             <TagEditor tags={allTags} suggestions={tagSuggestions} onAdd={addTags} onRemove={removeTag} />
           </Field>
 
           {currentItem.data.metadata.inlineMetadata?.length > 0 && (
-            <Field label="Details">
+            <Field label="Details" expand summary={`${currentItem.data.metadata.inlineMetadata.length}`}>
               <div className={c('card-detail-metadata')}>
                 <InlineMetadata item={currentItem} stateManager={stateManager} />
               </div>
             </Field>
           )}
 
-          <Field label="Attachments">
+          <Field label={Platform.isPhone ? 'Files' : 'Attachments'}>
             {teamIds ? (
               <AttachButton
                 boardId={teamIds.boardId}
@@ -862,6 +927,7 @@ export class CardDetailModal extends Modal {
         <CardDetailContent
           item={this.item}
           path={this.path}
+          onClose={() => this.close()}
         />
       </KanbanContext.Provider>,
       contentEl

@@ -1,5 +1,6 @@
 import boxIntersect from 'box-intersect';
 import EventEmitter from 'eventemitter3';
+import { Platform } from 'obsidian';
 import { RefObject, useCallback, useContext, useRef } from 'preact/compat';
 import { StateManager } from 'src/StateManager';
 import { handleDragOrPaste } from 'src/components/Item/helpers';
@@ -218,15 +219,28 @@ export class DragManager {
       this.dragPosition
     );
 
+    // Phones: lists are almost as wide as the screen, so the dragged card's own box
+    // touches the screen-edge scroll zones (and two lists) all the time, and the board
+    // slides away as soon as a drag starts. Follow the finger instead: a narrow box for
+    // picking the list and slot, a small one for edge scrolling.
+    let sortHitbox = dragHitbox;
+    let scrollHitbox = dragHitbox;
+    if (Platform.isPhone) {
+      const fingerX = dragHitbox[0] + (this.dragOrigin.x - this.dragOriginHitbox[0]);
+      const fingerY = dragHitbox[1] + (this.dragOrigin.y - this.dragOriginHitbox[1]);
+      sortHitbox = [fingerX - 12, dragHitbox[1], fingerX + 12, dragHitbox[3]];
+      scrollHitbox = [fingerX - 8, fingerY - 8, fingerX + 8, fingerY + 8];
+    }
+
     const isScrolling = this.handleScrollIntersect(
-      dragHitbox,
+      scrollHitbox,
       this.dragEntity,
       scrollHitboxes,
       scrollEntities
     );
 
     if (!isScrolling) {
-      this.handleHitboxIntersect(dragHitbox, this.dragEntity, hitboxHitboxes, hitboxEntities);
+      this.handleHitboxIntersect(sortHitbox, this.dragEntity, hitboxHitboxes, hitboxEntities);
     }
   }
 
@@ -409,6 +423,12 @@ export function useDragHandle(
         longPressTimeout = win.setTimeout(() => {
           dndManager.dragManager.dragStart(initialEvent, droppable);
           isDragging = true;
+          // A short buzz says "you're holding the card now" (Android; iOS ignores it).
+          try {
+            win?.navigator.vibrate?.(12);
+          } catch {
+            /* ignore */
+          }
           win.addEventListener('touchmove', cancelEvent, {
             passive: false,
           });
@@ -423,7 +443,7 @@ export function useDragHandle(
               distanceBetween(initialPosition, {
                 x: e.pageX,
                 y: e.pageY,
-              }) > 5
+              }) > 10
             ) {
               win.clearTimeout(longPressTimeout);
               win.removeEventListener('touchmove', cancelEvent);

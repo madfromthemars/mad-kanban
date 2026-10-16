@@ -1,3 +1,4 @@
+import { Platform } from 'obsidian';
 import { generateInstanceId } from 'src/components/helpers';
 
 import {
@@ -23,7 +24,8 @@ export type IntersectionObserverHandler = (entry: IntersectionObserverEntry) => 
 
 export const scrollContainerEntityType = 'scroll-container';
 
-const scrollStrengthModifier = 8;
+// Pixels per frame at the very edge. Slower on phones, where one list fills the screen.
+const scrollStrengthModifier = Platform.isPhone ? 5 : 8;
 
 const sides: Side[] = ['top', 'right', 'bottom', 'left'];
 

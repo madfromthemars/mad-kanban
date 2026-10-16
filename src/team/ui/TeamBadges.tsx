@@ -1,3 +1,4 @@
+import { Platform } from 'obsidian';
 import classcat from 'classcat';
 import { memo, useContext } from 'preact/compat';
 import { KanbanContext } from 'src/components/context';
@@ -39,7 +40,7 @@ export const AssigneeChips = memo(function AssigneeChips({
   return (
     <div
       className={classcat([c('assignees'), { 'is-compact': compact }])}
-      data-ignore-drag={true}
+      data-ignore-drag={onClick ? true : undefined}
       onClick={onClick}
     >
       {assignees.map((id) => {
@@ -98,8 +99,12 @@ export const TeamCardExtras = memo(function TeamCardExtras({
     void team.openBoard(parsed.boardId);
   };
 
+  // Phones: board cards only show who's on them; assigning happens in the card window,
+  // so a tap anywhere on the card opens it and a long press anywhere drags it.
+  const readOnly = Platform.isPhone && !detail;
+
   return (
-    <div className={c('team-extras')} data-ignore-drag={true}>
+    <div className={c('team-extras')} data-ignore-drag={readOnly ? undefined : true}>
       {!detail && <ProjectChip projectId={info?.card.projectId} />}
       {isMirror && (
         <a className={c('team-badge')} onClick={openBoard} title="Open team board">
@@ -135,9 +140,9 @@ export const TeamCardExtras = memo(function TeamCardExtras({
         )
       )}
       {assignees.length > 0 && (
-        <AssigneeChips assignees={assignees} onClick={openPicker} compact={!detail} />
+        <AssigneeChips assignees={assignees} onClick={readOnly ? undefined : openPicker} compact={!detail} />
       )}
-      {(detail || (!isMirror && !assignees.length)) && (
+      {!readOnly && (detail || (!isMirror && !assignees.length)) && (
         <a className={c('assign-button')} onClick={openPicker} title="Assign">
           {detail ? '+ Assign' : '+'}
         </a>

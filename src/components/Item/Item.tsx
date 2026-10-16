@@ -22,7 +22,7 @@ import { EditState, EditingState, Item, isEditing } from '../types';
 import { ItemCheckbox } from './ItemCheckbox';
 import { ItemContent, Tags, getCardCacheKey, cardBodyCache } from './ItemContent';
 import { extractCardLinkPath, extractCardTitle, findCardFileInVault } from 'src/kanbanFileHelpers';
-import { TFile } from 'obsidian';
+import { Platform, TFile } from 'obsidian';
 import { isTeamItem } from 'src/team/ids';
 import { TeamCardExtras } from 'src/team/ui/TeamBadges';
 import { useItemMenu } from './ItemMenu';
@@ -186,17 +186,21 @@ const CardFooter = memo(function CardFooter({ item }: { item: Item }) {
   };
 
   return (
-    <div className={c('item-footer')} data-ignore-drag={true}>
+    <div className={c('item-footer')} data-ignore-drag={Platform.isPhone ? undefined : true}>
       {hasDue && <DueChip date={due} done={!!item.data.checked} />}
       {hasTags && <Tags tags={allTags} alwaysShow={true} />}
       {hasProgress && (
         <div
-          className={`${c('item-checkbox-progress')} is-clickable ${expanded ? 'is-expanded' : ''}`}
-          title={expanded ? 'Hide checklist' : 'Show checklist'}
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded(!expanded);
-          }}
+          className={`${c('item-checkbox-progress')} ${Platform.isPhone ? '' : 'is-clickable'} ${expanded ? 'is-expanded' : ''}`}
+          title={Platform.isPhone ? undefined : expanded ? 'Hide checklist' : 'Show checklist'}
+          onClick={
+            Platform.isPhone
+              ? undefined
+              : (e) => {
+                  e.stopPropagation();
+                  setExpanded(!expanded);
+                }
+          }
         >
           <div className={c('item-checkbox-progress-bar')}>
             <div

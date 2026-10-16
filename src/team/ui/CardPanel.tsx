@@ -1,5 +1,5 @@
 import classcat from 'classcat';
-import { Component, MarkdownRenderer, Notice } from 'obsidian';
+import { Component, MarkdownRenderer, Menu, Notice, Platform } from 'obsidian';
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'preact/compat';
 import { KanbanContext } from 'src/components/context';
 import { c } from 'src/components/helpers';
@@ -433,6 +433,30 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
     [team, boardId]
   );
 
+  // Phones: tap a comment for its actions, like in a messenger.
+  const openCommentMenu = (e: MouseEvent, cm: TeamComment) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('a, img, video, button, textarea, input, .' + c('comment-quote'))) return;
+    if (editingId === cm.id) return;
+    const menu = new Menu();
+    menu.addItem((i) => i.setTitle('Reply').setIcon('lucide-reply').onClick(() => startReply(cm)));
+    menu.addItem((i) =>
+      i
+        .setTitle('Copy text')
+        .setIcon('lucide-copy')
+        .onClick(() => void navigator.clipboard.writeText(cm.body).then(() => new Notice('Copied')))
+    );
+    if (cm.userId === team?.user?.id) {
+      menu.addItem((i) => i.setTitle('Edit').setIcon('lucide-pencil').onClick(() => startEdit(cm)));
+      menu.addSeparator();
+      menu.addItem((i) => {
+        i.setTitle('Delete').setIcon('lucide-trash-2').onClick(() => void remove(cm.id));
+        (i as any).setWarning?.(true);
+      });
+    }
+    menu.showAtMouseEvent(e);
+  };
+
   if (!team) return null;
   const me = team.user?.id;
 
@@ -456,6 +480,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
             key={cm.id}
             data-comment-id={cm.id}
             className={`${c('comment')} ${isNew || isEdited ? 'is-new' : ''}`}
+            onClick={Platform.isPhone ? (e) => openCommentMenu(e as unknown as MouseEvent, cm) : undefined}
           >
             <span className={c('assignee')} style={{ '--assignee-hue': hueFor(cm.userId) }} title={name}>
               {initials(name)}
@@ -471,6 +496,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
                 )}
                 {isNew && <span className={c('comment-new')}>New</span>}
                 {isEdited && <span className={c('comment-new')}>Edited</span>}
+                {Platform.isPhone ? null : (
                 <span className={c('comment-actions-inline')}>
                   <a className={c('comment-reply')} onClick={() => startReply(cm)} title="Reply">
                     <Icon name="lucide-reply" />
@@ -488,6 +514,7 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
                     </a>
                   )}
                 </span>
+                )}
               </div>
               {cm.replyTo && (
                 <div

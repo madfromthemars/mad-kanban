@@ -1,3 +1,4 @@
+import { Platform } from 'obsidian';
 import Preact from 'preact/compat';
 import { Path } from 'src/dnd/types';
 import { BoardModifiers } from 'src/helpers/boardModifiers';
@@ -43,6 +44,15 @@ export const PriorityButton = Preact.memo(function PriorityButton({
     },
     [item, path, boardModifiers, stateManager, currentIndex]
   );
+
+  // Phones: just the icon. Taps open the card; priority is changed in the card window.
+  if (Platform.isPhone) {
+    return current ? (
+      <span className={`${c('priority-button')} is-static`} aria-label={`Priority: ${priorityLevel(current).label}`}>
+        <PriorityIcon value={current} />
+      </span>
+    ) : null;
+  }
 
   return (
     <a

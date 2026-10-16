@@ -5676,10 +5676,6 @@ button.kanban-plugin__upload-cancel {
       gap: 14px;
       padding: 12px 16px 16px;
       min-height: 0;
-
-      &.is-collapsed {
-        display: none;
-      }
     }
     .kanban-plugin__cd-section + .kanban-plugin__cd-section {
       margin-top: 22px;
@@ -5703,18 +5699,6 @@ button.kanban-plugin__upload-cancel {
       font-size: 20px;
     }
 
-    // No hover on phones: reply / edit / delete stay visible.
-    .kanban-plugin__comment-actions-inline,
-    .kanban-plugin__comment-delete {
-      opacity: 0.75;
-    }
-    .kanban-plugin__comment-actions-inline {
-      gap: 16px;
-
-      > * {
-        padding: 4px 2px;
-      }
-    }
     .kanban-plugin__comment-form {
       position: sticky;
       bottom: 0;
@@ -5729,59 +5713,6 @@ button.kanban-plugin__upload-cancel {
       font-size: 0.95em;
     }
   }
-  .kanban-plugin__cd-details-toggle {
-    order: -2;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: auto;
-    height: auto;
-    min-height: 48px;
-    margin: 4px 16px 8px;
-    padding: 6px 10px;
-    border-radius: 10px;
-    background: var(--background-secondary);
-    box-shadow: none;
-    text-align: left;
-    white-space: normal;
-
-    &.is-open {
-      margin-bottom: 0;
-      border-bottom-left-radius: 0;
-      border-bottom-right-radius: 0;
-    }
-  }
-  .kanban-plugin__cd-details-summary {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .kanban-plugin__cd-details-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--background-modifier-hover);
-    font-size: var(--font-ui-small);
-    color: var(--text-normal);
-
-    svg {
-      width: 14px;
-      height: 14px;
-    }
-  }
-  .kanban-plugin__cd-details-more {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    flex: none;
-    font-size: var(--font-ui-small);
-    color: var(--text-accent);
-  }
-
   // iOS zooms into any text field under 16px; keep ours at 16px.
   .kanban-plugin__card-detail-window,
   .kanban-plugin__new-card-window,
@@ -5849,5 +5780,229 @@ button.kanban-plugin__upload-cancel {
   }
   .kanban-plugin__mt-device {
     flex-wrap: wrap;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Phone: card window as a list (2.1.43), board cards are tap-to-open only.
+ * ------------------------------------------------------------------------- */
+.is-phone {
+  // Board cards: no menu button, tags don't start a search; a tap opens the card.
+  .kanban-plugin__item .kanban-plugin__item-postfix-button-wrapper,
+  .kanban-plugin__item .kanban-plugin__item-postfix-button {
+    display: none;
+  }
+  .kanban-plugin__item .kanban-plugin__item-tags a,
+  .kanban-plugin__item .kanban-plugin__assignees,
+  .kanban-plugin__item .kanban-plugin__priority-button.is-static {
+    pointer-events: none;
+  }
+
+  .modal.kanban-plugin__card-detail-window {
+    // Never wider than the phone: long links, images, code and tables wrap or shrink.
+    .modal-content {
+      overflow-x: hidden;
+    }
+    .kanban-plugin__card-detail-content,
+    .kanban-plugin__cd-layout,
+    .kanban-plugin__cd-main,
+    .kanban-plugin__cd-sidebar,
+    .kanban-plugin__comments,
+    .kanban-plugin__comment,
+    .kanban-plugin__comment-main {
+      min-width: 0;
+      max-width: 100%;
+    }
+    .kanban-plugin__card-detail-content {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    a,
+    .external-link,
+    .internal-link {
+      overflow-wrap: anywhere;
+      word-break: break-all;
+    }
+    img,
+    video,
+    iframe,
+    canvas,
+    svg:not(.svg-icon) {
+      max-width: 100%;
+      height: auto;
+    }
+    pre,
+    code {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    table {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    .kanban-plugin__card-detail-title h2 {
+      font-size: 1.35rem;
+      line-height: 1.3;
+    }
+
+    // Properties: an inset list of rows, label on the left.
+    .kanban-plugin__cd-sidebar {
+      display: block;
+      margin: 4px 16px 12px;
+      padding: 0;
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 12px;
+      background: var(--background-secondary);
+      overflow: hidden;
+    }
+    .kanban-plugin__cd-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      min-height: 48px;
+      height: auto;
+      margin: 0;
+      padding: 6px 14px;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text-normal);
+      font: inherit;
+      text-align: left;
+      white-space: normal;
+    }
+    .kanban-plugin__cd-sidebar > .kanban-plugin__cd-row + .kanban-plugin__cd-row,
+    .kanban-plugin__cd-sidebar > * + .kanban-plugin__cd-row,
+    .kanban-plugin__cd-sidebar > * + .kanban-plugin__cd-row-group {
+      border-top: 1px solid var(--background-modifier-border);
+    }
+    .kanban-plugin__cd-row-label {
+      flex: 0 0 84px;
+      color: var(--text-muted);
+      font-size: var(--font-ui-small);
+    }
+    .kanban-plugin__cd-row-summary {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .kanban-plugin__cd-row-empty {
+      color: var(--text-faint);
+    }
+    .kanban-plugin__cd-row-tags {
+      color: var(--text-accent);
+    }
+    .kanban-plugin__cd-row-chevron {
+      flex: none;
+      color: var(--text-faint);
+
+      svg {
+        width: 16px;
+        height: 16px;
+      }
+    }
+    .kanban-plugin__cd-row-control {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      justify-content: flex-end;
+
+      select,
+      .kanban-plugin__cd-select {
+        width: 100%;
+        max-width: 100%;
+        min-height: 36px;
+        text-align: right;
+        text-align-last: right;
+        background-color: transparent;
+        box-shadow: none;
+      }
+      .kanban-plugin__cd-project {
+        min-width: 0;
+        justify-content: flex-end;
+        gap: 2px;
+
+        select {
+          width: auto;
+        }
+      }
+      .kanban-plugin__assign-button {
+        opacity: 1;
+        height: 32px;
+        padding: 0 12px;
+        margin-left: 8px;
+        font-size: var(--font-ui-small);
+        color: var(--text-muted);
+      }
+      .kanban-plugin__assignee {
+        width: 30px;
+        height: 30px;
+      }
+      .kanban-plugin__cd-priority {
+        width: auto;
+
+        button {
+          min-height: 36px;
+          width: 38px;
+          padding: 0;
+        }
+      }
+      .kanban-plugin__team-extras {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+      button {
+        min-height: 36px;
+      }
+    }
+    .kanban-plugin__cd-row-editor {
+      padding: 4px 14px 14px;
+      min-width: 0;
+    }
+
+    // Archive / Delete at the end of the window.
+    .kanban-plugin__cd-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 28px;
+    }
+    .kanban-plugin__cd-action {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 46px;
+      border-radius: 12px;
+      background: var(--background-secondary);
+      box-shadow: none;
+      color: var(--text-normal);
+
+      &.is-danger {
+        color: var(--text-error);
+      }
+    }
+
+    // Comments: actions live in a tap menu, so the header is name + time only.
+    .kanban-plugin__comment {
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+
+      &:active {
+        background: var(--background-modifier-hover);
+      }
+    }
+    .kanban-plugin__comment-meta {
+      flex-wrap: wrap;
+      min-width: 0;
+    }
   }
 }
