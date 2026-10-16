@@ -1,0 +1,131 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mad Kanban on your phone</title>
+<style>
+@page { size: A4; margin: 16mm; }
+:root { --ink:#1d2433; --muted:#5b6475; --line:#e3e6ec; --accent:#6c4cf1; --soft:#f4f2ff; --warn:#fff6e5; --warnline:#f0c36d; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.45; margin: 0; }
+h1 { font-size: 24pt; margin: 0 0 4px; letter-spacing: -0.02em; }
+.sub { color: var(--muted); font-size: 10.5pt; margin: 0 0 12px; }
+h2 { font-size: 13.5pt; margin: 16px 0 6px; padding-top: 4px; display: flex; align-items: center; gap: 10px; break-after: avoid; }
+h2 .n { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11pt; flex: none; }
+h3 { font-size: 11.5pt; margin: 14px 0 6px; break-after: avoid; }
+p { margin: 6px 0; }
+ol, ul { margin: 6px 0; padding-left: 20px; }
+li { margin: 3px 0; }
+b { font-weight: 650; }
+.mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9.5pt; background: #f1f2f5; padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+.box { border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin: 8px 0; break-inside: avoid; }
+.soft { background: var(--soft); border-color: #ddd5ff; }
+.warn { background: var(--warn); border-color: var(--warnline); }
+.need { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 8px; margin: 8px 0; }
+.need .box { margin: 0; }
+.need b { display: block; margin-bottom: 2px; }
+.os { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; break-inside: avoid; }
+.os .box { margin: 0; }
+.os .h { font-weight: 650; display: block; margin-bottom: 3px; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10pt; break-inside: avoid; }
+td, th { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th { font-size: 9pt; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; }
+.page { break-before: page; }
+.keep { break-inside: avoid; }
+</style></head><body>
+
+<h1>Mad Kanban on your phone</h1>
+<p class="sub">Set up the team board on an iPhone or Android phone. About 10 minutes, and you only do it once.</p>
+
+<div class="box soft">
+<b>How it works.</b> Your phone connects to the same team server as your computer. You sign in with the <b>same account</b>, so you see the same boards, cards, comments and assignments. A change on your phone shows up on your computer within a second, and the other way round. Your computer stays signed in.
+</div>
+
+<div class="need">
+  <div class="box"><b>A phone</b>iPhone (iOS) or Android.</div>
+  <div class="box"><b>Your join link</b>The same link you used on your computer. Lost it? Ask your team host.</div>
+  <div class="box"><b>Internet</b>Wi-Fi or mobile data.</div>
+</div>
+
+<div class="box warn"><b>Your join link is your password.</b> It signs you in as you. Don't post it in group chats or share it with anyone.</div>
+
+<h2><span class="n">1</span> Install Obsidian</h2>
+<div class="os">
+  <div class="box"><span class="h">iPhone</span>Open the <b>App Store</b>, search <b>Obsidian</b> and install <b>Obsidian – Connected Notes</b>.</div>
+  <div class="box"><span class="h">Android</span>Open <b>Google Play</b>, search <b>Obsidian</b> and install <b>Obsidian</b>.</div>
+</div>
+<p>Both are free and made by <b>Dynalist Inc.</b></p>
+
+<h2><span class="n">2</span> Create a vault</h2>
+<p>Obsidian keeps everything in a folder called a <b>vault</b>.</p>
+<ol>
+<li>Open Obsidian and tap <b>Create a vault</b>.</li>
+<li>Name it <b>Mad Kanban</b>.</li>
+<li><b>iPhone:</b> turn <b>off</b> "Store in iCloud". You don't need it, because the board syncs through our server.<br>
+<b>Android:</b> keep the default location. If the phone asks for storage access, tap <b>Allow</b>.</li>
+<li>Tap <b>Create</b>.</li>
+</ol>
+
+<h2><span class="n">3</span> Turn on community plugins</h2>
+<ol>
+<li>Open the side menu: tap <b>☰</b> at the top left, or swipe right from the left edge of the screen.</li>
+<li>Tap the <b>gear icon ⚙</b> to open <b>Settings</b>.</li>
+<li>Tap <b>Community plugins</b>, then <b>Turn on community plugins</b>.</li>
+</ol>
+
+<h2><span class="n">4</span> Install BRAT</h2>
+<p>BRAT is a helper plugin from the official plugin store. It installs Mad Kanban for you.</p>
+<ol>
+<li>Still in <b>Settings → Community plugins</b>, tap <b>Browse</b>.</li>
+<li>Search <b>BRAT</b>. Open <b>BRAT</b> by <b>TfTHacker</b>.</li>
+<li>Tap <b>Install</b>, then <b>Enable</b>.</li>
+</ol>
+
+<h2 class="page"><span class="n">5</span> Install Mad Kanban with BRAT</h2>
+<ol>
+<li>Go back to <b>Settings</b>. Scroll down the left list to the plugin section and tap <b>BRAT</b>.</li>
+<li>Tap <b>Add beta plugin</b>.</li>
+<li>In the box, type exactly: <span class="mono">madfromthemars/mad-kanban</span></li>
+<li>Leave the version on the latest one. Make sure <b>Enable after installing the plugin</b> is ticked.</li>
+<li>Tap <b>Add plugin</b> and wait a few seconds until BRAT says it's installed.</li>
+</ol>
+<div class="box"><b>Mad Kanban doesn't show up?</b> Go to <b>Settings → Community plugins</b>, find <b>Mad Kanban</b> under <b>Installed plugins</b> and switch it on. If it isn't in the list, close Obsidian completely and open it again.</div>
+
+<h2><span class="n">6</span> Sign in with your join link</h2>
+<ol>
+<li>Get your join link onto the phone. The easiest way is to send it to yourself in <b>Telegram → Saved Messages</b>, then copy it from there on the phone. Copy the <b>whole</b> link.</li>
+<li>In Obsidian, open <b>Settings</b> and tap <b>Mad Kanban</b> in the plugin list.</li>
+<li>Paste the link into <b>Team server join string</b>.</li>
+<li>Below it you should see <b>Connected as</b> and your name. If not, tap <b>Test connection</b>.</li>
+</ol>
+
+<h2><span class="n">7</span> Open the team board</h2>
+<ol>
+<li>Close Settings and open the side menu (tap <b>☰</b> or swipe right).</li>
+<li>Tap the <b>board icon</b> named <b>Open a team board</b>.<br>
+Can't find it? Swipe <b>down</b> in the middle of the screen to open the command list and type <b>Open a team board</b>.</li>
+<li>Pick the board, for example <b>Dragonfly</b>. Next time, just tap it in the file list.</li>
+</ol>
+
+<p><b>Done.</b> Your phone and computer now show the same board.</p>
+
+<h3>Using the board on a phone</h3>
+<table>
+<tr><th style="width:32%">To do this</th><th>Do this</th></tr>
+<tr><td>Open a card</td><td>Tap it. You'll see the description, checklist, comments and attachments.</td></tr>
+<tr><td>Move a card</td><td>Press and hold the card, then drag it to another column. Swipe sideways to reach the other columns.</td></tr>
+<tr><td>Add a card</td><td>Tap <b>+ Add a card</b> under a column.</td></tr>
+<tr><td>Check sync</td><td>The cloud at the top left: <span class="dot" style="background:#00c853"></span>green synced &nbsp;<span class="dot" style="background:#f5b800"></span>yellow saving &nbsp;<span class="dot" style="background:#ff8c00"></span>orange offline &nbsp;<span class="dot" style="background:#e03131"></span>red error. Tap it to sync again.</td></tr>
+</table>
+
+<h3>Updates</h3>
+<p>Mad Kanban updates itself, so you don't have to do anything. To check right away: <b>Settings → Mad Kanban → Check now</b>.</p>
+
+<h3>If something goes wrong</h3>
+<table>
+<tr><th style="width:32%">Problem</th><th>What to do</th></tr>
+<tr><td>BRAT says it can't find the plugin</td><td>Check the spelling: <span class="mono">madfromthemars/mad-kanban</span>, with no spaces. Check your internet.</td></tr>
+<tr><td>"That does not look like a join string"</td><td>Part of the link is missing. Copy the whole link again.</td></tr>
+<tr><td>"Connection failed"</td><td>Check your internet. If it still fails, tell your host. The server may be down.</td></tr>
+<tr><td>No boards, or the board is empty</td><td>You haven't been added to a project yet. Ask your host.</td></tr>
+<tr><td>Lost your phone</td><td>Tell your host right away. They'll give you a new join link. You'll then need to paste the new link on your other devices too.</td></tr>
+</table>
+
+</body></html>

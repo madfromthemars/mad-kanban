@@ -42,3 +42,4 @@ if [ -d "$VAULT_PLUGIN" ]; then
 fi
 
 echo "published $VERSION"
+echo "next: commit + push the bump, then scripts/github-release.sh (phones install via BRAT from GitHub)"

@@ -12,6 +12,7 @@ import {
   OpsResponse,
   TeamBoardMeta,
   TeamBoardSnapshot,
+  TeamDevice,
   TeamOp,
   TeamServerEvent,
   TeamUser,
@@ -22,10 +23,29 @@ export interface TeamConnection {
   token: string;
 }
 
+/** A "sign in this device" link from a QR code: https://host/pair#CODE */
+export interface PairingLink {
+  url: string;
+  code: string;
+}
+
+/** Parse "https://host/pair#CODE" (what an Add-a-device QR code holds). */
+export function parsePairingLink(raw: string): PairingLink | null {
+  const m = /^\s*(https?:\/\/[^\s#]+?)\/pair\/?#([a-z0-9]{16,64})\s*$/i.exec(raw || '');
+  if (!m) return null;
+  try {
+    new URL(m[1]);
+  } catch {
+    return null;
+  }
+  return { url: m[1].replace(/\/+$/, ''), code: m[2] };
+}
+
 /** Parse "https://host:port/#TOKEN" (or "host:port#TOKEN") into url + token. */
 export function parseJoinString(raw: string): TeamConnection | null {
   const str = (raw || '').trim();
   if (!str) return null;
+  if (parsePairingLink(str)) return null;
   const hashIdx = str.lastIndexOf('#');
   if (hashIdx <= 0) return null;
   let url = str.slice(0, hashIdx).trim().replace(/\/+$/, '');
@@ -45,6 +65,38 @@ export class UploadCancelled extends Error {
   constructor() {
     super('Upload cancelled');
   }
+}
+
+/**
+ * Trade a pairing code (from another device's QR code) for this device's own key.
+ * No sign-in needed: the code is the proof.
+ */
+export async function redeemPairingCode(
+  link: PairingLink,
+  name: string,
+  platform: string
+): Promise<{ token: string; user: TeamUser; device: TeamDevice }> {
+  let res;
+  try {
+    res = await requestUrl({
+      url: `${link.url}/api/pair`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify({ code: link.code, name, platform }),
+      throw: false,
+    });
+  } catch (e) {
+    throw new TeamApiError(0, `Cannot reach team server: ${(e as Error)?.message || e}`);
+  }
+  let json: any = {};
+  try {
+    json = res.json;
+  } catch {
+    json = {};
+  }
+  if (res.status >= 400) throw new TeamApiError(res.status, json?.error || `Server error ${res.status}`, json);
+  if (!json?.token || !json?.user) throw new TeamApiError(res.status, 'Unexpected answer from the team server');
+  return json;
 }
 
 export class TeamApiError extends Error {
@@ -137,6 +189,7 @@ export class TeamClient {
       const to = relocationTarget(json);
       if (to) this.emitter.emit('moved', to);
     }
+    if (res.status === 401) this.emitter.emit('unauthorized');
     if (res.status >= 400) {
       throw new TeamApiError(res.status, json?.error || `Server error ${res.status}`, json);
     }
@@ -364,6 +417,52 @@ export class TeamClient {
     return this.request<{ cards: MyCard[] }>('GET', '/api/me/cards').then((r) => r.cards);
   }
 
+  // ---------- devices: one account on many phones/computers ----------
+
+  /** The signed-in person plus the device key in use (null when signed in with the join link). */
+  whoAmI() {
+    return this.request<{ user: TeamUser; device: TeamDevice | null }>('GET', '/api/me');
+  }
+
+  devices() {
+    return this.request<{ devices: TeamDevice[] }>('GET', '/api/me/devices').then((r) => r.devices);
+  }
+
+  /** A device key for this install, traded for the current sign-in. */
+  addDevice(name: string, platform: string) {
+    return this.request<{ token: string; device: TeamDevice }>('POST', '/api/me/devices', { name, platform });
+  }
+
+  renameDevice(id: string, name: string) {
+    return this.request<{ devices: TeamDevice[] }>('PATCH', `/api/me/devices/${encodeURIComponent(id)}`, {
+      name,
+    }).then((r) => r.devices);
+  }
+
+  removeDevice(id: string) {
+    return this.request<{ devices: TeamDevice[] }>('DELETE', `/api/me/devices/${encodeURIComponent(id)}`).then(
+      (r) => r.devices
+    );
+  }
+
+  /** A single-use code (10 minutes) another device trades for its own key. */
+  createPairingCode() {
+    return this.request<{ code: string; expiresAt: number; link?: string }>('POST', '/api/me/pairing');
+  }
+
+  userDevices(userId: string) {
+    return this.request<{ devices: TeamDevice[] }>('GET', `/api/team/users/${encodeURIComponent(userId)}/devices`).then(
+      (r) => r.devices
+    );
+  }
+
+  removeUserDevice(userId: string, deviceId: string) {
+    return this.request<{ devices: TeamDevice[] }>(
+      'DELETE',
+      `/api/team/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}`
+    ).then((r) => r.devices);
+  }
+
   // ---------- WebSocket ----------
 
   private setStatus(s: ConnectionStatus) {
@@ -421,10 +520,12 @@ export class TeamClient {
         /* ignore malformed */
       }
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       if (this.ws !== ws) return;
       this.cleanupSocket();
       this.setStatus('disconnected');
+      // 4001: the server signed this device out (removed, or its link was replaced).
+      if (ev?.code === 4001) this.emitter.emit('unauthorized');
       this.scheduleReconnect();
     };
     ws.onerror = () => {

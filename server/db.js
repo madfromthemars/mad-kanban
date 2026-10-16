@@ -223,6 +223,31 @@ function migrate(db) {
       db.prepare("INSERT INTO meta (key, value) VALUES ('projects', ?)").run(String(now));
     });
   }
+
+  // Devices: one key per phone/computer, all signing in as the same person, so a lost
+  // phone can be removed without signing out the rest. The user's own token (the join
+  // link a host hands out) keeps working; plugins trade it for a device key on first use.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS devices (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      platform TEXT NOT NULL DEFAULT '',
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL,
+      revoked_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
+    CREATE TABLE IF NOT EXISTS pairing_codes (
+      code_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_by_device TEXT,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    );
+  `);
 }
 
 export const ROLES = ['owner', 'host', 'user'];
@@ -276,13 +301,120 @@ export function setUserRole(db, id, role) {
   return db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id).changes > 0;
 }
 
+/**
+ * The person a token signs in as. Accepts the user's own token (the join link) and
+ * device keys. `deviceId` is null for the user's own token.
+ */
 export function userByToken(db, token) {
   if (!token) return null;
+  const hash = hashToken(token);
+  const u = db.prepare('SELECT id, name, role FROM users WHERE token_hash = ? AND disabled = 0').get(hash);
+  if (u) return { ...u, deviceId: null };
+  const d = db
+    .prepare(
+      `SELECT u.id, u.name, u.role, d.id AS deviceId, d.last_seen AS lastSeen FROM devices d
+       JOIN users u ON u.id = d.user_id
+       WHERE d.token_hash = ? AND d.revoked_at IS NULL AND u.disabled = 0`
+    )
+    .get(hash);
+  if (!d) return null;
+  const now = Date.now();
+  if (now - d.lastSeen > 60_000) db.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(now, d.deviceId);
+  return { id: d.id, name: d.name, role: d.role, deviceId: d.deviceId };
+}
+
+// ---------- devices ----------
+
+export const PAIRING_TTL_MS = 10 * 60 * 1000;
+const PLATFORMS = ['ios', 'android', 'mac', 'windows', 'linux', ''];
+
+export function cleanDeviceName(v) {
+  const name = String(v ?? '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  return name || 'Device';
+}
+
+function cleanPlatform(v) {
+  const p = String(v ?? '').toLowerCase();
+  return PLATFORMS.includes(p) ? p : '';
+}
+
+function rowToDevice(r) {
+  return { id: r.id, name: r.name, platform: r.platform, createdAt: r.created_at, lastSeen: r.last_seen };
+}
+
+/** A new device key for userId. The key is returned once and only its hash is stored. */
+export function createDevice(db, userId, name, platform) {
+  const token = newToken();
+  const now = Date.now();
+  const id = newId(10);
+  db.prepare(
+    'INSERT INTO devices (id, user_id, name, platform, token_hash, created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, userId, cleanDeviceName(name), cleanPlatform(platform), hashToken(token), now, now);
+  return { token, device: rowToDevice(db.prepare('SELECT * FROM devices WHERE id = ?').get(id)) };
+}
+
+export function listDevices(db, userId) {
+  return db
+    .prepare('SELECT * FROM devices WHERE user_id = ? AND revoked_at IS NULL ORDER BY last_seen DESC')
+    .all(userId)
+    .map(rowToDevice);
+}
+
+export function getDevice(db, userId, id) {
+  const r = db.prepare('SELECT * FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL').get(id, userId);
+  return r ? rowToDevice(r) : null;
+}
+
+export function renameDevice(db, userId, id, name) {
   return (
     db
-      .prepare('SELECT id, name, role FROM users WHERE token_hash = ? AND disabled = 0')
-      .get(hashToken(token)) || null
+      .prepare('UPDATE devices SET name = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL')
+      .run(cleanDeviceName(name), id, userId).changes > 0
   );
+}
+
+export function revokeDevice(db, userId, id) {
+  return (
+    db
+      .prepare('UPDATE devices SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL')
+      .run(Date.now(), id, userId).changes > 0
+  );
+}
+
+/** A single-use code that signs a new device in as `user`. Shown as a QR code / link. */
+export function createPairingCode(db, user) {
+  const now = Date.now();
+  db.prepare('DELETE FROM pairing_codes WHERE expires_at < ? OR used_at IS NOT NULL').run(now - PAIRING_TTL_MS);
+  // Only the newest few codes per person stay valid.
+  db.prepare(
+    `DELETE FROM pairing_codes WHERE user_id = ? AND used_at IS NULL AND code_hash NOT IN (
+       SELECT code_hash FROM pairing_codes WHERE user_id = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 4)`
+  ).run(user.id, user.id);
+  const code = newId(24);
+  const expiresAt = now + PAIRING_TTL_MS;
+  db.prepare(
+    'INSERT INTO pairing_codes (code_hash, user_id, created_by_device, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(hashToken(code), user.id, user.deviceId || null, now, expiresAt);
+  return { code, expiresAt };
+}
+
+/** Trade a pairing code for a device key. Null when the code is unknown, used or expired. */
+export function redeemPairingCode(db, code, name, platform) {
+  if (!code || typeof code !== 'string') return null;
+  return transaction(db, () => {
+    const now = Date.now();
+    const row = db
+      .prepare(
+        `SELECT p.code_hash, p.user_id FROM pairing_codes p JOIN users u ON u.id = p.user_id
+         WHERE p.code_hash = ? AND p.used_at IS NULL AND p.expires_at > ? AND u.disabled = 0`
+      )
+      .get(hashToken(code.trim()), now);
+    if (!row) return null;
+    db.prepare('UPDATE pairing_codes SET used_at = ? WHERE code_hash = ?').run(now, row.code_hash);
+    const { token, device } = createDevice(db, row.user_id, name, platform);
+    const user = db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(row.user_id);
+    return { token, device, user };
+  });
 }
 
 export function listUsers(db) {

@@ -7,6 +7,8 @@ Team Kanban boards for [Obsidian](https://obsidian.md), synced through your own 
 - Cards: description, checklist, tags, due date, priority, assignees, images/videos, comments with replies
 - Filters by assignee, priority, due date and tags; unread and edited comment badges
 - The plugin updates itself from the team server and reports its errors there
+- One account on many devices (Mac, Windows, iPhone, Android): each device gets its own key; add one with a QR code (Settings → Mad Kanban → Add a device), remove a lost one without signing out the rest
+- Phones install the plugin with [BRAT](https://github.com/TfTHacker/obsidian42-brat) from `madfromthemars/mad-kanban` (see `docs/onboarding/phone-guide.html`)
 
 Based on [Obsidian Kanban](https://github.com/mgmeyers/obsidian-kanban) by mgmeyers.
 

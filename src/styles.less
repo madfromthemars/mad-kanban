@@ -5448,3 +5448,128 @@ button.kanban-plugin__upload-cancel {
 .kanban-plugin__attach-button.is-busy {
   font-variant-numeric: tabular-nums;
 }
+
+// ---------- devices: Add a device (QR), Your devices, Manage team → Devices ----------
+
+.kanban-plugin__add-device-modal {
+  width: min(440px, 94vw);
+}
+.kanban-plugin__add-device-hint {
+  margin-top: 0;
+  color: var(--text-muted);
+}
+.kanban-plugin__add-device-qr {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 6px;
+
+  svg {
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px var(--background-modifier-border);
+    max-width: 70vw;
+    height: auto;
+  }
+  &.is-expired svg {
+    opacity: 0.15;
+  }
+}
+.kanban-plugin__add-device-expires {
+  text-align: center;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.kanban-plugin__add-device-link {
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  padding: 6px 8px;
+  margin-bottom: 10px;
+
+  code {
+    word-break: break-all;
+    font-size: var(--font-ui-smaller);
+    user-select: all;
+  }
+}
+.kanban-plugin__add-device-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.kanban-plugin__add-device-note {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  margin-bottom: 0;
+}
+.kanban-plugin__add-device-wait,
+.kanban-plugin__add-device-error {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--text-muted);
+}
+.kanban-plugin__add-device-error {
+  color: var(--text-error);
+}
+.kanban-plugin__add-device-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-ui-large);
+  font-weight: 600;
+  padding: 12px 0 4px;
+  color: var(--color-green);
+}
+
+.kanban-plugin__devices-list {
+  margin-bottom: 12px;
+
+  .setting-item-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+.kanban-plugin__device-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+.kanban-plugin__devices-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  padding: 6px 0;
+}
+
+.kanban-plugin__mt-devices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+.kanban-plugin__mt-device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-ui-small);
+
+  .kanban-plugin__mt-device-name {
+    font-weight: 500;
+  }
+  .kanban-plugin__mt-link,
+  .kanban-plugin__mt-confirm {
+    margin-left: auto;
+  }
+  svg {
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+  }
+}

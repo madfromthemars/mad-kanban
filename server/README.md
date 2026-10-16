@@ -41,6 +41,21 @@ curl -X POST http://host:8787/api/admin/users \
    Dragging it there moves it on the team board for everyone.
    *Remove from my board* unassigns you; it never deletes the team card.
 
+## Devices
+
+One person can be signed in on many devices. The join link above is the first sign-in;
+the plugin then swaps it for a key of its own for that device.
+
+- **Add a device:** Settings → Mad Kanban → *Add a device* shows a QR code (single use,
+  10 minutes). It opens `PUBLIC_URL/pair#CODE`, whose *Open in Obsidian* button signs the
+  phone in. Pasting that link into the join string field works too.
+- **Remove one:** *Your devices* in settings, or a host in Manage team → *Devices*. Only that
+  device is signed out. *New link* signs out only what still uses the old join link.
+- API: `GET/POST /api/me/devices`, `PATCH/DELETE /api/me/devices/:id`, `POST /api/me/pairing`,
+  `POST /api/pair`, `GET/DELETE /api/team/users/:id/devices[/:deviceId]`.
+
+`PUBLIC_URL` should be the https address: pairing links and join strings use it.
+
 ## Notes
 
 - Tokens travel in plain text over `http://`. Put it behind HTTPS (Caddy, nginx)

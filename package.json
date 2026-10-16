@@ -1,6 +1,6 @@
 {
   "name": "mad-kanban",
-  "version": "2.1.40",
+  "version": "2.1.41",
   "description": "Mad Kanban: team Kanban boards for Obsidian, synced through your own server. Based on Obsidian Kanban.",
   "main": "main.js",
   "scripts": {
@@ -67,6 +67,7 @@
     "monkey-around": "^2.1.0",
     "obsidian-daily-notes-interface": "^0.9.4",
     "preact": "^10.8.2",
+    "qrcode-generator": "^2.0.4",
     "react": "npm:@preact/compat",
     "react-cool-onclickoutside": "^1.7.0",
     "react-dom": "npm:@preact/compat",

@@ -34,6 +34,13 @@ import {
   myCards,
   openDb,
   userByToken,
+  createDevice,
+  createPairingCode,
+  getDevice,
+  listDevices,
+  redeemPairingCode,
+  renameDevice,
+  revokeDevice,
   addProjectMember,
   canSeeCard,
   canSeeProject,
@@ -255,7 +262,79 @@ route('DELETE', '/api/admin/users/:id', (req, params) => {
 // me / users
 route('GET', '/api/me', (req) => {
   const user = requireUser(req);
-  return { user };
+  return { user, device: user.deviceId ? getDevice(db, user.id, user.deviceId) : null };
+});
+
+// ---------- devices: one person, many phones/computers ----------
+
+function closeSockets(match) {
+  for (const s of sockets) if (match(s.user)) s.ws.close(4001, 'signed out');
+}
+
+/** Devices of userId, with `current` marking the one making the request. */
+function deviceList(userId, me) {
+  return listDevices(db, userId).map((d) => ({ ...d, current: d.id === me.deviceId }));
+}
+
+route('GET', '/api/me/devices', (req) => {
+  const me = requireUser(req);
+  return { devices: deviceList(me.id, me) };
+});
+
+// Trade the current sign-in (join link or a copied device key) for this device's own key.
+route('POST', '/api/me/devices', async (req) => {
+  const me = requireUser(req);
+  const body = await readJson(req);
+  const { token, device } = createDevice(db, me.id, body.name, body.platform);
+  console.log(`${new Date().toISOString()} devices: ${me.name} added "${device.name}" (${device.platform || '?'})`);
+  return { token, device: { ...device, current: true } };
+});
+
+route('PATCH', '/api/me/devices/:id', async (req, params) => {
+  const me = requireUser(req);
+  const body = await readJson(req);
+  if (!renameDevice(db, me.id, params.id, body.name)) throw new OpError(404, 'device not found');
+  return { devices: deviceList(me.id, me) };
+});
+
+route('DELETE', '/api/me/devices/:id', (req, params) => {
+  const me = requireUser(req);
+  const d = getDevice(db, me.id, params.id);
+  if (!d || !revokeDevice(db, me.id, params.id)) throw new OpError(404, 'device not found');
+  closeSockets((u) => u.deviceId === params.id);
+  console.log(`${new Date().toISOString()} devices: ${me.name} removed "${d.name}"`);
+  return { devices: deviceList(me.id, me) };
+});
+
+// A short-lived, single-use code shown as a QR code; see POST /api/pair. The link uses the
+// server's public address, so a phone gets https even when the computer still uses an old one.
+route('POST', '/api/me/pairing', (req) => {
+  const me = requireUser(req);
+  const out = createPairingCode(db, me);
+  return { ...out, link: `${PUBLIC_URL}/pair#${out.code}` };
+});
+
+// Failed pairing attempts per address, so codes can't be guessed in bulk.
+const pairFailures = new Map();
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+}
+
+route('POST', '/api/pair', async (req) => {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const f = pairFailures.get(ip);
+  if (f && f.until > now && f.count >= 20) throw new OpError(429, 'too many attempts, try again later');
+  const body = await readJson(req);
+  const out = redeemPairingCode(db, String(body.code || ''), body.name, body.platform);
+  if (!out) {
+    const cur = f && f.until > now ? f : { count: 0, until: now + 10 * 60 * 1000 };
+    cur.count++;
+    pairFailures.set(ip, cur);
+    throw new OpError(404, 'this code is invalid, used or expired. Make a new one on your other device');
+  }
+  console.log(`${new Date().toISOString()} devices: ${out.user.name} signed in "${out.device.name}" with a code`);
+  return { token: out.token, user: out.user, device: { ...out.device, current: true } };
 });
 // Error reports from plugins (see src/ErrorReporter.ts).
 route('POST', '/api/client-logs', async (req) => {
@@ -388,10 +467,26 @@ route('POST', '/api/team/users/:id/token', (req, params) => {
   const target = requireManageable(me, params.id);
   if (target.id === me.id) throw new OpError(400, 'reset your own token from another host');
   const token = resetToken(db, target.id);
-  // Drop the old token's live connections.
-  for (const s of sockets) if (s.user.id === target.id) s.ws.close();
+  // Drop connections signed in with the old link. Devices with their own key stay signed in.
+  closeSockets((u) => u.id === target.id && !u.deviceId);
   console.log(`${new Date().toISOString()} team: ${me.name} reset the token of ${target.name}`);
   return { join: joinString(token) };
+});
+
+route('GET', '/api/team/users/:id/devices', (req, params) => {
+  const me = requireHost(req);
+  const target = requireManageable(me, params.id);
+  return { devices: deviceList(target.id, me) };
+});
+
+route('DELETE', '/api/team/users/:id/devices/:deviceId', (req, params) => {
+  const me = requireHost(req);
+  const target = requireManageable(me, params.id);
+  const d = getDevice(db, target.id, params.deviceId);
+  if (!d || !revokeDevice(db, target.id, params.deviceId)) throw new OpError(404, 'device not found');
+  closeSockets((u) => u.deviceId === params.deviceId);
+  console.log(`${new Date().toISOString()} devices: ${me.name} removed "${d.name}" of ${target.name}`);
+  return { devices: deviceList(target.id, me) };
 });
 
 route('DELETE', '/api/team/users/:id', (req, params) => {
@@ -715,6 +810,15 @@ const INLINE_MIME = /^(image\/(png|jpe?g|gif|webp|avif|bmp)|video\/(mp4|webm|ogg
 
 function handleStatic(req, res, pathname) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  // Where a "sign in this device" QR code points; the code itself stays in the #fragment.
+  if (pathname === '/pair' || pathname === '/pair/') {
+    serveFile(req, res, path.join(import.meta.dirname, 'pair.html'), 'text/html; charset=utf-8', {
+      'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return true;
+  }
   let m = /^\/files\/([a-z0-9]{24})(?:\/[^/]*)?$/.exec(pathname);
   if (m) {
     const f = getFile(db, m[1]);

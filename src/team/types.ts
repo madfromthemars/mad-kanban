@@ -4,6 +4,19 @@ export interface TeamUser {
   id: string;
   name: string;
   role?: TeamRole;
+  /** Set by the server when the request was signed with a device key. */
+  deviceId?: string | null;
+}
+
+/** One phone or computer signed in to an account. */
+export interface TeamDevice {
+  id: string;
+  name: string;
+  platform: '' | 'ios' | 'android' | 'mac' | 'windows' | 'linux';
+  createdAt: number;
+  lastSeen: number;
+  /** The device making the request. */
+  current?: boolean;
 }
 
 /** Every card belongs to one project; people see only cards of projects they're in. */

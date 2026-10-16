@@ -536,3 +536,103 @@ test('uploads: any file type; only plain images and videos open in place', async
 
   assert.equal((await upload('empty.txt', 'text/plain', '')).status, 400);
 });
+
+test('devices: one account on many devices, pairing codes, removing one device', async () => {
+  const owner = (await api('POST', '/api/admin/users', { name: 'DevHost' }, ADMIN)).json;
+  const dbm = await import('../db.js');
+  const conn = dbm.openDb(dataDir);
+  dbm.setUserRole(conn, owner.id, 'host');
+  conn.close();
+  const u = await api('POST', '/api/admin/users', { name: 'Dana' }, ADMIN);
+  const LINK = u.json.token;
+
+  // The join link trades for a device key; both keep working.
+  const mac = await api('POST', '/api/me/devices', { name: 'MacBook', platform: 'mac' }, LINK);
+  assert.equal(mac.status, 200);
+  const MAC = mac.json.token;
+  assert.notEqual(MAC, LINK);
+  let me = await api('GET', '/api/me', null, MAC);
+  assert.equal(me.json.user.name, 'Dana');
+  assert.equal(me.json.device.name, 'MacBook');
+  assert.equal((await api('GET', '/api/me', null, LINK)).json.device, null);
+
+  // Pairing: the Mac makes a code, the phone trades it once for its own key.
+  const code = await api('POST', '/api/me/pairing', null, MAC);
+  assert.equal(code.status, 200);
+  assert.match(code.json.code, /^[a-z0-9]{24}$/);
+  assert.equal(code.json.link, `http://localhost:${PORT}/pair#${code.json.code}`);
+  assert.ok(code.json.expiresAt > Date.now());
+  assert.equal((await api('POST', '/api/me/pairing')).status, 401);
+  const phone = await api('POST', '/api/pair', { code: code.json.code, name: 'iPhone', platform: 'ios' });
+  assert.equal(phone.status, 200, JSON.stringify(phone.json));
+  assert.equal(phone.json.user.name, 'Dana');
+  const PHONE = phone.json.token;
+  assert.equal((await api('POST', '/api/pair', { code: code.json.code, name: 'again' })).status, 404);
+  assert.equal((await api('POST', '/api/pair', { code: 'nope' })).status, 404);
+
+  let list = await api('GET', '/api/me/devices', null, PHONE);
+  assert.deepEqual(list.json.devices.map((d) => d.name).sort(), ['MacBook', 'iPhone']);
+  assert.equal(list.json.devices.find((d) => d.current).name, 'iPhone');
+
+  // Live updates reach both devices at once.
+  const WebSocket = globalThis.WebSocket;
+  const open = (tok) =>
+    new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${tok}`);
+      ws.onmessage = (e) => JSON.parse(e.data).type === 'hello' && resolve(ws);
+      ws.onerror = reject;
+    });
+  const closed = (ws) => new Promise((r) => (ws.onclose = r));
+  const wsMac = await open(MAC);
+  const wsPhone = await open(PHONE);
+  const wsLink = await open(LINK);
+
+  // Rename, then remove the phone: only the phone is signed out.
+  const phoneId = list.json.devices.find((d) => d.current).id;
+  assert.equal((await api('PATCH', `/api/me/devices/${phoneId}`, { name: 'Old iPhone' }, MAC)).status, 200);
+  const phoneClosed = closed(wsPhone);
+  list = await api('DELETE', `/api/me/devices/${phoneId}`, null, MAC);
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.json.devices.map((d) => d.name), ['MacBook']);
+  await phoneClosed;
+  assert.equal((await api('GET', '/api/me', null, PHONE)).status, 401);
+  assert.equal((await api('GET', '/api/me', null, MAC)).status, 200);
+  assert.equal(wsMac.readyState, WebSocket.OPEN);
+
+  // Someone else can't see or remove Dana's devices.
+  const other = (await api('POST', '/api/admin/users', { name: 'Eve' }, ADMIN)).json.token;
+  const macId = list.json.devices[0].id;
+  assert.equal((await api('DELETE', `/api/me/devices/${macId}`, null, other)).status, 404);
+  assert.equal((await api('GET', `/api/team/users/${u.json.id}/devices`, null, other)).status, 403);
+
+  // A new join link signs out only what used the old link; device keys stay.
+  const linkClosed = closed(wsLink);
+  const reset = await api('POST', `/api/team/users/${u.json.id}/token`, null, owner.token);
+  assert.equal(reset.status, 200, JSON.stringify(reset.json));
+  await linkClosed;
+  assert.equal((await api('GET', '/api/me', null, LINK)).status, 401);
+  assert.equal((await api('GET', '/api/me', null, MAC)).status, 200);
+  assert.equal(wsMac.readyState, WebSocket.OPEN);
+
+  // A host can list and remove Dana's devices.
+  const seen = await api('GET', `/api/team/users/${u.json.id}/devices`, null, owner.token);
+  assert.deepEqual(seen.json.devices.map((d) => d.name), ['MacBook']);
+  const macClosed = closed(wsMac);
+  assert.equal((await api('DELETE', `/api/team/users/${u.json.id}/devices/${macId}`, null, owner.token)).status, 200);
+  await macClosed;
+  assert.equal((await api('GET', '/api/me', null, MAC)).status, 401);
+
+  // Removing the person signs out every device.
+  const c2 = (await api('POST', '/api/me/pairing', null, reset.json.join.split('#')[1])).json.code;
+  const tab = (await api('POST', '/api/pair', { code: c2, name: 'Tablet', platform: 'android' })).json.token;
+  assert.equal((await api('GET', '/api/me', null, tab)).status, 200);
+  assert.equal((await api('DELETE', `/api/team/users/${u.json.id}`, null, owner.token)).status, 200);
+  assert.equal((await api('GET', '/api/me', null, tab)).status, 401);
+  assert.equal((await api('POST', '/api/pair', { code: c2 })).status, 404);
+
+  // The landing page for QR codes.
+  const page = await fetch(`${BASE}/pair`);
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-type'), /text\/html/);
+  assert.match(await page.text(), /obsidian:\/\/mad-kanban/);
+});

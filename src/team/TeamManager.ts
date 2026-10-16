@@ -7,7 +7,17 @@ import type KanbanPlugin from 'src/main';
 import { frontmatterKey } from 'src/parsers/common';
 import { indentNewLines } from 'src/parsers/helpers/parser';
 
-import { ConnectionStatus, TeamApiError, TeamClient, parseJoinString } from './TeamClient';
+import {
+  ConnectionStatus,
+  PairingLink,
+  TeamApiError,
+  TeamClient,
+  TeamConnection,
+  parseJoinString,
+  parsePairingLink,
+  redeemPairingCode,
+} from './TeamClient';
+import { DeviceMarker, defaultDeviceName, devicePlatform, loadDeviceMarker, saveDeviceMarker } from './devices';
 import { relocationTarget } from './relocation';
 import { TeamMirror } from './TeamMirror';
 import { SyncState, TeamSync } from './TeamSync';
@@ -17,6 +27,7 @@ import {
   TeamBoardMeta,
   TeamBoardSnapshot,
   TeamCard,
+  TeamDevice,
   TeamProject,
   TeamServerEvent,
   TeamUser,
@@ -24,6 +35,7 @@ import {
   teamBoardNameKey,
 } from './types';
 import { JoinBoardModal, promptText } from './ui/modals';
+import { AddDeviceModal, PairConfirmModal } from './ui/Devices';
 import { ManageTeamModal } from './ui/ManageTeam';
 
 export interface CardInfo {
@@ -60,13 +72,23 @@ export class TeamManager {
 
   constructor(plugin: KanbanPlugin) {
     this.plugin = plugin;
-    if (!plugin.settings['team-client-id']) {
+    // Each install needs its own client id: a vault folder copied from another device
+    // carries that device's id, and two devices sharing one skip each other's changes
+    // as their own echoes. The marker lives outside the vault, so a copy has none.
+    const marker = loadDeviceMarker(plugin.app);
+    const clientId = plugin.settings['team-client-id'];
+    if (!clientId || !marker || marker.clientId !== clientId) {
       plugin.settings['team-client-id'] = newTeamId(12);
+      this.marker = { clientId: plugin.settings['team-client-id'], deviceId: null };
+      saveDeviceMarker(plugin.app, this.marker);
       void plugin.saveSettings();
+    } else {
+      this.marker = marker;
     }
     this.client = new TeamClient(plugin.settings['team-client-id']);
     this.client.emitter.on('event', (ev: TeamServerEvent) => this.onServerEvent(ev));
     this.client.emitter.on('moved', (to: string) => void this.relocate(to));
+    this.client.emitter.on('unauthorized', () => void this.checkSignedOut());
     this.client.emitter.on('status', (s: ConnectionStatus) => {
       this.emitter.emit('status', s);
       if (s === 'connected') {
@@ -130,14 +152,140 @@ export class TeamManager {
   async refreshDirectory() {
     if (!this.client.isConfigured) return;
     try {
-      const [user, users] = await Promise.all([this.client.me(), this.client.users()]);
+      const [who, users] = await Promise.all([this.client.whoAmI(), this.client.users()]);
+      const user = who.user;
       this.user = user;
       this.users = users;
+      this.device = who.device ?? null;
       this.emitter.emit('user', user);
       this.emitter.emit('users', users);
+      // Servers from before device keys don't answer with `device` at all.
+      if ('device' in who) void this.ensureOwnDeviceKey(who.device);
     } catch (e) {
       console.error('[Kanban team] cannot load user directory', e);
       this.emitter.emit('user', null);
+    }
+  }
+
+  // ---------- devices ----------
+
+  /** The device key this install signs in with; null when it uses the join link. */
+  device: TeamDevice | null = null;
+  private marker: DeviceMarker;
+  private upgrading = false;
+  private upgradeFailedAt = 0;
+
+  /**
+   * Make sure this install signs in with its own device key, so it shows up in
+   * "Your devices" and can be removed on its own. Trades the join link (or a device
+   * key copied over with the vault folder) for a fresh key.
+   */
+  private async ensureOwnDeviceKey(device: TeamDevice | null) {
+    if (this.destroyed || this.upgrading) return;
+    if (device && this.marker.deviceId === device.id) return;
+    if (Date.now() - this.upgradeFailedAt < 60 * 60 * 1000) return;
+    const url = this.plugin.settings['team-server-url'];
+    if (!url) return;
+    this.upgrading = true;
+    try {
+      const res = await this.client.addDevice(defaultDeviceName(this.plugin.app), devicePlatform());
+      // Settings may have changed while we waited (signed out, other server).
+      if (this.plugin.settings['team-server-url'] !== url) return;
+      this.marker = { clientId: this.client.clientId, deviceId: res.device.id };
+      saveDeviceMarker(this.plugin.app, this.marker);
+      console.log(`[Kanban team] this device is now "${res.device.name}"`);
+      await this.setConnection({ url, token: res.token });
+    } catch (e) {
+      this.upgradeFailedAt = Date.now();
+      console.warn('[Kanban team] could not get a device key; still using the current sign-in', e);
+    } finally {
+      this.upgrading = false;
+    }
+  }
+
+  /**
+   * Store the server address and key this install signs in with (null signs out).
+   * The only writer of these settings besides relocation, so the settings tab's own
+   * copy can never put back an old key.
+   */
+  async setConnection(conn: TeamConnection | null) {
+    if (conn) {
+      this.plugin.settings['team-server-url'] = conn.url;
+      this.plugin.settings['team-token'] = conn.token;
+    } else {
+      delete this.plugin.settings['team-server-url'];
+      delete this.plugin.settings['team-token'];
+    }
+    await this.plugin.saveSettings();
+    this.emitter.emit('connection');
+    await this.configureFromSettings();
+  }
+
+  /** Sign this install in with a code from another device's "Add a device" QR code. */
+  async signInWithPairingLink(link: PairingLink): Promise<TeamUser> {
+    const out = await redeemPairingCode(link, defaultDeviceName(this.plugin.app), devicePlatform());
+    this.marker = { clientId: this.client.clientId, deviceId: out.device.id };
+    saveDeviceMarker(this.plugin.app, this.marker);
+    await this.setConnection({ url: link.url, token: out.token });
+    new Notice(`Mad Kanban: signed in as ${out.user.name}`);
+    return out.user;
+  }
+
+  /** obsidian://mad-kanban?server=…&pair=… (the "Open in Obsidian" button of a pairing page). */
+  handleProtocol(params: Record<string, string>) {
+    const link = parsePairingLink(`${params.server || ''}/pair#${params.pair || ''}`);
+    if (!link) {
+      new Notice('Mad Kanban: this sign-in link is incomplete. Scan the QR code again.');
+      return;
+    }
+    new PairConfirmModal(this.plugin.app, link, this.user?.name ?? null, async () => {
+      try {
+        await this.signInWithPairingLink(link);
+      } catch (e) {
+        new Notice(`Mad Kanban: could not sign in. ${(e as Error)?.message || e}`, 10000);
+      }
+    }).open();
+  }
+
+  openAddDevice() {
+    new AddDeviceModal(this.plugin.app, this).open();
+  }
+
+  /** Called after this device's own key was removed (here or elsewhere). */
+  async signOut() {
+    this.marker = { clientId: this.client.clientId, deviceId: null };
+    saveDeviceMarker(this.plugin.app, this.marker);
+    await this.setConnection(null);
+  }
+
+  private checkingSignOut = false;
+
+  /**
+   * The server refused our key. Confirm with one more request (a single 401 could be a
+   * race with a key swap), then sign out and say why, instead of retrying forever.
+   */
+  private async checkSignedOut() {
+    if (this.checkingSignOut || this.destroyed || !this.client.isConfigured) return;
+    this.checkingSignOut = true;
+    const token = this.plugin.settings['team-token'];
+    try {
+      await new Promise((r) => activeWindow.setTimeout(r, 1500));
+      if (this.plugin.settings['team-token'] !== token) return;
+      try {
+        await this.client.whoAmI();
+        return;
+      } catch (e) {
+        if (!(e instanceof TeamApiError) || e.status !== 401) return;
+      }
+      if (this.plugin.settings['team-token'] !== token) return;
+      await this.signOut();
+      new Notice(
+        'Mad Kanban: this device was signed out (it was removed from your devices, or its link was replaced). ' +
+          'To sign in again, open Add a device on another device and scan the code.',
+        0
+      );
+    } finally {
+      this.checkingSignOut = false;
     }
   }
 

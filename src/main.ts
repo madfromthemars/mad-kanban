@@ -191,6 +191,8 @@ export default class KanbanPlugin extends Plugin {
     this.MarkdownEditor = getEditorClass(this.app);
     this.team = new TeamManager(this);
     void this.team.load();
+    // "Open in Obsidian" on a pairing page (from another device's Add-a-device QR code).
+    this.registerObsidianProtocolHandler('mad-kanban', (params) => this.team.handleProtocol(params));
     this.updater = new PluginUpdater(this);
     this.updater.start();
 
@@ -208,7 +210,14 @@ export default class KanbanPlugin extends Plugin {
 
     this.settingsTab = new KanbanSettingsTab(this, {
       onSettingsChange: async (newSettings) => {
-        this.settings = newSettings;
+        // The team connection is written only by the team manager (sign-in, device keys,
+        // server moves). The settings tab works on a copy that may hold an older key.
+        const next = { ...newSettings };
+        for (const key of ['team-server-url', 'team-token', 'team-client-id'] as const) {
+          if (this.settings[key] === undefined) delete next[key];
+          else next[key] = this.settings[key];
+        }
+        this.settings = next;
         await this.saveSettings();
         void this.team.configureFromSettings();
 
@@ -786,6 +795,16 @@ export default class KanbanPlugin extends Plugin {
       id: 'check-plugin-updates',
       name: t('Check for plugin updates'),
       callback: () => void this.updater.check(true),
+    });
+
+    this.addCommand({
+      id: 'add-device',
+      name: 'Add a device (sign in another phone or computer)',
+      checkCallback: (checking) => {
+        if (!this.team?.user) return false;
+        if (!checking) this.team.openAddDevice();
+        return true;
+      },
     });
 
     this.addCommand({

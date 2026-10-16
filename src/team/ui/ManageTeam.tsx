@@ -7,6 +7,7 @@ import { c } from 'src/components/helpers';
 import type { TeamManager } from '../TeamManager';
 import { TeamDirectory, TeamProject, TeamRole, TeamUser } from '../types';
 import { hueFor, initials } from './TeamBadges';
+import { PersonDevices } from './Devices';
 
 const COLORS = ['#5c7cfa', '#20c997', '#f76707', '#e64980', '#7950f2', '#fab005', '#15aabf', '#82c91e', '#fa5252', '#868e96'];
 
@@ -179,6 +180,7 @@ function PersonRow({
   onJoin: (name: string, join: string) => void;
 }) {
   const [confirm, setConfirm] = useState(false);
+  const [showDevices, setShowDevices] = useState(false);
   const isMe = person.id === me.id;
   const isOwner = person.role === 'owner';
   const canManage = !isOwner || me.role === 'owner';
@@ -196,6 +198,15 @@ function PersonRow({
         </span>
         <span className={`${c('mt-role')} is-${person.role || 'user'}`}>{ROLE_LABEL[person.role || 'user']}</span>
         <div className={c('mt-person-actions')}>
+          {canManage && (
+            <a
+              className={`${c('mt-link')} ${showDevices ? 'is-active' : ''}`}
+              title="Phones and computers signed in as this person"
+              onClick={() => setShowDevices(!showDevices)}
+            >
+              Devices
+            </a>
+          )}
           {canManage && !isMe && !isOwner && (
             <a
               className={c('mt-link')}
@@ -209,7 +220,7 @@ function PersonRow({
           {canManage && !isMe && (
             <a
               className={c('mt-link')}
-              title="Issue a new join string; the old one stops working"
+              title="Issue a new join string; the old one stops working. Devices signed in with their own key stay signed in."
               onClick={() =>
                 run(async () => {
                   const res = await team.client.resetUserToken(person.id);
@@ -248,6 +259,7 @@ function PersonRow({
           onToggle={(projectId, on) => run(() => team.client.setProjectMember(projectId, person.id, on))}
         />
       )}
+      {showDevices && <PersonDevices team={team} userId={person.id} name={person.name} />}
     </div>
   );
 }

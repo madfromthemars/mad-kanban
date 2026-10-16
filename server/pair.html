@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Sign in to Mad Kanban</title>
+<style>
+  :root { --ink:#1d2433; --muted:#5b6475; --line:#e3e6ec; --accent:#6c4cf1; --soft:#f4f2ff; --warn:#fff6e5; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); margin: 0; padding: 28px 20px 40px; line-height: 1.5; background: #fafafc; }
+  main { max-width: 440px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  p { margin: 8px 0; }
+  .sub { color: var(--muted); }
+  .btn { display: block; width: 100%; text-align: center; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; font-size: 17px; padding: 15px; border-radius: 12px; margin: 18px 0 8px; border: 0; }
+  .btn.secondary { background: #fff; color: var(--accent); border: 1.5px solid var(--accent); font-size: 15px; padding: 11px; margin-top: 8px; }
+  .box { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 14px 0; }
+  .warn { background: var(--warn); border-color: #f0c36d; }
+  ol { padding-left: 20px; margin: 6px 0; }
+  li { margin: 4px 0; }
+  .hidden { display: none; }
+  .small { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sign in to Mad Kanban</h1>
+  <p class="sub">This link signs this phone in with your account. It works once and expires after 10 minutes.</p>
+
+  <div id="ok">
+    <a id="open" class="btn" href="#">Open in Obsidian</a>
+    <p class="small">Obsidian asks you to confirm, then your boards appear.</p>
+    <button id="copy" class="btn secondary" type="button">Copy sign-in link</button>
+    <p class="small">The button does nothing? Copy the link, then in Obsidian go to <b>Settings → Mad Kanban</b> and paste it into <b>Team server join string</b>.</p>
+
+    <div class="box">
+      <b>Don't have Mad Kanban on this phone yet?</b>
+      <ol>
+        <li>Install <b>Obsidian</b> from the App Store or Google Play and create a vault.</li>
+        <li><b>Settings → Community plugins</b> → turn them on → <b>Browse</b> → install and enable <b>BRAT</b>.</li>
+        <li><b>Settings → BRAT → Add beta plugin</b> → type <b>madfromthemars/mad-kanban</b> → <b>Add plugin</b>.</li>
+        <li>Come back here and tap <b>Open in Obsidian</b>. If the code has expired, make a new one.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div id="bad" class="box warn hidden">
+    This link has no sign-in code. On your other device, open <b>Settings → Mad Kanban → Add a device</b> and scan the new QR code.
+  </div>
+</main>
+<script>
+  (function () {
+    var code = (location.hash || '').replace(/^#/, '').trim();
+    if (!/^[a-z0-9]{16,64}$/.test(code)) {
+      document.getElementById('ok').classList.add('hidden');
+      document.getElementById('bad').classList.remove('hidden');
+      return;
+    }
+    var server = location.origin;
+    document.getElementById('open').href =
+      'obsidian://mad-kanban?server=' + encodeURIComponent(server) + '&pair=' + encodeURIComponent(code);
+    var link = server + '/pair#' + code;
+    document.getElementById('copy').addEventListener('click', function () {
+      var b = this;
+      var done = function () { b.textContent = 'Copied'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(done, function () { prompt('Copy this link', link); });
+      } else {
+        prompt('Copy this link', link);
+      }
+    });
+  })();
+</script>
+</body>
+</html>

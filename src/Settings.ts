@@ -36,7 +36,8 @@ import {
 import { cleanupMetadataSettings, renderMetadataSettings } from './settings/MetadataSettings';
 import { cleanUpTagSettings, renderTagSettings } from './settings/TagColorSettings';
 import { cleanUpTagSortSettings, renderTagSortSettings } from './settings/TagSortSettings';
-import { parseJoinString } from './team/TeamClient';
+import { parseJoinString, parsePairingLink } from './team/TeamClient';
+import { renderDevicesSection } from './team/ui/Devices';
 
 const numberRegEx = /^\d+(?:\.\d+)?$/;
 
@@ -186,34 +187,58 @@ export class SettingsManager {
       .setDesc(
         t(
           'Paste the join string from your server admin, e.g. https://host:8787/#TOKEN. Leave empty to turn team boards off.'
-        )
+        ) + ' A link from "Add a device" on your other device works too.'
       )
       .addText((text) => {
         inputEl = text.inputEl;
-        const url = this.plugin.settings['team-server-url'];
-        const token = this.plugin.settings['team-token'];
+        const showCurrent = () => {
+          const url = this.plugin.settings['team-server-url'];
+          const token = this.plugin.settings['team-token'];
+          text.setValue(url && token ? `${url}/#${token}` : '');
+        };
+        showCurrent();
+        // The connection is saved straight through the team manager (not the debounced
+        // settings copy), after a short pause so half-typed strings aren't tried.
+        let pending: number | null = null;
+        this.cleanupFns.push(() => pending != null && window.clearTimeout(pending));
         text
           .setPlaceholder('https://host:8787/#TOKEN')
-          .setValue(url && token ? `${url}/#${token}` : '')
           .onChange((value) => {
+            if (pending != null) window.clearTimeout(pending);
             const trimmed = value.trim();
-            if (!trimmed) {
-              this.applySettingsUpdate({ $unset: ['team-server-url', 'team-token'] });
-              renderStatus(t('Not connected'));
-              return;
-            }
-            const conn = parseJoinString(trimmed);
-            if (!conn) {
+            const pair = parsePairingLink(trimmed);
+            const conn = pair ? null : parseJoinString(trimmed);
+            if (trimmed && !pair && !conn) {
               renderStatus(t('That does not look like a join string'));
               return;
             }
-            this.applySettingsUpdate({
-              'team-server-url': { $set: conn.url },
-              'team-token': { $set: conn.token },
-            });
-            renderStatus(`${t('Connecting to')} ${conn.url}…`);
+            pending = window.setTimeout(async () => {
+              pending = null;
+              const team = this.plugin.team;
+              if (!trimmed) {
+                await team.setConnection(null);
+                renderStatus(t('Not connected'));
+              } else if (pair) {
+                renderStatus('Signing in this device…');
+                try {
+                  const user = await team.signInWithPairingLink(pair);
+                  showCurrent();
+                  renderStatus(`${t('Connected as')} ${user.name}`);
+                } catch (e) {
+                  renderStatus(`${t('Connection failed')}: ${e?.message || e}`);
+                }
+              } else if (conn) {
+                renderStatus(`${t('Connecting to')} ${conn.url}…`);
+                await team.setConnection(conn);
+              }
+            }, pair ? 0 : 800);
           });
         text.inputEl.addClass(c('team-settings-input'));
+        const onConnection = () => {
+          if (activeDocument.activeElement !== text.inputEl) showCurrent();
+        };
+        this.plugin.team?.emitter.on('connection', onConnection);
+        this.cleanupFns.push(() => this.plugin.team?.emitter.off('connection', onConnection));
       })
       .addButton((btn) =>
         btn.setButtonText(t('Test connection')).onClick(async () => {
@@ -230,6 +255,9 @@ export class SettingsManager {
 
     // Move the status line under the setting row it describes.
     contentEl.appendChild(status);
+
+    // Every phone/computer signed in as this person.
+    if (this.plugin.team) this.cleanupFns.push(renderDevicesSection(contentEl, this.plugin.team));
 
     // Hosts and the owner manage people and projects.
     const manageEl = contentEl.createDiv();
