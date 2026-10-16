@@ -1,0 +1,193 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mad Kanban: Setup Guide</title>
+<style>
+@page { size: A4; margin: 16mm; }
+:root { --ink:#1d2433; --muted:#5b6475; --line:#e3e6ec; --accent:#6c4cf1; --soft:#f4f2ff; --warn:#fff6e5; --warnline:#f0c36d; --ok:#eaf8ef; --okline:#9fd8b3; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.45; margin: 0; }
+h1 { font-size: 24pt; margin: 0 0 4px; letter-spacing: -0.02em; }
+.sub { color: var(--muted); font-size: 10.5pt; margin: 0 0 12px; }
+.part { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; padding: 8px 12px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 13pt; font-weight: 650; break-after: avoid; }
+.part small { font-weight: 400; opacity: .85; font-size: 9.5pt; }
+h2 { font-size: 13pt; margin: 14px 0 6px; padding-top: 2px; display: flex; align-items: center; gap: 10px; break-after: avoid; }
+h2 .n { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11pt; flex: none; }
+h3 { font-size: 11.5pt; margin: 14px 0 6px; break-after: avoid; }
+p { margin: 6px 0; }
+ol, ul { margin: 6px 0; padding-left: 20px; }
+li { margin: 3px 0; }
+b { font-weight: 650; }
+.mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9.5pt; background: #f1f2f5; padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+.box { border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin: 8px 0; break-inside: avoid; }
+.soft { background: var(--soft); border-color: #ddd5ff; }
+.warn { background: var(--warn); border-color: var(--warnline); }
+.ok { background: var(--ok); border-color: var(--okline); }
+.grid3 { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 8px; margin: 8px 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; break-inside: avoid; }
+.grid3 .box, .grid2 .box { margin: 0; }
+.h { font-weight: 650; display: block; margin-bottom: 3px; }
+.shot { margin: 10px 0 4px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.shot img { display: block; max-width: none; }
+.cap { color: var(--muted); font-size: 9pt; margin: 0 0 10px; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10pt; break-inside: avoid; }
+td, th { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th { font-size: 9pt; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; }
+.page { break-before: page; }
+.toc { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 4px 0 0; }
+.toc b { color: var(--accent); }
+</style></head><body>
+
+<h1>Mad Kanban: Setup Guide</h1>
+<p class="sub">From zero to working on the team board, on your computer and your phone. About 15 minutes, no experience needed.</p>
+
+<div class="box soft">
+<b>What this is.</b> Our tasks live on a shared board, like sticky notes on a wall. Each task is a <b>card</b>, and cards move through <b>To Do → In Progress → Done</b>, with <b>Archive</b> for finished cards worth keeping. The board runs inside <b>Obsidian</b>, a free app, and stays in sync for everyone: a change shows up on every screen within a second.<br><br>
+Every card belongs to a <b>project</b>. You see only the projects you've been added to, so your board may look different from someone else's.
+</div>
+
+<div class="grid3">
+  <div class="box"><span class="h">A computer</span>Windows or Mac. Set it up first.</div>
+  <div class="box"><span class="h">Your join link</span>From your team host. Looks like<br><span class="mono">https://kanban.warehause-ac.uz/#3f9c…</span></div>
+  <div class="box"><span class="h">A phone (optional)</span>iPhone or Android, for part B.</div>
+</div>
+
+<div class="box warn"><b>Your join link is your password.</b> It signs you in as you. Don't post it in group chats or share it. Lost it, or think someone else has it? Ask your host for a new one; the old one stops working.</div>
+
+<div class="toc">
+  <b>Part A</b><span>Computer: install, sign in, open the board (steps 1–5)</span>
+  <b>Part B</b><span>Phone: install and sign in by scanning a QR code (steps 6–9)</span>
+  <b>Part C</b><span>Working with the board, on the computer and on the phone</span>
+  <b>Part D</b><span>Your devices, a lost phone, and fixing problems</span>
+</div>
+
+<!-- ===================== PART A ===================== -->
+<div class="part" style="margin-top:14px">Part A · Computer</div>
+
+<h2><span class="n">1</span> Install Obsidian</h2>
+<ol>
+<li>Open <b>obsidian.md/download</b> in your browser and download the version for your computer.</li>
+<li><b>Windows:</b> run the downloaded <span class="mono">.exe</span>. <b>Mac:</b> open the <span class="mono">.dmg</span> and drag Obsidian into Applications.</li>
+</ol>
+
+<h2><span class="n">2</span> Create a vault</h2>
+<p>Obsidian keeps everything in a folder called a <b>vault</b>.</p>
+<ol>
+<li>Start Obsidian. Next to <b>Create new vault</b>, click <b>Create</b>.</li>
+<li>Name it <b>Mad Kanban</b>, choose where to keep it (for example <b>Documents</b>), and click <b>Create</b>.</li>
+</ol>
+
+<div style="break-inside: avoid">
+<h2><span class="n">3</span> Install Mad Kanban</h2>
+<p>Mad Kanban isn't in Obsidian's plugin store. A helper plugin called <b>BRAT</b> (which is in the store) installs it for you.</p>
+<ol>
+<li>Click the <b>gear icon ⚙</b> at the bottom left to open <b>Settings</b>.</li>
+<li>Click <b>Community plugins</b>, then <b>Turn on community plugins</b>.</li>
+<li>Click <b>Browse</b>, search <b>BRAT</b>, open <b>BRAT</b> by <b>TfTHacker</b>, then click <b>Install</b> and <b>Enable</b>.</li>
+<li>Close the store window. In the Settings list on the left, scroll down to the plugins section and click <b>BRAT</b>.</li>
+<li>Click <b>Add beta plugin</b> and type exactly: <span class="mono">madfromthemars/mad-kanban</span></li>
+<li>Leave the version on the latest one, make sure <b>Enable after installing the plugin</b> is ticked, and click <b>Add plugin</b>.</li>
+</ol>
+<div class="box"><b>Mad Kanban not showing up?</b> Go to <b>Settings → Community plugins</b>, find <b>Mad Kanban</b> under <b>Installed plugins</b> and switch it on. Still not there? Quit Obsidian completely and start it again.</div>
+
+</div>
+
+<h2><span class="n">4</span> Sign in with your join link</h2>
+<ol>
+<li>In <b>Settings</b>, click <b>Mad Kanban</b> in the plugin list on the left.</li>
+<li>Paste your join link into <b>Team server join string</b>.</li>
+<li>Below it, you should see <b>Connected as</b> and your name. If not, click <b>Test connection</b>.</li>
+</ol>
+<p>You only need the join link once. After that, Obsidian keeps you signed in.</p>
+
+<h2><span class="n">5</span> Open the team board</h2>
+<ol>
+<li>Close Settings. In the thin icon bar on the far left, click the <b>board icon</b> (it says <b>Open a team board</b> when you point at it).</li>
+<li>Pick the board, for example <b>Dragonfly</b>. It opens and appears in your file list, so next time just click it there.</li>
+</ol>
+<div class="shot" style="width:672px;height:255px"><img src="img/board.png" style="width:890.9px;margin-left:-218.9px;margin-top:-25.5px"></div>
+<p class="cap">A team board on the computer.</p>
+
+<div class="box ok"><b>Your computer is set up.</b> Want the board on your phone too? Keep the computer open and go on to Part B.</div>
+
+<!-- ===================== PART B ===================== -->
+<div class="part page">Part B · Phone <small>iPhone or Android</small></div>
+<p>The phone signs in as you by scanning a QR code from your computer. You don't need your join link for this.</p>
+
+<h2><span class="n">6</span> Install Obsidian and create a vault</h2>
+<div class="grid2">
+  <div class="box"><span class="h">iPhone</span>In the <b>App Store</b>, install <b>Obsidian – Connected Notes</b>. Open it, tap <b>Create a vault</b>, name it <b>Mad Kanban</b>, and turn <b>off</b> "Store in iCloud". Tap <b>Create</b>.</div>
+  <div class="box"><span class="h">Android</span>In <b>Google Play</b>, install <b>Obsidian</b>. Open it, tap <b>Create a vault</b>, name it <b>Mad Kanban</b>, and keep the default location. Allow storage access if asked. Tap <b>Create</b>.</div>
+</div>
+
+<h2><span class="n">7</span> Install Mad Kanban on the phone</h2>
+<ol>
+<li>Open the side menu: tap <b>☰</b> at the top left, or swipe right from the left edge. Tap the <b>gear icon ⚙</b>.</li>
+<li><b>Community plugins → Turn on community plugins → Browse</b>. Search <b>BRAT</b>, install it and tap <b>Enable</b>.</li>
+<li>Back in <b>Settings</b>, tap <b>BRAT → Add beta plugin</b>, type <span class="mono">madfromthemars/mad-kanban</span>, keep <b>Enable after installing</b> ticked, and tap <b>Add plugin</b>.</li>
+</ol>
+
+<h2><span class="n">8</span> Sign in: scan the QR code</h2>
+<ol>
+<li><b>On your computer:</b> Settings → <b>Mad Kanban</b> → <b>Add a device</b>. A QR code appears.</li>
+<li><b>On the phone:</b> open the <b>Camera</b>, point it at the QR code, and tap the link that pops up.</li>
+<li>A page opens. Tap <b>Open in Obsidian</b>, then <b>Sign in</b>.</li>
+<li>Your computer says <b>"… is signed in"</b>. The phone has its own sign-in, and the computer stays signed in.</li>
+</ol>
+<div class="box"><b>Camera doesn't work, or no computer at hand?</b> Get the link onto the phone (e.g. send it to yourself in <b>Telegram → Saved Messages</b>), copy it, then in Obsidian on the phone go to <b>Settings → Mad Kanban</b> and paste it into <b>Team server join string</b>. This works with the QR link and with the join link from your host. A QR code works once and expires after 10 minutes; tap <b>New code</b> on the computer for another.</div>
+
+<h2><span class="n">9</span> Open the team board on the phone</h2>
+<ol>
+<li>Open the side menu and tap the <b>board icon</b> (<b>Open a team board</b>). Can't find it? Swipe <b>down</b> in the middle of the screen and type <b>Open a team board</b>.</li>
+<li>Pick <b>Dragonfly</b>. Next time, just tap it in the file list.</li>
+</ol>
+<div class="box ok"><b>Done.</b> Your computer and phone show the same board, and changes on one appear on the other within a second. The plugin updates itself on both, so you never have to reinstall it.</div>
+
+<!-- ===================== PART C ===================== -->
+<div class="part page">Part C · Working with the board</div>
+
+<table>
+<tr><th style="width:24%">What you see</th><th>What it means</th></tr>
+<tr><td>Columns</td><td><b>To Do</b> → <b>In Progress</b> → <b>Done</b>. <b>Archive</b> keeps finished cards out of the way.</td></tr>
+<tr><td>Arrow on a card</td><td>Priority, from <span style="color:#e03131">double arrow up</span> (highest) to <span style="color:#3b5bdb">arrow down</span> (low). Cards are sorted by it.</td></tr>
+<tr><td>Date chip</td><td>Due date. Yellow when due soon, red when overdue.</td></tr>
+<tr><td><span class="mono">#tag</span> · coloured chip</td><td>Tags, and the card's project.</td></tr>
+<tr><td>Round initials</td><td>The people assigned to the card.</td></tr>
+<tr><td>Speech bubble</td><td>Comments. <b>"2 new"</b> means comments you haven't read.</td></tr>
+<tr><td>Cloud, top left</td><td><span class="dot" style="background:#00c853"></span>green synced &nbsp;<span class="dot" style="background:#f5b800"></span>yellow saving &nbsp;<span class="dot" style="background:#ff8c00"></span>orange offline &nbsp;<span class="dot" style="background:#e03131"></span>red error. Click or tap it to sync again.</td></tr>
+</table>
+
+<table>
+<tr><th style="width:24%">To do this</th><th style="width:38%">On the computer</th><th>On the phone</th></tr>
+<tr><td>Add a card</td><td><b>+ Add a card</b> under a column. Type a title, pick the project and people, click <b>Add card</b>.</td><td>The same: tap <b>+ Add a card</b>.</td></tr>
+<tr><td>Open a card</td><td>Click it.</td><td>Tap it.</td></tr>
+<tr><td>Move a card</td><td>Drag it to another column, or to <b>Archive</b>.</td><td><b>Press and hold</b> the card until it lifts, then drag. Take it to the screen edge to reach the next column. Or open the card and change <b>Status</b>.</td></tr>
+<tr><td>Assign people, priority, due date</td><td>In the card window's side panel. On the board: click the <b>+</b> or the initials, or the priority arrow.</td><td>Open the card. Its first block lists <b>Project, Status, Priority, Due date, Assignees, Tags, Files</b>; tap a row to change it. (Board cards on the phone only show these, so a tap always opens the card.)</td></tr>
+<tr><td>Description and checklist</td><td><b>Edit</b> next to Description. <b>+ Add item</b> under Checklist.</td><td>The same, below the properties.</td></tr>
+<tr><td>Comment, reply</td><td>Type in the box under Comments; <span class="mono">Ctrl/⌘ + Enter</span> sends. Point at a comment for <b>Reply</b>, <b>Edit</b>, <b>Delete</b>.</td><td>The box sits at the bottom. <b>Tap a comment</b> for <b>Reply, Copy text, Edit, Delete</b>.</td></tr>
+<tr><td>Attach a file or picture</td><td><b>Attach</b> in a comment, <b>Attach file</b> in the card, or paste / drop it.</td><td><b>Attach</b> in a comment, or the <b>Files</b> row.</td></tr>
+<tr><td>Archive or delete a card</td><td>Right-click the card, or drag it to the <b>Delete</b> area at the bottom of the screen.</td><td>Open the card and scroll to the end: <b>Archive card</b>, <b>Delete card</b> (tap twice).</td></tr>
+<tr><td>Find cards</td><td>The search icon, or the filter buttons: Project, Assignee, Priority, Due, Tags.</td><td>The search icon, or <b>Filters</b> (one button that opens them all). <b>Clear</b> resets.</td></tr>
+</table>
+
+<!-- ===================== PART D ===================== -->
+<h3 class="page" style="margin-top:0"></h3>
+<div class="part">Part D · Devices and problems</div>
+
+<h3>Your devices</h3>
+<p><b>Settings → Mad Kanban → Your devices</b> lists every computer and phone signed in as you, with when each was last used. Each one has its own sign-in, so you can rename or <b>Remove</b> one without touching the others. <b>Add a device</b> shows a new QR code whenever you get a new phone or computer.</p>
+<div class="box warn"><b>Lost your phone?</b> On your computer: <b>Settings → Mad Kanban → Your devices → Remove</b> next to the phone. Only the phone is signed out. No computer at hand? Ask your host to remove it in <b>Manage team → Devices</b>.</div>
+
+<h3>If something goes wrong</h3>
+<table>
+<tr><th style="width:34%">Problem</th><th>What to do</th></tr>
+<tr><td>BRAT can't find the plugin</td><td>Check the spelling: <span class="mono">madfromthemars/mad-kanban</span>, no spaces. Check your internet.</td></tr>
+<tr><td>Mad Kanban isn't in the Settings list</td><td><b>Settings → Community plugins</b> → switch <b>Mad Kanban</b> on. Then restart Obsidian.</td></tr>
+<tr><td>"That does not look like a join string"</td><td>Part of the link is missing. Copy the whole link again.</td></tr>
+<tr><td>"Connection failed"</td><td>Check your internet. If it still fails, tell your host; the server may be down.</td></tr>
+<tr><td>"This code is invalid, used or expired"</td><td>A QR code works once, for 10 minutes. On the computer tap <b>New code</b> and scan again.</td></tr>
+<tr><td>"Open in Obsidian" does nothing</td><td>Mad Kanban isn't installed on the phone yet (step 7), or paste the link instead (box under step 8).</td></tr>
+<tr><td>"This device was signed out"</td><td>It was removed from your devices, or your link was replaced. Sign in again with <b>Add a device</b> from another device, or a new link from your host.</td></tr>
+<tr><td>No boards, or an empty board</td><td>You haven't been added to a project yet. Ask your host.</td></tr>
+<tr><td>Red cloud</td><td>Click / tap it to sync again. If it stays red, check your internet.</td></tr>
+</table>
+
+</body></html>

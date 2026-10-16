@@ -1,5 +1,10 @@
 # Onboarding guide
 
+**Current guide:** `setup-guide.html` → *Mad Kanban - Setup Guide.pdf*: computer and phone from scratch
+(Obsidian, BRAT install of `madfromthemars/mad-kanban`, join link, QR sign-in for phones, usage,
+devices, troubleshooting). Print it the same way as below. `guide.html` (zip-vault flow) and
+`phone-guide.html` are older, narrower guides.
+
 `Mad Kanban - Getting Started.pdf` is the guide sent to new people, together with the
 personal join link a host copies from **Manage team → Add person**. The PDF has no link
 or token in it, so the same file works for everyone.
