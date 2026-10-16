@@ -264,7 +264,22 @@ export function parseSettings(str) {
 
 // ---------- users ----------
 
+/**
+ * Names are unique, but removed people only get disabled (their comments and cards keep
+ * pointing at them). Give a removed person's name back by renaming them to
+ * "Name (removed)", so a new person, or the same one again, can use it.
+ */
+export function freeNameOfRemoved(db, name) {
+  const clean = String(name || '').trim();
+  const old = db.prepare('SELECT id FROM users WHERE name = ? AND disabled = 1').get(clean);
+  if (!old) return;
+  let next = `${clean} (removed)`;
+  for (let i = 2; db.prepare('SELECT 1 FROM users WHERE name = ?').get(next); i++) next = `${clean} (removed ${i})`;
+  db.prepare('UPDATE users SET name = ? WHERE id = ?').run(next, old.id);
+}
+
 export function createUser(db, name, role = 'user') {
+  freeNameOfRemoved(db, name);
   const token = newToken();
   if (!ROLES.includes(role)) role = 'user';
   // The first person on a fresh server owns it.
@@ -726,6 +741,7 @@ export function myCards(db, user) {
 }
 
 export function renameUser(db, id, name) {
+  freeNameOfRemoved(db, name);
   return db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name.trim(), id).changes > 0;
 }
 

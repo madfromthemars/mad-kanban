@@ -636,3 +636,20 @@ test('devices: one account on many devices, pairing codes, removing one device',
   assert.match(page.headers.get('content-type'), /text\/html/);
   assert.match(await page.text(), /obsidian:\/\/mad-kanban/);
 });
+
+test('a removed person\'s name can be used again', async () => {
+  const first = await api('POST', '/api/admin/users', { name: 'Reuse Me' }, ADMIN);
+  assert.equal(first.status, 200);
+  assert.equal((await api('POST', '/api/admin/users', { name: 'Reuse Me' }, ADMIN)).status, 409);
+  assert.equal((await api('DELETE', `/api/admin/users/${first.json.id}`, null, ADMIN)).status, 200);
+  const again = await api('POST', '/api/admin/users', { name: 'Reuse Me' }, ADMIN);
+  assert.equal(again.status, 200, JSON.stringify(again.json));
+  assert.notEqual(again.json.id, first.json.id);
+  assert.equal((await api('GET', '/api/me', null, again.json.token)).json.user.name, 'Reuse Me');
+  assert.equal((await api('GET', '/api/me', null, first.json.token)).status, 401);
+  // Remove and re-add once more: the older record moves aside again.
+  await api('DELETE', `/api/admin/users/${again.json.id}`, null, ADMIN);
+  assert.equal((await api('POST', '/api/admin/users', { name: 'Reuse Me' }, ADMIN)).status, 200);
+  const names = (await api('GET', '/api/admin/users', null, ADMIN)).json.users.map((u) => u.name);
+  assert.equal(names.filter((n) => n === 'Reuse Me').length, 1);
+});
