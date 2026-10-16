@@ -5573,3 +5573,281 @@ button.kanban-plugin__upload-cancel {
     color: var(--text-muted);
   }
 }
+
+/* ===========================================================================
+ * Phone layout. Everything here is under body.is-phone (Obsidian sets it on
+ * phones only), so desktop and tablets keep their look.
+ * ======================================================================== */
+
+.is-phone {
+  // Board toolbar: one row; filters fold behind one button (QuickFilters).
+  .kanban-plugin__toolbar {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+  }
+  .kanban-plugin__toolbar-button {
+    width: 40px;
+    height: 40px;
+  }
+  // The bar's children join the toolbar row; the open panel wraps to a full-width row.
+  .kanban-plugin__filter-bar-phone {
+    display: contents;
+
+    > .kanban-plugin__filter-chip {
+      height: 36px;
+    }
+    .kanban-plugin__filter-bar-end {
+      display: flex;
+      align-items: center;
+      margin-left: auto;
+      gap: 12px;
+    }
+    .kanban-plugin__filter-clear-all {
+      padding: 8px 4px;
+    }
+  }
+  .kanban-plugin__filter-panel {
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 4px 0 6px;
+
+    .kanban-plugin__filter-chip {
+      height: 36px;
+    }
+  }
+  .kanban-plugin__filter-popover {
+    max-width: calc(100vw - 24px);
+    max-height: 55vh;
+    overflow-y: auto;
+  }
+  .kanban-plugin__filter-option {
+    min-height: 40px;
+  }
+
+  // One list per screen, with the next one peeking; swipe snaps to a list.
+  .kanban-plugin__board:not(.kanban-plugin__vertical) {
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 12px;
+
+    > div {
+      padding-top: 10px;
+      padding-inline: 12px;
+    }
+    .kanban-plugin__lane-wrapper {
+      width: calc(100vw - 48px) !important;
+      max-width: 440px;
+      margin-inline-end: 10px;
+      scroll-snap-align: start;
+    }
+  }
+  .something-is-dragging .kanban-plugin__board {
+    scroll-snap-type: none;
+  }
+  .kanban-plugin__lane-settings-button,
+  .kanban-plugin__lane-menu-button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  // Card window: header clears the close button, details fold, comment box stays in reach.
+  .modal.kanban-plugin__card-detail-window {
+    padding-top: env(safe-area-inset-top);
+
+    .kanban-plugin__cd-header {
+      padding: 12px 64px 12px 16px;
+    }
+    .kanban-plugin__cd-main {
+      padding: 4px 16px 24px;
+    }
+    .kanban-plugin__cd-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .kanban-plugin__cd-sidebar {
+      order: -1;
+      position: static;
+      border-left: none;
+      border-bottom: 1px solid var(--background-modifier-border);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 14px;
+      padding: 12px 16px 16px;
+      min-height: 0;
+
+      &.is-collapsed {
+        display: none;
+      }
+    }
+    .kanban-plugin__cd-section + .kanban-plugin__cd-section {
+      margin-top: 22px;
+    }
+    .kanban-plugin__cd-priority button {
+      min-height: 40px;
+    }
+    .kanban-plugin__cd-select,
+    .kanban-plugin__cd-field-value button {
+      min-height: 40px;
+    }
+
+    // ⌘/Ctrl + Enter and Esc hints mean nothing on a phone.
+    .kanban-plugin__cd-hint {
+      display: none;
+    }
+
+    .kanban-plugin__checklist-delete {
+      width: 36px;
+      height: 36px;
+      font-size: 20px;
+    }
+
+    // No hover on phones: reply / edit / delete stay visible.
+    .kanban-plugin__comment-actions-inline,
+    .kanban-plugin__comment-delete {
+      opacity: 0.75;
+    }
+    .kanban-plugin__comment-actions-inline {
+      gap: 16px;
+
+      > * {
+        padding: 4px 2px;
+      }
+    }
+    .kanban-plugin__comment-form {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      margin-left: 0;
+      margin-bottom: env(safe-area-inset-bottom);
+      background: var(--background-primary);
+      box-shadow: 0 -8px 16px var(--background-primary);
+    }
+    .kanban-plugin__comment-actions button {
+      height: 36px;
+      font-size: 0.95em;
+    }
+  }
+  .kanban-plugin__cd-details-toggle {
+    order: -2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: auto;
+    height: auto;
+    min-height: 48px;
+    margin: 4px 16px 8px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: var(--background-secondary);
+    box-shadow: none;
+    text-align: left;
+    white-space: normal;
+
+    &.is-open {
+      margin-bottom: 0;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+  }
+  .kanban-plugin__cd-details-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .kanban-plugin__cd-details-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--background-modifier-hover);
+    font-size: var(--font-ui-small);
+    color: var(--text-normal);
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+  .kanban-plugin__cd-details-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    font-size: var(--font-ui-small);
+    color: var(--text-accent);
+  }
+
+  // iOS zooms into any text field under 16px; keep ours at 16px.
+  .kanban-plugin__card-detail-window,
+  .kanban-plugin__new-card-window,
+  .kanban-plugin__new-board-modal,
+  .kanban-plugin__manage-team-modal,
+  .kanban-plugin__search-wrapper,
+  .kanban-plugin__team-join-setting {
+    input[type='text'],
+    input[type='date'],
+    input:not([type]),
+    textarea,
+    select,
+    .cm-content {
+      font-size: 16px;
+    }
+  }
+
+  // Add card: a sheet at the top, so the keyboard doesn't cover it.
+  .modal.kanban-plugin__new-card-window {
+    align-self: flex-start;
+    width: calc(100vw - 16px);
+    max-width: none;
+    margin-top: calc(env(safe-area-inset-top) + 8px);
+    max-height: calc(100% - env(safe-area-inset-top) - 16px);
+    overflow-y: auto;
+
+    .kanban-plugin__new-board-input {
+      min-height: 44px;
+    }
+    button {
+      min-height: 40px;
+    }
+  }
+
+  // Settings: the join string gets the full width, the button goes under it.
+  .kanban-plugin__team-join-setting {
+    flex-wrap: wrap;
+
+    .setting-item-control {
+      width: 100%;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      gap: 8px;
+    }
+    input {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+  }
+
+  // Manage team: actions on their own row, words never broken.
+  .kanban-plugin__mt-person-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .kanban-plugin__mt-person-actions {
+    flex: 1 0 100%;
+    margin-left: 34px;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+  }
+  a.kanban-plugin__mt-link {
+    white-space: nowrap;
+    padding: 6px 0;
+  }
+  .kanban-plugin__mt-device {
+    flex-wrap: wrap;
+  }
+}

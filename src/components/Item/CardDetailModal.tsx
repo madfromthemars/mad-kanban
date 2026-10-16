@@ -1,4 +1,4 @@
-import { App, Modal, TFile } from 'obsidian';
+import { App, Modal, Platform, TFile } from 'obsidian';
 import { render } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
@@ -31,6 +31,7 @@ import {
 } from 'src/cardTasks';
 import { Checklist, DuePicker, TagEditor } from './CardChecklist';
 import { PRIORITY_LEVELS, PriorityIcon } from './PriorityIcon';
+import { Icon } from '../Icon/Icon';
 import { cardWindowEscape, copyInlineCode, openLightbox } from '../copyOnClick';
 import {
   AttachButton,
@@ -134,6 +135,9 @@ const CardDetailContent = memo(function CardDetailContent({
   const [cardFilePath, setCardFilePath] = useState<string>('');
   const [currentItem, setCurrentItem] = useState(item);
   const [isRenaming, setIsRenaming] = useState(false);
+  // Phones: project/status/priority/date/... fold into a one-line summary, so the
+  // description, checklist and comments aren't pushed two screens down.
+  const [detailsOpen, setDetailsOpen] = useState(!Platform.isPhone);
   const board = stateManager.useState();
 
   // Keep showing the latest version of this card (server syncs, edits from the board).
@@ -607,6 +611,39 @@ const CardDetailContent = memo(function CardDetailContent({
       </div>
 
       <div className={c('cd-layout')}>
+        {Platform.isPhone && (
+          <button
+            className={`${c('cd-details-toggle')} ${detailsOpen ? 'is-open' : ''}`}
+            onClick={() => setDetailsOpen(!detailsOpen)}
+            aria-expanded={detailsOpen}
+          >
+            <span className={c('cd-details-summary')}>
+              <span className={c('cd-details-chip')}>{lanes[laneIndex]?.data.title || laneTitle}</span>
+              {currentPriority && (
+                <span className={c('cd-details-chip')}>
+                  <PriorityIcon value={currentPriority} />
+                  {PRIORITIES.find((p) => p.value === currentPriority)?.label}
+                </span>
+              )}
+              {currentItem.data.metadata.date?.isValid() && (
+                <span className={c('cd-details-chip')}>
+                  <Icon name="lucide-calendar" />
+                  {currentItem.data.metadata.date.format('MMM D')}
+                </span>
+              )}
+              {allTags.length > 0 && (
+                <span className={c('cd-details-chip')}>
+                  <Icon name="lucide-tag" />
+                  {allTags.length}
+                </span>
+              )}
+            </span>
+            <span className={c('cd-details-more')}>
+              {detailsOpen ? 'Hide' : 'Details'}
+              <Icon name={detailsOpen ? 'lucide-chevron-up' : 'lucide-chevron-down'} />
+            </span>
+          </button>
+        )}
         <div className={c('cd-main')}>
           <section className={c('cd-section')}>
             <div className={c('cd-section-head')}>
@@ -696,7 +733,7 @@ const CardDetailContent = memo(function CardDetailContent({
           )}
         </div>
 
-        <aside className={c('cd-sidebar')}>
+        <aside className={`${c('cd-sidebar')} ${detailsOpen ? '' : 'is-collapsed'}`}>
           {isTeam && stateManager.teamSync && (
             <Field label="Project">
               <ProjectSelect item={currentItem} />

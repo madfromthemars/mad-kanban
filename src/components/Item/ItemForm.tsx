@@ -146,6 +146,7 @@ class NewCardModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('kanban-plugin__new-card-modal');
+    this.modalEl.addClass('kanban-plugin__new-card-window');
 
     contentEl.createEl('h2', { text: t('Add card') });
 

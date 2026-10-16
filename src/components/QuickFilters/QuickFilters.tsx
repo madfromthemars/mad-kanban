@@ -1,4 +1,5 @@
 import { useContext, useMemo, useState } from 'preact/compat';
+import { Platform } from 'obsidian';
 import useOnclickOutside from 'react-cool-onclickoutside';
 import { hueFor, initials } from 'src/team/ui/TeamBadges';
 
@@ -126,6 +127,8 @@ export function QuickFilters() {
   const users = team ? team.useUsers() : [];
   const projects = team ? team.useProjects() : [];
   const board = stateManager.useState();
+  // Phones: the filters fold behind one button instead of filling a quarter of the screen.
+  const [phoneOpen, setPhoneOpen] = useState(false);
 
   const items = useMemo(() => {
     const all: Item[] = [];
@@ -210,8 +213,8 @@ export function QuickFilters() {
       ).length
     : items.length;
 
-  return (
-    <div className={c('filter-bar')}>
+  const chips = (
+    <>
       {(projectOptions.length > 0 || filters.projects.length > 0) && (
         <FilterMenu
           label="Project"
@@ -267,6 +270,49 @@ export function QuickFilters() {
         <Icon name="lucide-layout-grid" />
         <span className={c('filter-chip-label')}>Group by tag</span>
       </button>
+    </>
+  );
+
+  const activeCount =
+    filters.projects.length +
+    filters.assignees.length +
+    filters.priorities.length +
+    filters.dates.length +
+    filters.tags.length +
+    (filters.hideChecked ? 1 : 0) +
+    (filterContext.isGroupingByTag ? 1 : 0);
+
+  if (Platform.isPhone) {
+    return (
+      <div className={`${c('filter-bar')} ${c('filter-bar-phone')}`}>
+        <button
+          className={`${c('filter-chip')} ${activeCount ? 'is-active' : ''}`}
+          onClick={() => setPhoneOpen(!phoneOpen)}
+          aria-expanded={phoneOpen}
+        >
+          <Icon name="lucide-sliders-horizontal" />
+          <span className={c('filter-chip-label')}>Filters</span>
+          {activeCount > 0 && <span className={c('filter-chip-value')}>{activeCount}</span>}
+          <Icon name={phoneOpen ? 'lucide-chevron-up' : 'lucide-chevron-down'} className={c('filter-chip-caret')} />
+        </button>
+        {hasActiveFilters && (
+          <div className={c('filter-bar-end')}>
+            <span className={c('filter-count')}>
+              {shown}/{items.length}
+            </span>
+            <a className={c('filter-clear-all')} onClick={clearFilters}>
+              Clear
+            </a>
+          </div>
+        )}
+        {phoneOpen && <div className={c('filter-panel')}>{chips}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className={c('filter-bar')}>
+      {chips}
 
       {hasActiveFilters && (
         <div className={c('filter-bar-end')}>

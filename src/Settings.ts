@@ -182,7 +182,9 @@ export class SettingsManager {
       }
     };
 
-    new Setting(contentEl)
+    const joinSetting = new Setting(contentEl);
+    joinSetting.settingEl.addClass(c('team-join-setting'));
+    joinSetting
       .setName(t('Team server join string'))
       .setDesc(
         t(
