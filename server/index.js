@@ -62,6 +62,7 @@ import {
   addToGeneral,
 } from './db.js';
 import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
+import { createNotifier } from './notify.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DATA_DIR = process.env.DATA_DIR || './data';
@@ -73,9 +74,10 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replac
 const MOVED_TO = (process.env.MOVED_TO || '').replace(/\/+$/, '');
 
 const db = openDb(DATA_DIR);
+const notifier = createNotifier(db);
 const FILES_DIR = path.join(DATA_DIR, 'files');
 fs.mkdirSync(FILES_DIR, { recursive: true });
-const PUBLIC_DIR = path.join(import.meta.dirname, 'public');
+const PUBLIC_DIR = process.env.PUBLIC_DIR || path.join(import.meta.dirname, 'public');
 const MAX_UPLOAD = Number(process.env.MAX_UPLOAD_MB || 300) * 1024 * 1024;
 
 export function joinString(token) {
@@ -198,14 +200,29 @@ function readReleasedVersion() {
   }
 }
 releasedVersion = readReleasedVersion();
+// "What's new": scripts/release-plugin.sh copies docs/whats-new/<version>.md here as whats-new.md.
+// The Telegram bot sends it once per version to everyone connected.
+function announceRelease(v) {
+  let notes = '';
+  try {
+    notes = fs.readFileSync(path.join(PUBLIC_DIR, 'plugin', 'whats-new.md'), 'utf8');
+    const m = /^<!--\s*version:\s*([\w.-]+)\s*-->/.exec(notes);
+    if (m && m[1] !== v) notes = ''; // notes belong to another version
+    notes = notes.replace(/^<!--[\s\S]*?-->\s*/, '');
+  } catch {
+    /* no notes: nothing to announce */
+  }
+  void notifier.announce(v, notes).catch((e) => console.warn(`announce ${v}: ${e.message}`));
+}
 setInterval(() => {
   const v = readReleasedVersion();
   if (v && v !== releasedVersion) {
     releasedVersion = v;
     console.log(`${new Date().toISOString()} plugin ${v} released, notifying clients`);
     broadcast({ type: 'plugin.released', version: v, ts: Date.now() });
+    announceRelease(v);
   }
-}, 20000);
+}, Number(process.env.RELEASE_CHECK_MS || 20000));
 
 function notifyBoardChanged(board, extra = {}) {
   broadcast({
@@ -619,6 +636,7 @@ route('POST', '/api/boards/:id/ops', async (req, params) => {
   }
   const result = applyOps(db, board, user, body.ops);
   logOps(user, board, body.ops, result);
+  notifier.onOps({ actor: user, boardId: board.id, events: result.events });
   const meta = getBoardMeta(db, board.id);
   notifyBoardChanged(meta, {
     origin: body.clientId || null,
@@ -651,6 +669,29 @@ route('POST', '/api/boards/:id/cards/:cardId/comments/read', (req, params) => {
   markCommentsRead(db, user, board.id, params.cardId);
   return { ok: true };
 });
+// People who can be @mentioned on a card: everyone who can see it.
+route('GET', '/api/boards/:id/cards/:cardId/people', (req, params) => {
+  const user = requireUser(req);
+  const board = requireBoard(user, params.id);
+  requireCard(user, board.id, params.cardId);
+  return { users: notifier.peopleForCard(board.id, params.cardId).map(({ id, name }) => ({ id, name })) };
+});
+
+// ---------- Telegram notifications (notify.js) ----------
+
+route('GET', '/api/me/telegram', (req) => notifier.status(requireUser(req).id));
+route('POST', '/api/me/telegram/link', (req) => {
+  const user = requireUser(req);
+  const url = notifier.linkUrl(user.id);
+  if (!url) throw new OpError(503, 'Telegram notifications are not set up on this server');
+  return { url };
+});
+route('DELETE', '/api/me/telegram', (req) => {
+  const user = requireUser(req);
+  notifier.unlink(user.id);
+  return notifier.status(user.id);
+});
+
 route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
   const user = requireUser(req);
   const board = requireBoard(user, params.id);
@@ -668,6 +709,7 @@ route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
   }
   const comment = addComment(db, user, board.id, params.cardId, text, replyTo);
   markCommentsRead(db, user, board.id, params.cardId);
+  notifier.onComment({ actor: user, boardId: board.id, cardId: params.cardId, body: text });
   broadcast({ type: 'comments.changed', boardId: board.id, cardId: params.cardId, ts: Date.now() });
   notifyBoardChanged(getBoardMeta(db, board.id), {
     users: cardAssignees(db, board.id, params.cardId),
@@ -687,6 +729,7 @@ route('PATCH', '/api/boards/:id/comments/:commentId', async (req, params) => {
   if (text.length > 20000) throw new OpError(400, 'comment is too long');
   if (text !== c.body) {
     editComment(db, board.id, c.id, text);
+    notifier.onComment({ actor: user, boardId: board.id, cardId: c.card_id, body: text, previousBody: c.body });
     markCommentsRead(db, user, board.id, c.card_id);
     broadcast({ type: 'comments.changed', boardId: board.id, cardId: c.card_id, ts: Date.now() });
     notifyBoardChanged(getBoardMeta(db, board.id), {
@@ -971,6 +1014,9 @@ const heartbeat = setInterval(() => {
 }, 30000);
 heartbeat.unref();
 
+// Once the bot is up, announce the published version if it hasn't been yet.
+void notifier.start().then(() => releasedVersion && announceRelease(releasedVersion));
+
 server.listen(PORT, () => {
   console.log(`kanban team server listening on :${PORT} (data: ${DATA_DIR})`);
   if (!ADMIN_TOKEN) console.log('warning: ADMIN_TOKEN not set; use "node cli.js add-user <name>" to create users');
@@ -978,6 +1024,7 @@ server.listen(PORT, () => {
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
+    notifier.stop();
     server.close();
     db.close();
     process.exit(0);

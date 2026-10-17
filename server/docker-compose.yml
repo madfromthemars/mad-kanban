@@ -12,6 +12,9 @@ services:
       PUBLIC_URL: "http://localhost:8787"
       PORT: "8787"
       DATA_DIR: "/data"
+      # Telegram notifications (notify.js). Put TELEGRAM_BOT_TOKEN=... in .env next to this
+      # file (from @BotFather); without it notifications are off.
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
     volumes:
       - kanban-data:/data
       # Plugin releases (scripts/release-plugin.sh uploads here); no rebuild needed.

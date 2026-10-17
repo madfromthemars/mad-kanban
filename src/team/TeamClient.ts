@@ -23,6 +23,14 @@ export interface TeamConnection {
   token: string;
 }
 
+export interface TelegramStatus {
+  /** The server has a bot set up. */
+  available: boolean;
+  bot: string | null;
+  linked: boolean;
+  telegramName: string | null;
+}
+
 /** A "sign in this device" link from a QR code: https://host/pair#CODE */
 export interface PairingLink {
   url: string;
@@ -415,6 +423,29 @@ export class TeamClient {
 
   myCards() {
     return this.request<{ cards: MyCard[] }>('GET', '/api/me/cards').then((r) => r.cards);
+  }
+
+  // ---------- @mentions and Telegram notifications ----------
+
+  /** Everyone who can see a card, for the @ picker in comments. */
+  cardPeople(boardId: string, cardId: string) {
+    return this.request<{ users: TeamUser[] }>(
+      'GET',
+      `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}/people`
+    ).then((r) => r.users);
+  }
+
+  telegramStatus() {
+    return this.request<TelegramStatus>('GET', '/api/me/telegram');
+  }
+
+  /** A t.me link that connects this person's Telegram chat (single use, 15 minutes). */
+  telegramLink() {
+    return this.request<{ url: string }>('POST', '/api/me/telegram/link').then((r) => r.url);
+  }
+
+  telegramUnlink() {
+    return this.request<TelegramStatus>('DELETE', '/api/me/telegram');
   }
 
   // ---------- devices: one account on many phones/computers ----------

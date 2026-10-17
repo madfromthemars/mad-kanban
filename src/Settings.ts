@@ -38,6 +38,7 @@ import { cleanUpTagSettings, renderTagSettings } from './settings/TagColorSettin
 import { cleanUpTagSortSettings, renderTagSortSettings } from './settings/TagSortSettings';
 import { parseJoinString, parsePairingLink } from './team/TeamClient';
 import { renderDevicesSection } from './team/ui/Devices';
+import { renderTelegramSection } from './team/ui/Telegram';
 
 const numberRegEx = /^\d+(?:\.\d+)?$/;
 
@@ -260,6 +261,8 @@ export class SettingsManager {
 
     // Every phone/computer signed in as this person.
     if (this.plugin.team) this.cleanupFns.push(renderDevicesSection(contentEl, this.plugin.team));
+    // Phone notifications go through the team server's Telegram bot.
+    if (this.plugin.team) this.cleanupFns.push(renderTelegramSection(contentEl, this.plugin.team));
 
     // Hosts and the owner manage people and projects.
     const manageEl = contentEl.createDiv();

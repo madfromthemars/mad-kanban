@@ -66,6 +66,11 @@ export function applyOps(db, board, user, ops) {
   const conflicts = [];
   const affectedUsers = new Set();
   const touchedCards = new Set();
+  // What people may want to hear about (see notify.js): new assignees, list changes.
+  const events = [];
+  const assignedEvents = (cardId, before, after) => {
+    for (const id of after) if (!before.includes(id)) events.push({ type: 'assigned', cardId, userId: id });
+  };
   // Cards in projects the user isn't in are invisible to them: ops treat them as missing,
   // and reorders/inserts keep them where they are.
   const vis = visibleProjectIds(db, user);
@@ -290,6 +295,7 @@ export function applyOps(db, board, user, ops) {
             now
           );
           q.setCardProject.run(projectId, now, id, board.id);
+          assignedEvents(id, [], assignees);
           const row = q.card.get(id, board.id);
           placeCard(row, lane.id, op.index);
           touch(q.card.get(id, board.id));
@@ -314,6 +320,9 @@ export function applyOps(db, board, user, ops) {
             op.assignees != null && Array.isArray(op.assignees)
               ? JSON.stringify([...new Set(op.assignees.map(String))])
               : card.assignees;
+          if (assignees !== card.assignees) {
+            assignedEvents(card.id, rowToCard(card).assignees, JSON.parse(assignees));
+          }
           q.updCard.run(
             op.content != null ? String(op.content) : card.content,
             op.checked != null ? (op.checked ? 1 : 0) : card.checked,
@@ -342,9 +351,11 @@ export function applyOps(db, board, user, ops) {
             break;
           }
           const userId = String(op.userId || user.id);
-          const set = new Set(rowToCard(card).assignees);
+          const before = rowToCard(card).assignees;
+          const set = new Set(before);
           if (op.assigned === false) set.delete(userId);
           else set.add(userId);
+          assignedEvents(card.id, before, [...set]);
           touch(card);
           q.updCard.run(card.content, card.checked, card.check_char, JSON.stringify([...set]), now, card.id, board.id);
           touch(q.card.get(card.id, board.id));
@@ -368,6 +379,7 @@ export function applyOps(db, board, user, ops) {
           const fromLane = card.lane_id;
           touch(card);
           placeCard(card, lane.id, op.index);
+          if (fromLane !== lane.id) events.push({ type: 'moved', cardId: card.id, fromLaneId: fromLane, toLaneId: lane.id });
           if (fromLane && fromLane !== lane.id) renumberLane(fromLane);
           if (op.checked != null || op.checkChar != null) {
             const c2 = q.card.get(card.id, board.id);
@@ -472,5 +484,6 @@ export function applyOps(db, board, user, ops) {
     versions,
     affectedUsers: [...affectedUsers],
     touchedCards: [...touchedCards],
+    events,
   };
 }

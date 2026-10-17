@@ -6006,3 +6006,66 @@ button.kanban-plugin__upload-cancel {
     }
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * @mentions in comments
+ * ------------------------------------------------------------------------- */
+.kanban-plugin__comment-form,
+.kanban-plugin__comment-edit {
+  position: relative;
+}
+.kanban-plugin__mention-popup {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 4px);
+  z-index: 20;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-l);
+}
+.kanban-plugin__mention-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &.is-selected {
+    background: var(--background-modifier-hover);
+  }
+  .kanban-plugin__assignee {
+    flex: none;
+  }
+}
+.kanban-plugin__mention-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kanban-plugin__mention-me {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+.kanban-plugin__mention {
+  padding: 0 3px;
+  border-radius: 4px;
+  color: var(--text-accent);
+  background: hsla(var(--interactive-accent-hsl), 0.12);
+  font-weight: 500;
+
+  &.is-me {
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+  }
+}
+.is-phone .kanban-plugin__mention-option {
+  min-height: 44px;
+}

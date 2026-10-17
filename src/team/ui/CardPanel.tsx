@@ -9,6 +9,7 @@ import { cardWindowEscape, copyInlineCode, openClickedImage } from 'src/componen
 import { UploadCancelled } from '../TeamClient';
 import { TeamComment, UploadedFile } from '../types';
 import { hueFor, initials } from './TeamBadges';
+import { highlightMentions, useMentions } from './Mentions';
 
 /** Types the team server shows in place; it serves every other upload as a download. */
 const INLINE_IMAGE = /^image\/(png|jpe?g|gif|webp|avif|bmp)$/;
@@ -246,7 +247,10 @@ const CommentBody = memo(function CommentBody({ markdown, sourcePath }: { markdo
     const comp = new Component();
     comp.load();
     el.empty();
-    void MarkdownRenderer.render(stateManager.app, markdown, el, sourcePath, comp);
+    const team = stateManager.plugin?.team;
+    void MarkdownRenderer.render(stateManager.app, markdown, el, sourcePath, comp).then(() => {
+      if (team && markdown.includes('@')) highlightMentions(el, team.users, team.user?.id);
+    });
     return () => comp.unload();
   }, [markdown, sourcePath]);
   return (
@@ -333,6 +337,16 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
   }, [editingId]);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const editRef = useRef<HTMLTextAreaElement | null>(null);
+  const mention = useMentions({ team: team!, boardId, cardId, value: draft, setValue: setDraft, inputRef });
+  const editMention = useMentions({
+    team: team!,
+    boardId,
+    cardId,
+    value: editDraft,
+    setValue: setEditDraft,
+    inputRef: editRef,
+  });
 
   const startReply = (cm: TeamComment) => {
     setReplyTo(cm);
@@ -537,16 +551,25 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
               )}
               {editingId === cm.id ? (
                 <div className={c('comment-edit')}>
+                  {editMention.popup}
                   <textarea
                     className={c('comment-input')}
                     value={editDraft}
                     rows={3}
                     ref={(el) => {
-                      if (el && document.activeElement !== el) setTimeout(() => el.focus(), 0);
+                      const first = el && editRef.current !== el;
+                      editRef.current = el;
+                      if (el && first && document.activeElement !== el) setTimeout(() => el.focus(), 0);
                     }}
-                    onInput={(e) => setEditDraft((e.target as HTMLTextAreaElement).value)}
+                    onInput={(e) => {
+                      setEditDraft((e.target as HTMLTextAreaElement).value);
+                      editMention.onCaret();
+                    }}
+                    onClick={editMention.onCaret}
+                    onBlur={editMention.close}
                     onKeyDown={(e) => {
                       e.stopPropagation();
+                      if (editMention.onKeyDown(e as unknown as KeyboardEvent)) return;
                       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                         e.preventDefault();
                         void saveEdit(cm);
@@ -589,13 +612,19 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
           </div>
         )}
         <UploadProgress target={commentTarget} />
+        {mention.popup}
         <textarea
           ref={inputRef}
           className={c('comment-input')}
-          placeholder={replyTo ? 'Write a reply…' : 'Write a comment…'}
+          placeholder={replyTo ? 'Write a reply…' : 'Write a comment… (@ to mention)'}
           value={draft}
           rows={2}
-          onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
+          onInput={(e) => {
+            setDraft((e.target as HTMLTextAreaElement).value);
+            mention.onCaret();
+          }}
+          onClick={mention.onCaret}
+          onBlur={mention.close}
           onPaste={(e) => {
             const files = filesOf((e as ClipboardEvent).clipboardData);
             if (!files.length) return;
@@ -614,10 +643,14 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
           }}
           onKeyDown={(e) => {
             e.stopPropagation();
+            if (mention.onKeyDown(e as unknown as KeyboardEvent)) return;
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               void send();
             }
+          }}
+          onKeyUp={(e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') mention.onCaret();
           }}
         />
         <div className={c('comment-actions')}>
