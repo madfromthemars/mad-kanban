@@ -1,0 +1,108 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mad Kanban: Telegram notifications</title>
+<style>
+@page { size: A4; margin: 16mm; }
+:root { --ink:#1d2433; --muted:#5b6475; --line:#e3e6ec; --accent:#6c4cf1; --soft:#f4f2ff; --warn:#fff6e5; --warnline:#f0c36d; --ok:#eaf8ef; --okline:#9fd8b3; --tg:#229ED9; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.45; margin: 0; }
+h1 { font-size: 24pt; margin: 0 0 4px; letter-spacing: -0.02em; }
+.sub { color: var(--muted); font-size: 10.5pt; margin: 0 0 12px; }
+h2 { font-size: 13pt; margin: 12px 0 5px; display: flex; align-items: center; gap: 10px; break-after: avoid; }
+h2 .n { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11pt; flex: none; }
+h3 { font-size: 11.5pt; margin: 14px 0 6px; break-after: avoid; }
+p { margin: 6px 0; }
+ol, ul { margin: 6px 0; padding-left: 20px; }
+li { margin: 3px 0; }
+b { font-weight: 650; }
+.mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9.5pt; background: #f1f2f5; padding: 1px 5px; border-radius: 4px; }
+.box { border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin: 8px 0; break-inside: avoid; }
+.soft { background: var(--soft); border-color: #ddd5ff; }
+.warn { background: var(--warn); border-color: var(--warnline); }
+.ok { background: var(--ok); border-color: var(--okline); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; break-inside: avoid; }
+.grid2 .box { margin: 0; }
+.h { font-weight: 650; display: block; margin-bottom: 3px; }
+.chat { background: #e7ebf0; border-radius: 12px; padding: 10px; margin: 6px 0; break-inside: avoid; }
+.msg { background: #fff; border-radius: 12px 12px 12px 4px; padding: 8px 11px; margin: 0 0 8px; max-width: 88%; box-shadow: 0 1px 1px rgba(0,0,0,.08); font-size: 9.5pt; }
+.msg:last-child { margin-bottom: 0; }
+.msg .q { border-left: 3px solid var(--tg); padding: 2px 8px; margin-top: 5px; color: #333; background: #f3f8fc; border-radius: 0 6px 6px 0; }
+.msg i { color: var(--muted); }
+.bot { display: flex; align-items: center; gap: 8px; font-weight: 650; margin-bottom: 8px; color: #333; }
+.bot span { width: 26px; height: 26px; border-radius: 50%; background: var(--tg); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10pt; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10pt; break-inside: avoid; }
+td, th { text-align: left; vertical-align: top; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+th { font-size: 9pt; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.page { break-before: page; }
+</style></head><body>
+
+<h1>Telegram notifications</h1>
+<p class="sub">Get a Telegram message when something on the Mad Kanban board needs you, even when Obsidian is closed. Takes 1 minute.</p>
+
+<div class="box soft">
+<b>Why Telegram?</b> Obsidian can't send notifications to your phone: it only runs while it's open. So our board has a Telegram bot, <b>@mad_kanban_bot</b>, that messages you instead.
+</div>
+
+<h3>You get a message when</h3>
+<ul>
+<li>💬 someone <b>@mentions</b> you in a comment</li>
+<li>💬 someone comments on a card <b>assigned to you</b></li>
+<li>👤 someone <b>assigns you</b> to a card</li>
+<li>➡️ someone <b>moves</b> one of your cards to another list (e.g. To Do → In Progress)</li>
+<li>📣 Mad Kanban gets <b>something new</b> (a short "What's new" note, now and then)</li>
+</ul>
+<p>Never about things you do yourself, and only about cards you're allowed to see.</p>
+
+<h3>What a message looks like</h3>
+<div class="chat">
+  <div class="bot"><span>MK</span>Mad Kanban bot</div>
+  <div class="msg">💬 <b>Bekhzod</b> mentioned you on <b>Payment page bug</b><br><i>Dragonfly · In Progress</i>
+    <div class="q">@Abdulaziz can you check the new build?</div></div>
+  <div class="msg">👤 <b>Bekhzod</b> assigned you to <b>App Store account</b><br><i>Dragonfly · To Do</i></div>
+  <div class="msg">➡️ <b>Makhmudjon</b> moved <b>Domain setup</b> to <b>Done</b><br><i>Dragonfly</i></div>
+</div>
+<p>Open Obsidian to reply or see the card. The message tells you the board and list.</p>
+<div class="box ok"><b>Tip:</b> tag teammates with <b>@</b> in comments. Type @ and pick a name from the list; they get a Telegram message right away.</div>
+
+
+<div class="grid2">
+  <div class="box"><span class="h">You need</span>Telegram installed (phone or computer), and Mad Kanban already set up and signed in.</div>
+  <div class="box"><span class="h">Where</span>Do it once, on any one device. It works for all your devices.</div>
+</div>
+
+<h2><span class="n">1</span> Open the Telegram setting</h2>
+<ol>
+<li>In Obsidian, open <b>Settings</b> (gear icon ⚙; on a phone: tap ☰ at the top left, then ⚙).</li>
+<li>Tap <b>Mad Kanban</b> in the plugin list.</li>
+<li>Find <b>Telegram notifications</b> (below <b>Your devices</b>).</li>
+</ol>
+
+<div style="break-inside: avoid"><h2><span class="n">2</span> Connect</h2>
+<ol>
+<li>Tap <b>Connect Telegram</b>. Telegram opens with the chat of <b>Mad Kanban bot</b>.</li>
+<li>Tap <b>Start</b> at the bottom of the chat.</li>
+<li>The bot answers <b>"✅ Connected as</b> <i>your name</i><b>"</b>.</li>
+<li>Back in Obsidian, the setting now says <b>On for</b> <i>your name</i>.</li>
+</ol>
+<div class="box warn"><b>Do it within 15 minutes.</b> The Start link works once and expires. Got "This link has expired"? Tap <b>Connect Telegram</b> again in Obsidian.</div></div>
+
+<h2><span class="n">3</span> Change or turn off</h2>
+<table>
+<tr><th style="width:42%">I want to</th><th>Do this</th></tr>
+<tr><td>Stop all messages</td><td>In Obsidian: Settings → Mad Kanban → Telegram notifications → <b>Turn off</b>.<br>Or send <span class="mono">/stop</span> to the bot.</td></tr>
+<tr><td>Keep task messages, skip "What's new" notes</td><td>Send <span class="mono">/updates off</span> to the bot. <span class="mono">/updates on</span> brings them back.</td></tr>
+<tr><td>Use a different Telegram account</td><td>Tap <b>Turn off</b>, then <b>Connect Telegram</b> again and press Start from the other account.</td></tr>
+<tr><td>Turn it back on</td><td>Tap <b>Connect Telegram</b> again.</td></tr>
+</table>
+
+<h3>If something goes wrong</h3>
+<table>
+<tr><th style="width:42%">Problem</th><th>What to do</th></tr>
+<tr><td>No "Telegram notifications" setting</td><td>Update Mad Kanban: Settings → Mad Kanban → <b>Check now</b>, then restart Obsidian. Make sure you're signed in ("Connected as" your name).</td></tr>
+<tr><td>It says "Not set up on your team server yet"</td><td>Tell your host.</td></tr>
+<tr><td>"Connect Telegram" doesn't open Telegram</td><td>Install Telegram first. On a computer, the link may open in the browser: click <b>Open Telegram</b> there.</td></tr>
+<tr><td>"This link has expired"</td><td>Tap <b>Connect Telegram</b> again and press Start right away.</td></tr>
+<tr><td>Connected, but no messages</td><td>Messages only come for things others do on your cards (or @mentions). Make sure you didn't send <span class="mono">/stop</span> or block the bot. If you blocked it, unblock it and connect again.</td></tr>
+<tr><td>Too many messages</td><td><span class="mono">/updates off</span> stops the "What's new" notes. To stop everything: <b>Turn off</b>.</td></tr>
+</table>
+
+
+</body></html>
