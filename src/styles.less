@@ -6069,3 +6069,41 @@ button.kanban-plugin__upload-cancel {
 .is-phone .kanban-plugin__mention-option {
   min-height: 44px;
 }
+
+/* Telegram status in Manage team → People (hosts only) */
+.kanban-plugin__mt-telegram {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 0.75em;
+  white-space: nowrap;
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+  &.is-on {
+    color: #1c7ed6;
+    background: rgba(34, 158, 217, 0.12);
+  }
+  &.is-off {
+    color: var(--text-faint);
+    background: var(--background-modifier-hover);
+  }
+}
+.kanban-plugin__mt-telegram-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}

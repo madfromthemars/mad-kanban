@@ -29,10 +29,21 @@ export interface TeamProject {
 }
 
 /** What GET /api/team returns to a host or the owner. */
+/** Telegram notifications for one person, as the host sees it. */
+export interface TeamUserTelegram {
+  linked: boolean;
+  telegramName?: string | null;
+  linkedAt?: number;
+  /** Gets "What's new" notes too. */
+  updates?: boolean;
+}
+
 export interface TeamDirectory {
   me: TeamUser;
-  users: Array<TeamUser & { projectIds: string[] }>;
+  /** telegram is null/absent when the server has no bot. */
+  users: Array<TeamUser & { projectIds: string[]; telegram?: TeamUserTelegram | null }>;
   projects: TeamProject[];
+  telegramBot?: string | null;
 }
 
 export interface TeamBoardMeta {

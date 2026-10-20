@@ -204,6 +204,38 @@ test('telegram: connect, the four notifications, /stop', async () => {
   const people = await api('GET', `/api/boards/${bid}/cards/card000001/people`, null, B.token);
   assert.deepEqual(people.json.users.map((u) => u.name).sort(), ['Ann', 'Bob Stone', 'Cid']);
 
+  // Replies tell the author of the comment being answered, once.
+  const q = (await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'is this done?' }, B.token)).json.comment;
+  await new Promise((r2) => setTimeout(r2, 400));
+  sent.length = 0;
+  r = await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'yes, shipped', replyTo: q.id }, A.token);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const reply = await waitFor((m) => m.chat_id === '201', 'B reply');
+  assert.match(reply.text, /↩️ <b>Ann<\/b> replied to your comment on <b>Ship it<\/b>/);
+  assert.match(reply.text, /yes, shipped/);
+  await waitFor((m) => m.chat_id === '301' && /commented on/.test(m.text), 'C (assignee) comment');
+  sent.length = 0;
+  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: '@Bob Stone see above', replyTo: q.id }, A.token);
+  await waitFor((m) => m.chat_id === '201', 'B mention-reply');
+  await new Promise((r2) => setTimeout(r2, 300));
+  const toB = sent.filter((m) => m.chat_id === '201');
+  assert.equal(toB.length, 1);
+  assert.match(toB[0].text, /mentioned you/);
+  // Replying to your own comment doesn't message you.
+  sent.length = 0;
+  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'also this', replyTo: q.id }, B.token);
+  await new Promise((r2) => setTimeout(r2, 400));
+  assert.equal(sent.filter((m) => m.chat_id === '201').length, 0);
+
+  // The host sees who has Telegram connected.
+  const dir = (await api('GET', '/api/team', null, A.token)).json;
+  const tgOf = (name) => dir.users.find((u) => u.name === name).telegram;
+  assert.equal(dir.telegramBot, 'mad_kanban_test_bot');
+  assert.equal(tgOf('Ann').linked, false);
+  assert.equal(tgOf('Bob Stone').linked, true);
+  assert.equal(tgOf('Bob Stone').telegramName, 'Bob');
+  assert.equal(tgOf('Cid').linked, true);
+
   // /stop turns it off
   tgMessage(301, '/stop');
   await waitFor((m) => m.chat_id === '301' && /off/.test(m.text), 'C stopped');

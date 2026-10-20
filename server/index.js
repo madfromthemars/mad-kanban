@@ -404,11 +404,14 @@ function teamChanged() {
 function teamView(me) {
   const projects = listProjects(db, me);
   const vis = visibleProjectIds(db, me);
+  const tg = notifier.overview();
   const users = listUsers(db).map((u) => ({
     ...u,
     projectIds: userProjectIds(db, u.id).filter((id) => vis === null || vis.has(id)),
+    // Hosts see who gets Telegram notifications (null: the server has no bot).
+    telegram: tg.available ? { linked: !!tg.linked[u.id], ...(tg.linked[u.id] || {}) } : null,
   }));
-  return { me, users, projects };
+  return { me, users, projects, telegramBot: tg.bot };
 }
 
 /** A host may manage users and hosts, but never the owner. */
@@ -702,14 +705,16 @@ route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
   if (text.length > 20000) throw new OpError(400, 'comment is too long');
   // A reply must point at a comment on the same card.
   let replyTo = null;
+  let replyToUserId = null;
   if (body.replyTo) {
     const parent = getComment(db, board.id, String(body.replyTo));
     if (!parent || parent.card_id !== params.cardId) throw new OpError(400, 'the comment you replied to is gone');
     replyTo = parent.id;
+    replyToUserId = parent.user_id;
   }
   const comment = addComment(db, user, board.id, params.cardId, text, replyTo);
   markCommentsRead(db, user, board.id, params.cardId);
-  notifier.onComment({ actor: user, boardId: board.id, cardId: params.cardId, body: text });
+  notifier.onComment({ actor: user, boardId: board.id, cardId: params.cardId, body: text, replyToUserId });
   broadcast({ type: 'comments.changed', boardId: board.id, cardId: params.cardId, ts: Date.now() });
   notifyBoardChanged(getBoardMeta(db, board.id), {
     users: cardAssignees(db, board.id, params.cardId),

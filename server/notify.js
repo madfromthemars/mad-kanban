@@ -342,7 +342,16 @@ export function createNotifier(db, { log = console } = {}) {
   }
 
   /** A new comment, or new @mentions added by an edit (`previousBody`). */
-  function onComment({ actor, boardId, cardId, body, previousBody = null }) {
+  /** Who has Telegram connected, for the host's People list: userId -> info. */
+  function overview() {
+    const out = {};
+    for (const r of db.prepare('SELECT user_id, tg_name, linked_at, updates FROM telegram_links').all()) {
+      out[r.user_id] = { telegramName: r.tg_name || null, linkedAt: r.linked_at, updates: !!r.updates };
+    }
+    return { available: !!botUsername, bot: botUsername, linked: out };
+  }
+
+  function onComment({ actor, boardId, cardId, body, previousBody = null, replyToUserId = null }) {
     const card = cardInfo(boardId, cardId);
     if (!card) return;
     const people = peopleForCard(boardId, cardId);
@@ -355,7 +364,16 @@ export function createNotifier(db, { log = console } = {}) {
       queue(id, `mention:${cardId}:${body.length}:${Date.now()}`, `💬 <b>${esc(actor.name)}</b> mentioned you on <b>${title}</b>\n${where(card)}${quote}`);
     }
     if (previousBody != null) return; // edits only notify new mentions
+    // A reply tells the author of the comment it answers (once, even if also assigned).
+    const replied =
+      replyToUserId && replyToUserId !== actor.id && !mentioned.includes(replyToUserId) && canSee(replyToUserId, card)
+        ? replyToUserId
+        : null;
+    if (replied) {
+      queue(replied, `reply:${cardId}:${Date.now()}`, `↩️ <b>${esc(actor.name)}</b> replied to your comment on <b>${title}</b>\n${where(card)}${quote}`);
+    }
     for (const id of assigneesOf(card)) {
+      if (id === replied) continue;
       if (id === actor.id || mentioned.includes(id) || !canSee(id, card)) continue;
       queue(id, `comment:${cardId}:${Date.now()}`, `💬 <b>${esc(actor.name)}</b> commented on <b>${title}</b>\n${where(card)}${quote}`);
     }
@@ -412,5 +430,5 @@ export function createNotifier(db, { log = console } = {}) {
     return n;
   }
 
-  return { start, stop, status, linkUrl, unlink, onComment, onOps, peopleForCard, announce };
+  return { start, stop, status, overview, linkUrl, unlink, onComment, onOps, peopleForCard, announce };
 }

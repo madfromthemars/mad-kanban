@@ -5,7 +5,7 @@ import { Icon } from 'src/components/Icon/Icon';
 import { c } from 'src/components/helpers';
 
 import type { TeamManager } from '../TeamManager';
-import { TeamDirectory, TeamProject, TeamRole, TeamUser } from '../types';
+import { TeamDirectory, TeamProject, TeamRole, TeamUser, TeamUserTelegram } from '../types';
 import { hueFor, initials } from './TeamBadges';
 import { PersonDevices } from './Devices';
 
@@ -13,7 +13,7 @@ const COLORS = ['#5c7cfa', '#20c997', '#f76707', '#e64980', '#7950f2', '#fab005'
 
 const ROLE_LABEL: Record<TeamRole, string> = { owner: 'Owner', host: 'Host', user: 'User' };
 
-type Person = TeamUser & { projectIds: string[] };
+type Person = TeamUser & { projectIds: string[]; telegram?: TeamUserTelegram | null };
 
 function errorText(e: any) {
   return e?.message || String(e);
@@ -196,6 +196,21 @@ function PersonRow({
           {person.name}
           {isMe && <span className={c('mt-muted')}> (you)</span>}
         </span>
+        {person.telegram && (
+          <span
+            className={`${c('mt-telegram')} ${person.telegram.linked ? 'is-on' : 'is-off'}`}
+            title={
+              person.telegram.linked
+                ? `Gets Telegram notifications${person.telegram.telegramName ? ` (Telegram: ${person.telegram.telegramName})` : ''}${
+                    person.telegram.updates === false ? '. "What\'s new" notes off.' : ''
+                  }`
+                : 'Has not connected Telegram: gets no notifications'
+            }
+          >
+            <Icon name={person.telegram.linked ? 'lucide-bell' : 'lucide-bell-off'} />
+            {person.telegram.linked ? 'Telegram' : 'No Telegram'}
+          </span>
+        )}
         <span className={`${c('mt-role')} is-${person.role || 'user'}`}>{ROLE_LABEL[person.role || 'user']}</span>
         <div className={c('mt-person-actions')}>
           {canManage && (
@@ -434,6 +449,18 @@ function ManageTeam({ team }: { team: TeamManager }) {
                 void load();
               }}
             />
+          )}
+          {people.some((p) => p.telegram) && (
+            <div className={c('mt-telegram-summary')}>
+              <Icon name="lucide-send" /> Telegram: {people.filter((p) => p.telegram?.linked).length} of {people.length}{' '}
+              connected
+              {people.some((p) => p.telegram && !p.telegram.linked) && (
+                <span className={c('mt-muted')}>
+                  {' '}
+                  · not yet: {people.filter((p) => p.telegram && !p.telegram.linked).map((p) => p.name).join(', ')}
+                </span>
+              )}
+            </div>
           )}
           <div className={c('mt-list')}>
             {people.map((p) => (
