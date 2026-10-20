@@ -1,3 +1,4 @@
+import { Platform } from 'obsidian';
 import animateScrollTo from 'animated-scroll-to';
 import classcat from 'classcat';
 import update from 'immutability-helper';
@@ -31,7 +32,17 @@ import { c, generateInstanceId } from '../helpers';
 import { DataTypes, EditState, EditingState, Item, Lane } from '../types';
 import { laneKey } from 'src/team/laneKey';
 
-const STATUS_KEYS = new Set(['todo', 'inprogress', 'review', 'done', 'archive']);
+const STATUS_KEYS = new Set(['backlog', 'todo', 'inprogress', 'review', 'done', 'archive']);
+
+/**
+ * Folded unless the person opened it: Backlog starts folded on computers (phones show one
+ * list at a time, so folding doesn't help there). Stored state wins (null/undefined = never set).
+ */
+export function laneCollapsed(state: Array<boolean | null> | undefined, index: number, title: string) {
+  const v = state?.[index];
+  if (v != null) return !!v;
+  return !Platform.isPhone && laneKey(title || '') === 'backlog';
+}
 
 /** Status family of a list (for its colored dot), based on the same synonyms team boards match on. */
 function laneStatus(title: string) {
@@ -89,14 +100,14 @@ function DraggableLaneRaw({
 
   const toggleIsCollapsed = useCallback(() => {
     stateManager.setState((board) => {
-      const collapseState = [...view.getViewState('list-collapse')];
-      collapseState[laneIndex] = !collapseState[laneIndex];
+      const collapseState = [...(view.getViewState('list-collapse') || [])];
+      collapseState[laneIndex] = !laneCollapsed(collapseState, laneIndex, lane.data.title);
       view.setViewState('list-collapse', collapseState);
       return update(board, {
         data: { settings: { 'list-collapse': { $set: collapseState } } },
       });
     });
-  }, [stateManager, laneIndex]);
+  }, [stateManager, laneIndex, lane.data.title]);
 
   const [showBody, setShowBody] = useState(!isCollapsed);
   const [isOpening, setIsOpening] = useState(false);
@@ -295,7 +306,7 @@ function LanesRaw({ lanes, collapseDir }: LanesProps) {
         return (
           <DraggableLane
             collapseDir={collapseDir}
-            isCollapsed={(search?.query && !search.lanes.has(lane)) || !!collapseState[i]}
+            isCollapsed={(search?.query && !search.lanes.has(lane)) || laneCollapsed(collapseState, i, lane.data.title)}
             key={boardView + lane.id}
             lane={lane}
             laneIndex={i}

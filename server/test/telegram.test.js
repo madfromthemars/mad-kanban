@@ -200,6 +200,15 @@ test('telegram: connect, the four notifications, /stop', async () => {
   assert.equal(moves.length, 1);
   assert.match(moves[0].text, /moved <b>Ship it<\/b> to <b>Done<\/b>/);
 
+  // Parking a card in the Backlog sends nothing.
+  sent.length = 0;
+  const backlog = board.lanes.find((l) => l.title === 'Backlog');
+  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: backlog.id }] }, A.token);
+  await new Promise((r2) => setTimeout(r2, 400));
+  assert.equal(sent.filter((m) => m.chat_id === '301').length, 0);
+  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: done.id }] }, A.token);
+  await waitFor((m) => m.chat_id === '301' && /to <b>Done<\/b>/.test(m.text), 'C moved out of Backlog');
+
   // People for the @ picker
   const people = await api('GET', `/api/boards/${bid}/cards/card000001/people`, null, B.token);
   assert.deepEqual(people.json.users.map((u) => u.name).sort(), ['Ann', 'Bob Stone', 'Cid']);

@@ -20,7 +20,7 @@ import { c, generateInstanceId } from '../helpers';
 import { LaneTemplate } from '../types';
 
 /** Every board has exactly these lists; they can't be added, renamed or removed. */
-export const FIXED_LANES = ['To Do', 'In Progress', 'Done', 'Archive'];
+export const FIXED_LANES = ['To Do', 'In Progress', 'Done', 'Archive', 'Backlog'];
 
 /** Folder + list file a personal board keeps for each list. */
 export async function createListArtifacts(stateManager: StateManager, rawTitle: string) {

@@ -28,7 +28,9 @@ function periodStart(p: Period, now: number) {
   return 0;
 }
 
-const isOpen = (c: ProgressCard) => !c.finished;
+const isBacklog = (c: ProgressCard) => c.laneKey === 'backlog';
+/** Open = agreed work: not finished, not parked in the Backlog. */
+const isOpen = (c: ProgressCard) => !c.finished && !isBacklog(c);
 const today = () => moment().format('YYYY-MM-DD');
 const isOverdue = (c: ProgressCard) => isOpen(c) && !!c.due && c.due < today();
 
@@ -109,6 +111,8 @@ function Overview({ team, data, period }: { team: TeamManager; data: BoardProgre
   const open = data.cards.filter(isOpen);
   const doing = open.filter((c) => c.laneKey === 'inprogress');
   const overdue = open.filter(isOverdue);
+  const backlog = data.cards.filter(isBacklog);
+  const planned = new Set((data.pulled || []).filter((e) => e.ts >= start).map((e) => e.cardId)).size;
   const took = median(finished.filter((c) => !c.doneEstimated && c.doneAt).map((c) => c.doneAt! - c.createdAt));
 
   // People: everyone with a card, plus everyone on the team.
@@ -167,6 +171,7 @@ function Overview({ team, data, period }: { team: TeamManager; data: BoardProgre
         <Stat label="In progress" value={doing.length} />
         <Stat label="Still open" value={open.length} sub="To Do + In Progress" />
         <Stat label="Overdue" value={overdue.length} tone={overdue.length ? 'bad' : undefined} />
+        <Stat label="Backlog" value={backlog.length} sub={data.pulled ? `${planned} planned from it` : 'ideas and later'} />
         <Stat label="Typical time to finish" value={took != null ? fmtDays(took) : '—'} sub="created → done" />
       </div>
 

@@ -304,7 +304,7 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   }, A);
   assert.equal(dup.status, 409, JSON.stringify(dup.json));
   const after = (await api('GET', `/api/boards/${dId}`, null, A)).json.board;
-  assert.equal(after.lanes.length, 4);
+  assert.equal(after.lanes.length, 5);
   assert.equal(after.cards.length, 3);
   // duplicating a single card is still fine
   const one = await api('POST', `/api/boards/${dId}/ops`, {
@@ -368,7 +368,7 @@ test('full flow: users, boards, ops, mirror, websocket', async () => {
   assert.equal((await api('GET', '/api/admin/client-logs', null, A)).status, 403);
 
   // default lanes
-  assert.deepEqual(d.json.board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done', 'Archive']);
+  assert.deepEqual(d.json.board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done', 'Archive', 'Backlog']);
 
   ws.close();
 });

@@ -10,6 +10,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import dns from 'node:dns';
 
+import { laneKey } from './lanes.js';
+
 // The Docker network has no working IPv6; trying Telegram's IPv6 address first makes
 // some requests time out. IPv4 first.
 dns.setDefaultResultOrder('ipv4first');
@@ -413,6 +415,8 @@ export function createNotifier(db, { log = console } = {}) {
         queue(ev.userId, `assigned:${ev.cardId}`, `👤 <b>${esc(actor.name)}</b> assigned you to <b>${title}</b>\n${where(card)}`);
       } else if (ev.type === 'moved') {
         if (card.archived) continue;
+        // Backlog is "later": parking a card there isn't news.
+        if (laneKey(card.lane || '') === 'backlog') continue;
         for (const id of assigneesOf(card)) {
           if (id === actor.id || !canSee(id, card)) continue;
           // Keyed by card: dragging through several lists sends only where it ended up.

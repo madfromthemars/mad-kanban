@@ -203,6 +203,13 @@ export function boardProgress(db, user, boardId) {
       };
     });
   const trashCount = listTrash(db, user, boardId).length;
+  // Cards pulled out of the Backlog ("planned"), for the last half year.
+  const visible = new Set(cards.map((c) => c.id));
+  const pulled = db
+    .prepare("SELECT card_id, from_lane, to_lane, ts FROM card_events WHERE board_id = ? AND type = 'moved' AND ts > ? ORDER BY ts")
+    .all(boardId, Date.now() - 183 * DAY)
+    .filter((e) => visible.has(e.card_id) && laneKey(e.from_lane || '') === 'backlog' && laneKey(e.to_lane || '') !== 'backlog')
+    .map((e) => ({ cardId: e.card_id, ts: e.ts }));
   const trackingSince = Number(db.prepare("SELECT value FROM meta WHERE key = 'progress'").get()?.value || 0);
   return {
     now: Date.now(),
@@ -210,6 +217,7 @@ export function boardProgress(db, user, boardId) {
     lanes: lanes.map((l) => ({ id: l.id, title: l.title, key: laneKey(l.title) || null, finished: isFinishedLane(l) })),
     cards,
     trashCount,
+    pulled,
   };
 }
 

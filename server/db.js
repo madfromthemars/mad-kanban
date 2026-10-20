@@ -164,6 +164,19 @@ function migrate(db) {
     }
     db.prepare("INSERT INTO meta (key, value) VALUES ('archive-lane', ?)").run(String(Date.now()));
   }
+  // Every board gets a Backlog list (ideas and "later"), last, after Archive.
+  if (!db.prepare("SELECT value FROM meta WHERE key = 'backlog-lane'").get()) {
+    for (const b of db.prepare('SELECT id FROM boards').all()) {
+      const lanes = db.prepare('SELECT title, position FROM lanes WHERE board_id = ?').all(b.id);
+      if (lanes.some((l) => laneKey(l.title) === 'backlog')) continue;
+      const pos = lanes.reduce((m, l) => Math.max(m, l.position), -1) + 1;
+      db.prepare(
+        'INSERT INTO lanes (id, board_id, title, position, mark_complete, max_items) VALUES (?, ?, ?, ?, 0, 0)'
+      ).run(newId(10), b.id, 'Backlog', pos);
+      db.prepare('UPDATE boards SET version = version + 1 WHERE id = ?').run(b.id);
+    }
+    db.prepare("INSERT INTO meta (key, value) VALUES ('backlog-lane', ?)").run(String(Date.now()));
+  }
   const commentCols = db.prepare('PRAGMA table_info(comments)').all().map((c) => c.name);
   if (!commentCols.includes('reply_to')) {
     db.exec('ALTER TABLE comments ADD COLUMN reply_to TEXT');
@@ -555,7 +568,7 @@ export function disableUser(db, id) {
 
 // ---------- boards ----------
 
-export const DEFAULT_LANES = ['To Do', 'In Progress', 'Done', 'Archive'];
+export const DEFAULT_LANES = ['To Do', 'In Progress', 'Done', 'Archive', 'Backlog'];
 
 export function createBoard(db, user, name, laneTitles = DEFAULT_LANES) {
   if (!laneTitles.length) laneTitles = DEFAULT_LANES;

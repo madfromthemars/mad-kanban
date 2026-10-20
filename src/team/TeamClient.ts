@@ -48,6 +48,8 @@ export interface BoardProgress {
   lanes: Array<{ id: string; title: string; key: string | null; finished: boolean }>;
   cards: ProgressCard[];
   trashCount: number;
+  /** Cards moved out of the Backlog (planned), last half year. Older servers: absent. */
+  pulled?: Array<{ cardId: string; ts: number }>;
 }
 
 export interface TrashedCard {

@@ -1,7 +1,9 @@
 // Keep in sync with src/team/laneKey.ts
 const SYNONYMS = {
-  todo: ['todo', 'to do', 'to-do', 'backlog', 'new', 'open', 'planned', 'next', 'inbox',
-    'к выполнению', 'сделать', 'надо сделать', 'нужно сделать', 'задачи', 'запланировано', 'бэклог', 'новые',
+  // Backlog: ideas and "later", its own list (not To Do).
+  backlog: ['backlog', 'someday', 'later', 'ideas', 'бэклог', 'беклог', 'потом', 'идеи', 'keyinroq', "g'oyalar"],
+  todo: ['todo', 'to do', 'to-do', 'new', 'open', 'planned', 'next', 'inbox',
+    'к выполнению', 'сделать', 'надо сделать', 'нужно сделать', 'задачи', 'запланировано', 'новые',
     'qilish kerak', 'rejada', 'yangi', 'bajarilishi kerak'],
   inprogress: ['in progress', 'doing', 'wip', 'working', 'started', 'active', 'ongoing', 'in work',
     'в работе', 'в процессе', 'делается', 'выполняется', 'в разработке',

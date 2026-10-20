@@ -6341,3 +6341,18 @@ button.kanban-plugin__upload-cancel {
     min-height: 44px;
   }
 }
+
+/* Backlog list: ideas and "later". Quiet, like Archive. */
+.kanban-plugin {
+  --kb-status-backlog: var(--color-base-50, #8a8a8a);
+}
+.kanban-plugin__lane-title-text {
+  [data-status='backlog'] &::before {
+    background: transparent;
+    border: 1.5px solid var(--kb-status-backlog);
+  }
+}
+[data-status='backlog'].kanban-plugin__lane {
+  background: transparent;
+  border: 1.5px dashed var(--background-modifier-border);
+}

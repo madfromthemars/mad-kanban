@@ -112,3 +112,24 @@ test('finish dates, archive keeps counting, trash and restore', async () => {
   r = await api('POST', `/api/boards/${bid}/trash/cardaaaaa2/restore`, null, A.token);
   assert.equal(r.status, 404);
 });
+
+test('backlog: its own list, last; pulling a card out counts as planned', async () => {
+  const A = (await api('POST', '/api/admin/users', { name: 'Cy' }, ADMIN)).json;
+  const board = (await api('POST', '/api/boards', { name: 'B2' }, A.token)).json.board;
+  assert.deepEqual(board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done', 'Archive', 'Backlog']);
+  const bid = board.board.id;
+  // laneTitle "Backlog" goes to Backlog, not To Do.
+  let r = await api('POST', `/api/boards/${bid}/ops`, {
+    ops: [{ type: 'card.create', id: 'backlog001', laneTitle: 'Backlog', content: 'Someday' }],
+  }, A.token);
+  assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  let p = (await api('GET', `/api/boards/${bid}/progress`, null, A.token)).json;
+  const c = p.cards.find((x) => x.id === 'backlog001');
+  assert.equal(c.laneKey, 'backlog');
+  assert.equal(c.finished, false);
+  assert.deepEqual(p.pulled, []);
+  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'backlog001', laneTitle: 'To Do' }] }, A.token);
+  p = (await api('GET', `/api/boards/${bid}/progress`, null, A.token)).json;
+  assert.equal(p.pulled.length, 1);
+  assert.equal(p.pulled[0].cardId, 'backlog001');
+});
