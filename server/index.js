@@ -62,7 +62,8 @@ import {
   addToGeneral,
 } from './db.js';
 import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
-import { boardProgress, listTrash, migrateProgress, purgeTrash, restoreCard, TRASH_DAYS } from './progress.js';
+import { boardProgress, listTrash, logEvent, migrateProgress, purgeTrash, restoreCard, TRASH_DAYS } from './progress.js';
+import { migrateHistory, startDailyStats, teamHistory } from './history.js';
 import { createNotifier } from './notify.js';
 
 const PORT = Number(process.env.PORT || 8787);
@@ -76,6 +77,8 @@ const MOVED_TO = (process.env.MOVED_TO || '').replace(/\/+$/, '');
 
 const db = openDb(DATA_DIR);
 migrateProgress(db);
+migrateHistory(db);
+startDailyStats(db);
 purgeTrash(db);
 setInterval(() => purgeTrash(db), 6 * 60 * 60 * 1000).unref();
 const notifier = createNotifier(db);
@@ -687,6 +690,21 @@ route('POST', '/api/boards/:id/trash/:cardId/restore', (req, params) => {
   return { ok: true, card };
 });
 
+// Team history for reports ("how did this week go?"). Hosts only, read-only.
+route('GET', '/api/history', (req) => {
+  const user = requireHost(req);
+  const url = new URL(req.url, 'http://x');
+  try {
+    return teamHistory(db, user, {
+      from: url.searchParams.get('from'),
+      to: url.searchParams.get('to'),
+      boardId: url.searchParams.get('boardId') || undefined,
+    });
+  } catch (e) {
+    throw new OpError(e.status || 500, e.message);
+  }
+});
+
 // comments
 route('GET', '/api/boards/:id/cards/:cardId/comments', (req, params) => {
   const user = requireUser(req);
@@ -745,6 +763,7 @@ route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
     replyToUserId = parent.user_id;
   }
   const comment = addComment(db, user, board.id, params.cardId, text, replyTo);
+  logEvent(db, { boardId: board.id, cardId: params.cardId, userId: user.id, type: 'commented', ts: comment?.createdAt ?? Date.now() });
   markCommentsRead(db, user, board.id, params.cardId);
   notifier.onComment({ actor: user, boardId: board.id, cardId: params.cardId, body: text, replyToUserId });
   broadcast({ type: 'comments.changed', boardId: board.id, cardId: params.cardId, ts: Date.now() });

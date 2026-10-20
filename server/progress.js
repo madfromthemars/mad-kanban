@@ -42,6 +42,11 @@ export function migrateProgress(db) {
       PRIMARY KEY (board_id, card_id)
     );
   `);
+  // History entries carry the card as it was (title, project, assignees) and what changed.
+  const evCols = db.prepare('PRAGMA table_info(card_events)').all().map((c) => c.name);
+  for (const col of ['title', 'project_id', 'assignees', 'detail']) {
+    if (!evCols.includes(col)) db.exec(`ALTER TABLE card_events ADD COLUMN ${col} TEXT`);
+  }
   if (!db.prepare("SELECT 1 FROM meta WHERE key = 'progress'").get()) {
     transaction(db, () => {
       // Cards already finished: best guess is when they last moved.
@@ -66,10 +71,42 @@ export function archiveLane(db, boardId) {
   return db.prepare('SELECT * FROM lanes WHERE board_id = ? ORDER BY position').all(boardId).find((l) => laneKey(l.title) === 'archive') || null;
 }
 
-export function logEvent(db, { boardId, cardId, userId, type, fromLane = null, toLane = null, ts = Date.now() }) {
+/**
+ * Append to the history log. Each entry keeps the card's title, project and assignees as they
+ * were at that moment, so the history still reads right after the card is edited, deleted or
+ * purged from the Trash. The log is never trimmed (see history.js).
+ */
+export function logEvent(db, { boardId, cardId, userId, type, fromLane = null, toLane = null, ts = Date.now(), card = null, detail = null }) {
+  const c =
+    card ||
+    db.prepare('SELECT content, project_id, assignees FROM cards WHERE id = ? AND board_id = ?').get(cardId, boardId) ||
+    trashedRow(db, boardId, cardId);
   db.prepare(
-    'INSERT INTO card_events (board_id, card_id, user_id, type, from_lane, to_lane, ts) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(boardId, cardId, userId || null, type, fromLane, toLane, ts);
+    `INSERT INTO card_events (board_id, card_id, user_id, type, from_lane, to_lane, ts, title, project_id, assignees, detail)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    boardId,
+    cardId,
+    userId || null,
+    type,
+    fromLane,
+    toLane,
+    ts,
+    c ? cardTitle(c.content) : null,
+    c?.project_id ?? null,
+    c ? JSON.stringify(safeArr(c.assignees)) : null,
+    detail == null ? null : JSON.stringify(detail)
+  );
+}
+
+function trashedRow(db, boardId, cardId) {
+  const t = db.prepare('SELECT data FROM trash WHERE board_id = ? AND card_id = ?').get(boardId, cardId);
+  if (!t) return null;
+  try {
+    return JSON.parse(t.data);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -223,7 +260,7 @@ export function boardProgress(db, user, boardId) {
 
 // ---------- small helpers ----------
 
-function safeArr(v) {
+export function safeArr(v) {
   if (Array.isArray(v)) return v;
   try {
     const a = JSON.parse(v || '[]');
@@ -246,12 +283,12 @@ export function cardTitle(content) {
   );
 }
 
-function dueOf(content) {
+export function dueOf(content) {
   const m = /@\{(\d{4}-\d{2}-\d{2})/.exec(String(content || '').split('\n')[0]);
   return m ? m[1] : null;
 }
 
-function priorityOf(content) {
+export function priorityOf(content) {
   const m = /\[priority::\s*(\d)\s*\]/i.exec(String(content || ''));
   return m ? Number(m[1]) : null;
 }

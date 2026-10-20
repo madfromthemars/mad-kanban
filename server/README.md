@@ -56,6 +56,15 @@ the plugin then swaps it for a key of its own for that device.
 
 `PUBLIC_URL` should be the https address: pairing links and join strings use it.
 
+## History (for reports)
+
+The server keeps a permanent log for "how did this week / month go?" questions (`history.js`):
+every card create/move/archive/delete/restore, assignee/due/priority/project/title/checklist
+changes and comments, each with the card's title, project and assignees at that moment; plus
+daily counts per project and person (`daily_stats`, days in UTC+5, override with
+`REPORT_TZ_OFFSET_MIN`). Hosts read it with
+`GET /api/history?from=YYYY-MM-DD&to=YYYY-MM-DD[&boardId=]` (default: last 7 days, max 3 years).
+
 ## Notes
 
 - Tokens travel in plain text over `http://`. Put it behind HTTPS (Caddy, nginx)

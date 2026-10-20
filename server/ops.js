@@ -1,6 +1,7 @@
 import { canSeeProject, defaultProjectId, getUser, newId, parseSettings, rowToCard, transaction, visibleProjectIds } from './db.js';
 import { laneKey } from './lanes.js';
 import { archiveLane, logEvent, syncDone, trashCard } from './progress.js';
+import { logCardChanges } from './history.js';
 
 /** Lanes first, so cards created in a new lane in the same batch can find it. */
 export function orderOps(ops) {
@@ -343,7 +344,9 @@ export function applyOps(db, board, user, ops) {
               q.setCardProject.run(String(op.projectId), now, card.id, board.id);
             }
           }
-          touch(q.card.get(card.id, board.id));
+          const updated = q.card.get(card.id, board.id);
+          logCardChanges(db, { boardId: board.id, userId: user.id, before: card, after: updated, ts: now });
+          touch(updated);
           break;
         }
         case 'card.assign': {
@@ -361,7 +364,9 @@ export function applyOps(db, board, user, ops) {
           assignedEvents(card.id, before, [...set]);
           touch(card);
           q.updCard.run(card.content, card.checked, card.check_char, JSON.stringify([...set]), now, card.id, board.id);
-          touch(q.card.get(card.id, board.id));
+          const updated = q.card.get(card.id, board.id);
+          logCardChanges(db, { boardId: board.id, userId: user.id, before: card, after: updated, ts: now });
+          touch(updated);
           break;
         }
         case 'card.move': {
