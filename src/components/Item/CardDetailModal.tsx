@@ -772,7 +772,7 @@ const CardDetailContent = memo(function CardDetailContent({
                 }}
               >
                 <Icon name="lucide-trash-2" />
-                {confirmDelete ? 'Tap again to delete' : 'Delete card'}
+                {confirmDelete ? (isTeam ? 'Tap again: to the Trash' : 'Tap again to delete') : 'Delete card'}
               </button>
             </section>
           )}

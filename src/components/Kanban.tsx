@@ -278,6 +278,15 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                   <Icon name="lucide-search" />
                 </button>
                 <TeamSyncStatus />
+                {stateManager.teamSync && team && (
+                  <button
+                    className={c('toolbar-button')}
+                    onClick={() => team.openProgress(stateManager.teamSync?.boardId ?? null)}
+                    title="Progress: finished cards, who's on what, and the Trash"
+                  >
+                    <Icon name="lucide-bar-chart-3" />
+                  </button>
+                )}
                 {isHost && (
                   <button
                     className={c('toolbar-button')}

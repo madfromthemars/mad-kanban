@@ -1,5 +1,6 @@
 import { canSeeProject, defaultProjectId, getUser, newId, parseSettings, rowToCard, transaction, visibleProjectIds } from './db.js';
 import { laneKey } from './lanes.js';
+import { archiveLane, logEvent, syncDone, trashCard } from './progress.js';
 
 /** Lanes first, so cards created in a new lane in the same batch can find it. */
 export function orderOps(ops) {
@@ -298,6 +299,8 @@ export function applyOps(db, board, user, ops) {
           assignedEvents(id, [], assignees);
           const row = q.card.get(id, board.id);
           placeCard(row, lane.id, op.index);
+          syncDone(db, board.id, id, user.id, now);
+          logEvent(db, { boardId: board.id, cardId: id, userId: user.id, type: 'created', toLane: lane.title, ts: now });
           touch(q.card.get(id, board.id));
           r.id = id;
           break;
@@ -379,7 +382,12 @@ export function applyOps(db, board, user, ops) {
           const fromLane = card.lane_id;
           touch(card);
           placeCard(card, lane.id, op.index);
-          if (fromLane !== lane.id) events.push({ type: 'moved', cardId: card.id, fromLaneId: fromLane, toLaneId: lane.id });
+          if (fromLane !== lane.id || card.archived) {
+            if (fromLane !== lane.id) events.push({ type: 'moved', cardId: card.id, fromLaneId: fromLane, toLaneId: lane.id });
+            const from = fromLane ? q.lane.get(fromLane, board.id) : null;
+            logEvent(db, { boardId: board.id, cardId: card.id, userId: user.id, type: 'moved', fromLane: from?.title ?? null, toLane: lane.title, ts: now });
+            syncDone(db, board.id, card.id, user.id, now);
+          }
           if (fromLane && fromLane !== lane.id) renumberLane(fromLane);
           if (op.checked != null || op.checkChar != null) {
             const c2 = q.card.get(card.id, board.id);
@@ -404,9 +412,23 @@ export function applyOps(db, board, user, ops) {
             break;
           }
           touch(card);
-          const pos = q.maxArchivePos.get(board.id).p + 1;
-          q.archiveCard.run(pos, now, card.id, board.id);
-          if (card.lane_id) renumberLane(card.lane_id);
+          // "Archive" puts the card in the board's Archive list, where it still counts as
+          // finished and stays easy to find. Boards without one keep the old hidden archive.
+          const arch = archiveLane(db, board.id);
+          const from = card.lane_id ? q.lane.get(card.lane_id, board.id) : null;
+          if (arch) {
+            if (card.lane_id !== arch.id || card.archived) {
+              placeCard(card, arch.id, 0);
+              if (card.lane_id && card.lane_id !== arch.id) renumberLane(card.lane_id);
+            }
+          } else {
+            const pos = q.maxArchivePos.get(board.id).p + 1;
+            q.archiveCard.run(pos, now, card.id, board.id);
+            if (card.lane_id) renumberLane(card.lane_id);
+          }
+          logEvent(db, { boardId: board.id, cardId: card.id, userId: user.id, type: 'archived', fromLane: from?.title ?? null, toLane: arch?.title ?? null, ts: now });
+          syncDone(db, board.id, card.id, user.id, now);
+          r.laneId = arch?.id ?? null;
           break;
         }
         case 'card.delete': {
@@ -417,6 +439,10 @@ export function applyOps(db, board, user, ops) {
             break;
           }
           touch(card);
+          // To the Trash (30 days), not gone: see progress.js.
+          const from = card.lane_id ? q.lane.get(card.lane_id, board.id) : null;
+          trashCard(db, card, user, from?.title, now);
+          logEvent(db, { boardId: board.id, cardId: card.id, userId: user.id, type: 'deleted', fromLane: from?.title ?? null, ts: now });
           q.delCard.run(card.id, board.id);
           if (card.lane_id) renumberLane(card.lane_id);
           break;

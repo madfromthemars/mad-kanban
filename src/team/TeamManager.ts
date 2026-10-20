@@ -37,6 +37,7 @@ import {
 import { JoinBoardModal, promptText } from './ui/modals';
 import { AddDeviceModal, PairConfirmModal } from './ui/Devices';
 import { ManageTeamModal } from './ui/ManageTeam';
+import { ProgressModal } from './ui/Progress';
 
 export interface CardInfo {
   card: TeamCard;
@@ -494,6 +495,16 @@ export class TeamManager {
 
   openManageTeam() {
     new ManageTeamModal(this.plugin.app, this).open();
+  }
+
+  /** Progress (finished cards, people, projects) and the Trash of a team board. */
+  openProgress(boardId: string | null = null, tab: 'overview' | 'trash' = 'overview') {
+    if (!boardId) {
+      // The board in the active view, if it's a team board.
+      const file = this.plugin.app.workspace.getActiveFile();
+      boardId = (file && this.plugin.stateManagers.get(file)?.teamSync?.boardId) || null;
+    }
+    new ProgressModal(this.plugin.app, this, boardId, tab).open();
   }
 
   /** Move a card to another project, straight to the server. */

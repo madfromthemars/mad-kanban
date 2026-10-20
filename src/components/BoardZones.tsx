@@ -15,13 +15,17 @@ import { DataTypes, Item } from './types';
 export const TRASH_ZONE = 'trash-zone';
 
 class ConfirmDeleteModal extends Modal {
-  constructor(app: App, private title: string, private onConfirm: () => void) {
+  constructor(app: App, private title: string, private onConfirm: () => void, private team = false) {
     super(app);
   }
 
   onOpen() {
     this.titleEl.setText('Delete card?');
-    this.contentEl.createEl('p', { text: `"${this.title}" will be deleted. This can't be undone.` });
+    this.contentEl.createEl('p', {
+      text: this.team
+        ? `"${this.title}" goes to the Trash. You can restore it for 30 days (Progress → Trash).`
+        : `"${this.title}" will be deleted. This can't be undone.`,
+    });
     new Setting(this.contentEl)
       .addButton((b) => b.setButtonText('Cancel').onClick(() => this.close()))
       .addButton((b) =>
@@ -78,7 +82,7 @@ export function deleteDroppedCard(stateManager: StateManager, modifiers: BoardMo
         return;
       }
     }
-  }).open();
+  }, isTeamItem(item) || !!stateManager.teamSync).open();
 }
 
 /** Floating drop target shown at the bottom of the board while a card is dragged. */

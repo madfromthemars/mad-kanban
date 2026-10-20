@@ -62,6 +62,7 @@ import {
   addToGeneral,
 } from './db.js';
 import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
+import { boardProgress, listTrash, migrateProgress, purgeTrash, restoreCard, TRASH_DAYS } from './progress.js';
 import { createNotifier } from './notify.js';
 
 const PORT = Number(process.env.PORT || 8787);
@@ -74,6 +75,9 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replac
 const MOVED_TO = (process.env.MOVED_TO || '').replace(/\/+$/, '');
 
 const db = openDb(DATA_DIR);
+migrateProgress(db);
+purgeTrash(db);
+setInterval(() => purgeTrash(db), 6 * 60 * 60 * 1000).unref();
 const notifier = createNotifier(db);
 const FILES_DIR = path.join(DATA_DIR, 'files');
 fs.mkdirSync(FILES_DIR, { recursive: true });
@@ -642,7 +646,9 @@ route('POST', '/api/boards/:id/ops', async (req, params) => {
   notifier.onOps({ actor: user, boardId: board.id, events: result.events });
   const meta = getBoardMeta(db, board.id);
   notifyBoardChanged(meta, {
-    origin: body.clientId || null,
+    // "Archive" lands the card in the Archive list, which the sender's plugin doesn't expect:
+    // let it reload too.
+    origin: body.ops.some((o) => o?.type === 'card.archive') ? null : body.clientId || null,
     users: result.affectedUsers,
     cards: result.touchedCards,
   });
@@ -653,6 +659,32 @@ route('POST', '/api/boards/:id/ops', async (req, params) => {
     conflicts: result.conflicts,
     versions: result.versions,
   };
+});
+
+// ---------- progress and trash ----------
+
+route('GET', '/api/boards/:id/progress', (req, params) => {
+  const user = requireUser(req);
+  requireBoard(user, params.id);
+  return boardProgress(db, user, params.id);
+});
+route('GET', '/api/boards/:id/trash', (req, params) => {
+  const user = requireUser(req);
+  requireBoard(user, params.id);
+  return { cards: listTrash(db, user, params.id), days: TRASH_DAYS };
+});
+route('POST', '/api/boards/:id/trash/:cardId/restore', (req, params) => {
+  const user = requireUser(req);
+  const board = requireBoard(user, params.id);
+  let card;
+  try {
+    card = restoreCard(db, user, board.id, params.cardId);
+  } catch (e) {
+    throw new OpError(e.status || 500, e.message);
+  }
+  console.log(`${new Date().toISOString()} [${board.name}] ${user.name}: restored ${params.cardId} from the Trash`);
+  notifyBoardChanged(getBoardMeta(db, board.id), { users: card.assignees, cards: [card.id] });
+  return { ok: true, card };
 });
 
 // comments

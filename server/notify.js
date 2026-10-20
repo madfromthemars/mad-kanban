@@ -8,6 +8,11 @@
 // Off unless TELEGRAM_BOT_TOKEN is set. TELEGRAM_API overrides the API base (tests).
 
 import { createHash, randomBytes } from 'node:crypto';
+import dns from 'node:dns';
+
+// The Docker network has no working IPv6; trying Telegram's IPv6 address first makes
+// some requests time out. IPv4 first.
+dns.setDefaultResultOrder('ipv4first');
 
 const API = (process.env.TELEGRAM_API || 'https://api.telegram.org').replace(/\/+$/, '');
 const LINK_TTL_MS = 15 * 60 * 1000;
@@ -130,8 +135,17 @@ export function createNotifier(db, { log = console } = {}) {
     return json.result;
   }
 
-  const send = (chatId, text) =>
-    call('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
+  // Network hiccups get two more tries; Telegram's own refusals (blocked bot etc.) don't.
+  async function send(chatId, text) {
+    for (let i = 0; ; i++) {
+      try {
+        return await call('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
+      } catch (e) {
+        if (e.code || i >= 2) throw e;
+        await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+      }
+    }
+  }
 
   // ---------- linking ----------
 
@@ -257,14 +271,23 @@ export function createNotifier(db, { log = console } = {}) {
       log.log('telegram: TELEGRAM_BOT_TOKEN not set; notifications are off');
       return;
     }
-    try {
-      const me = await call('getMe');
-      botUsername = me.username;
-      await call('deleteWebhook', {}).catch(() => {});
-      log.log(`telegram: notifications on via @${botUsername}`);
-      void poll();
-    } catch (e) {
-      log.warn(`telegram: cannot start (${e.message}); notifications are off`);
+    // Keep trying: a network hiccup at startup must not leave notifications off for good.
+    for (let attempt = 0, wait = 10000; !stopped; attempt++, wait = Math.min(wait * 2, 5 * 60 * 1000)) {
+      try {
+        const me = await call('getMe');
+        botUsername = me.username;
+        await call('deleteWebhook', {}).catch(() => {});
+        log.log(`telegram: notifications on via @${botUsername}`);
+        void poll();
+        return;
+      } catch (e) {
+        if (e.code === 401 || e.code === 404) {
+          log.warn(`telegram: the bot token was refused (${e.message}); notifications are off`);
+          return;
+        }
+        log.warn(`telegram: cannot reach Telegram (${e.message}); retrying in ${Math.round(wait / 1000)} s`);
+        await new Promise((r) => setTimeout(r, wait).unref?.());
+      }
     }
   }
 

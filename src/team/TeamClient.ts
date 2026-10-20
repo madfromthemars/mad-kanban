@@ -23,6 +23,48 @@ export interface TeamConnection {
   token: string;
 }
 
+export interface ProgressCard {
+  id: string;
+  title: string;
+  laneId: string | null;
+  /** 'todo' | 'inprogress' | 'done' | 'archive' | null (a list with another name) */
+  laneKey: string | null;
+  finished: boolean;
+  assignees: string[];
+  projectId: string | null;
+  createdAt: number;
+  createdBy: string | null;
+  doneAt: number | null;
+  doneBy: string | null;
+  /** doneAt is a guess (finished before tracking started). */
+  doneEstimated: boolean;
+  due: string | null;
+  priority: number | null;
+}
+
+export interface BoardProgress {
+  now: number;
+  trackingSince: number;
+  lanes: Array<{ id: string; title: string; key: string | null; finished: boolean }>;
+  cards: ProgressCard[];
+  trashCount: number;
+}
+
+export interface TrashedCard {
+  id: string;
+  boardId: string;
+  title: string;
+  content: string;
+  assignees: string[];
+  projectId: string | null;
+  lane: string | null;
+  deletedBy: string | null;
+  deletedByName: string | null;
+  deletedAt: number;
+  purgeAt: number;
+  commentCount: number;
+}
+
 export interface TelegramStatus {
   /** The server has a bot set up. */
   available: boolean;
@@ -423,6 +465,23 @@ export class TeamClient {
 
   myCards() {
     return this.request<{ cards: MyCard[] }>('GET', '/api/me/cards').then((r) => r.cards);
+  }
+
+  // ---------- progress and trash ----------
+
+  boardProgress(boardId: string) {
+    return this.request<BoardProgress>('GET', `/api/boards/${encodeURIComponent(boardId)}/progress`);
+  }
+
+  trash(boardId: string) {
+    return this.request<{ cards: TrashedCard[]; days: number }>('GET', `/api/boards/${encodeURIComponent(boardId)}/trash`);
+  }
+
+  restoreFromTrash(boardId: string, cardId: string) {
+    return this.request<{ ok: boolean }>(
+      'POST',
+      `/api/boards/${encodeURIComponent(boardId)}/trash/${encodeURIComponent(cardId)}/restore`
+    );
   }
 
   // ---------- @mentions and Telegram notifications ----------
