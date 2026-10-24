@@ -411,7 +411,7 @@ export class TeamManager {
     const boardId = snapshot.board.id;
     this.boardNames.set(boardId, snapshot.board.name);
     if (snapshot.projects) {
-      this.projects = snapshot.projects;
+      this.projects = this.withPrivateProject(snapshot.projects);
       this.emitter.emit('projects', this.projects);
     }
     if (snapshot.role && this.user && this.user.role !== snapshot.role) {
@@ -487,6 +487,17 @@ export class TeamManager {
 
   get isHost() {
     return this.user?.role === 'owner' || this.user?.role === 'host';
+  }
+
+  /**
+   * Adds the virtual "Only me" project after the real ones. Its cards are private: the
+   * server shows them to their creator alone (owner included) and keeps them assigned to them.
+   */
+  withPrivateProject(projects: TeamProject[]): TeamProject[] {
+    const me = this.user?.id;
+    const real = projects.filter((p) => !p.isPrivate && !p.id.startsWith('me:'));
+    if (!me) return real;
+    return [...real, { id: `me:${me}`, name: '🔒 Only me', color: '', memberIds: [me], isPrivate: true }];
   }
 
   project(projectId: string | null | undefined): TeamProject | null {

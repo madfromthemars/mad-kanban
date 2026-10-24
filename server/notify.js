@@ -343,6 +343,8 @@ export function createNotifier(db, { log = console } = {}) {
   function canSee(userId, card) {
     const u = db.prepare('SELECT id, role, disabled FROM users WHERE id = ?').get(userId);
     if (!u || u.disabled) return false;
+    // Private ("Only me") cards: nobody but their creator, owner included.
+    if (String(card.project_id || '').startsWith('me:')) return card.project_id === `me:${u.id}`;
     if (u.role === 'owner') return true;
     return !!db.prepare('SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ?').get(card.project_id, userId);
   }

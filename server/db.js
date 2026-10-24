@@ -465,12 +465,25 @@ export function visibleUsers(db, user) {
 
 // ---------- projects ----------
 
-/** Project ids the user can see, or null when they can see every project (the owner). */
+/**
+ * Private ("Only me") cards use the project id `me:<userId>`. It isn't a row in the
+ * projects table, and only that person can see it: not their teammates, not the owner.
+ */
+export const PRIVATE_PREFIX = 'me:';
+export const privateProjectId = (userId) => PRIVATE_PREFIX + userId;
+export const isPrivateProject = (projectId) => typeof projectId === 'string' && projectId.startsWith(PRIVATE_PREFIX);
+export const privateOwner = (projectId) => (isPrivateProject(projectId) ? projectId.slice(PRIVATE_PREFIX.length) : null);
+
+/**
+ * Project ids the user can see: their projects (the owner: every project) plus their own
+ * private one. Always a Set, so other people's private cards stay hidden from the owner too.
+ */
 export function visibleProjectIds(db, user) {
-  if (user.role === 'owner') return null;
-  return new Set(
-    db.prepare('SELECT project_id FROM project_members WHERE user_id = ?').all(user.id).map((r) => r.project_id)
-  );
+  const ids =
+    user.role === 'owner'
+      ? db.prepare('SELECT id FROM projects').all().map((r) => r.id)
+      : db.prepare('SELECT project_id FROM project_members WHERE user_id = ?').all(user.id).map((r) => r.project_id);
+  return new Set([...ids, privateProjectId(user.id)]);
 }
 
 export function canSeeProject(db, user, projectId) {

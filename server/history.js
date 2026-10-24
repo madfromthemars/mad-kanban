@@ -10,7 +10,7 @@
 // - comments (existing table).
 // GET /api/history returns all of it for a period; the counting happens on the reader's side.
 
-import { transaction, visibleProjectIds } from './db.js';
+import { isPrivateProject, transaction, visibleProjectIds } from './db.js';
 import { laneKey } from './lanes.js';
 import { cardTitle, dueOf, isFinishedLane, logEvent, priorityOf, safeArr } from './progress.js';
 
@@ -159,10 +159,12 @@ export function takeDailyStats(db, now = Date.now()) {
         const people = safeArr(c.assignees);
         const project = c.project_id || '';
         const users = people.length ? people : ['-'];
-        add('', '', bucket, overdue);
+        // Private cards only count in their own (me:<user>) rows, never in the team totals.
+        const team = !isPrivateProject(project);
+        if (team) add('', '', bucket, overdue);
         if (project) add(project, '', bucket, overdue);
         for (const u of users) {
-          add('', u, bucket, overdue);
+          if (team) add('', u, bucket, overdue);
           if (project) add(project, u, bucket, overdue);
         }
       }
@@ -253,7 +255,7 @@ export function teamHistory(db, user, { from, to, boardId } = {}) {
   const daily = db
     .prepare('SELECT * FROM daily_stats WHERE day >= ? AND day <= ? ORDER BY day')
     .all(dayOf(fromTs), dayOf(toTs))
-    .filter((r) => inBoards(r.board_id) && (vis === null ? true : r.project_id !== '' && okProject(r.project_id)))
+    .filter((r) => inBoards(r.board_id) && (r.project_id === '' ? user.role === 'owner' : okProject(r.project_id)))
     .map((r) => ({
       day: r.day,
       boardId: r.board_id,

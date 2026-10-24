@@ -101,7 +101,8 @@ export const TeamCardExtras = memo(function TeamCardExtras({
 
   // Phones: board cards only show who's on them; assigning happens in the card window,
   // so a tap anywhere on the card opens it and a long press anywhere drags it.
-  const readOnly = Platform.isPhone && !detail;
+  // Private cards belong to their creator alone: nobody else can be assigned.
+  const readOnly = (Platform.isPhone && !detail) || !!project?.isPrivate;
 
   return (
     <div className={c('team-extras')} data-ignore-drag={readOnly ? undefined : true}>
@@ -157,12 +158,13 @@ export const ProjectChip = memo(function ProjectChip({ projectId }: { projectId?
   const team = stateManager.plugin?.team;
   const projects = team ? team.useProjects() : [];
   const project = projectId ? projects.find((p) => p.id === projectId) : null;
-  if (!project || projects.length < 2) return null;
+  // Private cards always say so; otherwise only worth showing with more than one project.
+  if (!project || (!project.isPrivate && projects.filter((p) => !p.isPrivate).length < 2)) return null;
   return (
     <span
       className={c('project-chip')}
       style={{ '--project-color': project.color || 'var(--text-muted)' }}
-      title={`Project: ${project.name}`}
+      title={project.isPrivate ? 'Private: only you can see this card' : `Project: ${project.name}`}
     >
       <span className={c('project-dot')} />
       {project.name}
@@ -180,6 +182,9 @@ export function ProjectSelect({ item }: { item: Item }) {
   if (!team || !parsed || !projects.length) return null;
   const current = info?.card.projectId || '';
   const project = projects.find((p) => p.id === current);
+  // Only the person who made a card can make it private (the server checks this too).
+  const mine = info?.card.createdBy === team.user?.id;
+  const options = projects.filter((p) => !p.isPrivate || p.id === current || mine);
   return (
     <div className={c('cd-project')} style={{ '--project-color': project?.color || 'var(--text-faint)' }}>
       <span className={c('project-dot')} />
@@ -192,7 +197,7 @@ export function ProjectSelect({ item }: { item: Item }) {
         }}
       >
         {!project && <option value="">No project</option>}
-        {projects.map((p) => (
+        {options.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}
           </option>

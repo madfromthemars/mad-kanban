@@ -26,6 +26,8 @@ export interface TeamProject {
   color: string;
   memberIds: string[];
   cardCount?: number;
+  /** The virtual "Only me" project (id `me:<userId>`): cards only their creator sees. */
+  isPrivate?: boolean;
 }
 
 /** What GET /api/team returns to a host or the owner. */

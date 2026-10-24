@@ -1,4 +1,4 @@
-import { canSeeProject, defaultProjectId, getUser, newId, parseSettings, rowToCard, transaction, visibleProjectIds } from './db.js';
+import { canSeeProject, defaultProjectId, getUser, isPrivateProject, newId, parseSettings, rowToCard, transaction, visibleProjectIds } from './db.js';
 import { laneKey } from './lanes.js';
 import { archiveLane, logEvent, syncDone, trashCard } from './progress.js';
 import { logCardChanges } from './history.js';
@@ -276,12 +276,13 @@ export function applyOps(db, board, user, ops) {
             break;
           }
           // Only people who can see the card's project can be assigned to it.
-          const assignees = (Array.isArray(op.assignees) ? [...new Set(op.assignees.map(String))] : []).filter(
-            (a) => {
-              const u = getUser(db, a);
-              return !!u && !u.disabled && canSeeProject(db, u, projectId);
-            }
-          );
+          // A private card always belongs to its creator alone.
+          const assignees = isPrivateProject(projectId)
+            ? [user.id]
+            : (Array.isArray(op.assignees) ? [...new Set(op.assignees.map(String))] : []).filter((a) => {
+                const u = getUser(db, a);
+                return !!u && !u.disabled && canSeeProject(db, u, projectId);
+              });
           q.insCard.run(
             id,
             board.id,
@@ -320,8 +321,16 @@ export function applyOps(db, board, user, ops) {
             break;
           }
           touch(card);
-          const assignees =
-            op.assignees != null && Array.isArray(op.assignees)
+          const toProject = op.projectId != null ? String(op.projectId) : card.project_id;
+          // Only the person who made a card can make it private (it then disappears for everyone else).
+          if (toProject !== card.project_id && isPrivateProject(toProject) && card.created_by !== user.id) {
+            r.ok = false;
+            r.error = 'only the person who made this card can make it private';
+            break;
+          }
+          const assignees = isPrivateProject(toProject) && projectOk(toProject)
+            ? JSON.stringify([card.created_by])
+            : op.assignees != null && Array.isArray(op.assignees)
               ? JSON.stringify([...new Set(op.assignees.map(String))])
               : card.assignees;
           if (assignees !== card.assignees) {
@@ -358,6 +367,14 @@ export function applyOps(db, board, user, ops) {
           }
           const userId = String(op.userId || user.id);
           const before = rowToCard(card).assignees;
+          // Private cards stay assigned to their creator only.
+          if (isPrivateProject(card.project_id)) {
+            if (userId !== card.created_by || op.assigned === false) {
+              r.ok = false;
+              r.error = 'private cards belong to their creator only';
+            }
+            break;
+          }
           const set = new Set(before);
           if (op.assigned === false) set.delete(userId);
           else set.add(userId);
