@@ -481,6 +481,54 @@ export const Items = memo(function Items({ isStatic, items, shouldMarkItemsCompl
 
   // Check if grouping is enabled
   const isGrouping = isGroupingByTag && filteredItems.length > 0 && laneId;
+  // Team boards group by project (same rule as the toolbar button).
+  const team = stateManager.plugin?.team;
+  const projects = team ? team.useProjects() : [];
+  const getProject = filterContext?.getProject;
+  const byProject = !!stateManager.teamSync && !!getProject;
+
+  if (isGrouping && byProject) {
+    const groups = new Map<string | null, Item[]>();
+    for (const item of filteredItems) {
+      const raw = getProject(item);
+      const key = raw && projects.some((p) => p.id === raw) ? raw : null;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    const active = filterContext?.filters?.projects || [];
+    const ordered = [
+      ...projects.filter((p) => groups.has(p.id) && (!active.length || active.includes(p.id))),
+    ];
+    return (
+      <>
+        {ordered.map((p) => (
+          <TagGroup
+            key={p.id}
+            tag={p.id}
+            label={p.name}
+            color={p.color}
+            items={groups.get(p.id)}
+            itemIndices={groups.get(p.id).map((item) => items.indexOf(item))}
+            shouldMarkItemsComplete={shouldMarkItemsComplete}
+            isStatic={isStatic}
+            laneId={laneId}
+          />
+        ))}
+        {groups.has(null) && !active.length && (
+          <TagGroup
+            key="__no_project__"
+            tag={null}
+            label="No project"
+            items={groups.get(null)}
+            itemIndices={groups.get(null).map((item) => items.indexOf(item))}
+            shouldMarkItemsComplete={shouldMarkItemsComplete}
+            isStatic={isStatic}
+            laneId={laneId}
+          />
+        )}
+      </>
+    );
+  }
 
   if (isGrouping) {
     let groups = groupItemsByTag(

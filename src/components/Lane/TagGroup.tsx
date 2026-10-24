@@ -8,6 +8,10 @@ import { DraggableItem } from '../Item/Item';
 
 interface TagGroupProps {
   tag: string | null;
+  /** Shown instead of "#tag" (e.g. a project name). */
+  label?: string;
+  /** Colour dot before the label. */
+  color?: string | null;
   items: Item[];
   itemIndices: number[];
   shouldMarkItemsComplete: boolean;
@@ -17,6 +21,8 @@ interface TagGroupProps {
 
 export const TagGroup = memo(function TagGroup({
   tag,
+  label,
+  color,
   items,
   itemIndices,
   shouldMarkItemsComplete,
@@ -31,7 +37,7 @@ export const TagGroup = memo(function TagGroup({
   // Use lane-specific key for collapse state
   const collapseKey = tag ? `${laneId}::${tag}` : null;
   const isCollapsed = collapseKey ? collapsedGroups.has(collapseKey) : false;
-  const groupLabel = tag ? `#${tag}` : 'Ungrouped';
+  const groupLabel = label ?? (tag ? `#${tag}` : 'Ungrouped');
 
   return (
     <div className={c('tag-group')}>
@@ -43,6 +49,9 @@ export const TagGroup = memo(function TagGroup({
         <span className={c('tag-group-toggle')}>
           <Icon name={isCollapsed ? 'lucide-chevron-right' : 'lucide-chevron-down'} />
         </span>
+        {color !== undefined && (
+          <span className={c('filter-tag-dot')} style={{ background: color || 'var(--text-faint)' }} />
+        )}
         <span className={c('tag-group-label')}>{groupLabel}</span>
         <span className={c('tag-group-count')}>({items.length})</span>
       </button>

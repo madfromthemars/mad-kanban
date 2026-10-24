@@ -51,7 +51,11 @@ function FilterMenu<T extends string>({
   selected,
   onChange,
   emptyText,
+  onDoubleClick,
+  doubleClickTitle,
 }: {
+  onDoubleClick?: () => void;
+  doubleClickTitle?: string;
   label: string;
   icon: string;
   options: Option<T>[];
@@ -70,6 +74,16 @@ function FilterMenu<T extends string>({
       <button
         className={`${c('filter-chip')} ${active ? 'is-active' : ''} ${open ? 'is-open' : ''}`}
         onClick={() => setOpen(!open)}
+        onDblClick={
+          onDoubleClick
+            ? (e: MouseEvent) => {
+                e.preventDefault();
+                setOpen(false);
+                onDoubleClick();
+              }
+            : undefined
+        }
+        title={doubleClickTitle}
       >
         <Icon name={icon} />
         <span className={c('filter-chip-label')}>{label}</span>
@@ -207,6 +221,9 @@ export function QuickFilters() {
     };
   });
 
+  // Team boards group by project; personal boards (no projects) keep grouping by tag.
+  const groupByProject = !!stateManager.teamSync && !!getProject;
+
   const shown = hasActiveFilters
     ? items.filter((i) =>
         itemMatchesFilters(i, filters, filterContext.cardBodyCache, filterContext.boardPath, getAssignees, meId, getProject)
@@ -231,6 +248,8 @@ export function QuickFilters() {
           options={assigneeOptions}
           selected={filters.assignees}
           onChange={(assignees) => set({ assignees })}
+          onDoubleClick={meId ? () => set({ assignees: ['me'] }) : undefined}
+          doubleClickTitle={meId ? 'Double-click: only my cards' : undefined}
         />
       )}
       <FilterMenu
@@ -268,7 +287,7 @@ export function QuickFilters() {
         onClick={() => filterContext.setGroupingByTag(!filterContext.isGroupingByTag)}
       >
         <Icon name="lucide-layout-grid" />
-        <span className={c('filter-chip-label')}>Group by tag</span>
+        <span className={c('filter-chip-label')}>{groupByProject ? 'Group by project' : 'Group by tag'}</span>
       </button>
     </>
   );
