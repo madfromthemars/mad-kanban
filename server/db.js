@@ -668,13 +668,17 @@ export function rowToCard(r) {
     lastMoved: r.last_moved,
     projectId: r.project_id || null,
     commentCount: r.comment_count || 0,
+    ...(r.created_by_name !== undefined ? { createdByName: r.created_by_name || null } : {}),
     ...(r.unread_comments !== undefined ? { unreadComments: r.unread_comments || 0 } : {}),
     ...(r.edited_comments !== undefined ? { editedComments: r.edited_comments || 0 } : {}),
   };
 }
 
+// The creator's name rides along so everyone sees who made a card, even people
+// they don't share a project with (or who were removed from the team since).
 const COMMENT_COUNT =
-  '(SELECT COUNT(*) FROM comments m WHERE m.board_id = c.board_id AND m.card_id = c.id) AS comment_count';
+  '(SELECT COUNT(*) FROM comments m WHERE m.board_id = c.board_id AND m.card_id = c.id) AS comment_count, ' +
+  '(SELECT u.name FROM users u WHERE u.id = c.created_by) AS created_by_name';
 
 const READ_AT = `COALESCE((SELECT r.last_read_at FROM comment_reads r
       WHERE r.user_id = ? AND r.board_id = c.board_id AND r.card_id = c.id), 0)`;

@@ -17,7 +17,7 @@ import {
 } from 'src/kanbanFileHelpers';
 import { getTaskStatusDone, toggleTaskString } from 'src/parsers/helpers/inlineMetadata';
 import { isTeamItem } from 'src/team/ids';
-import { TeamCardExtras, ProjectSelect } from 'src/team/ui/TeamBadges';
+import { CreatedBy, TeamCardExtras, ProjectSelect } from 'src/team/ui/TeamBadges';
 import { moveEntity } from 'src/dnd/util/data';
 import { setPriorityInTitle } from 'src/kanbanFileHelpers';
 import {
@@ -834,6 +834,12 @@ const CardDetailContent = memo(function CardDetailContent({
           {isTeam && (
             <Field label="Assignees">
               <TeamCardExtras item={currentItem} detail={true} />
+            </Field>
+          )}
+
+          {isTeam && (
+            <Field label="Created by">
+              <CreatedBy item={currentItem} />
             </Field>
           )}
 

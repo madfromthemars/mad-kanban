@@ -6356,3 +6356,24 @@ button.kanban-plugin__upload-cancel {
   background: transparent;
   border: 1.5px dashed var(--background-modifier-border);
 }
+
+// Card window: who made the card (read-only).
+.kanban-plugin__cd-created-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--font-ui-small);
+
+  .kanban-plugin__cd-created-by-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kanban-plugin__cd-created-by-date {
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+}

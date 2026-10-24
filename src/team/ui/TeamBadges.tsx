@@ -1,4 +1,4 @@
-import { Platform } from 'obsidian';
+import { Platform, moment } from 'obsidian';
 import classcat from 'classcat';
 import { memo, useContext } from 'preact/compat';
 import { KanbanContext } from 'src/components/context';
@@ -230,5 +230,30 @@ export const TeamSyncStatus = memo(function TeamSyncStatus() {
     >
       <Icon name={icon} />
     </a>
+  );
+});
+
+/** "Name · date" of who made a team card, shown read-only in the card window. */
+export const CreatedBy = memo(function CreatedBy({ item }: { item: Item }) {
+  const { stateManager } = useContext(KanbanContext);
+  const team = stateManager.plugin?.team;
+  const parsed = parseTeamItemId(item.id);
+  const info = team ? team.useCardInfo(parsed?.cardId ?? null) : null;
+  const card = info?.card;
+  if (!team || !card?.createdBy) return <span className={c('cd-row-empty')}>Unknown</span>;
+
+  const name = card.createdByName || team.userName(card.createdBy);
+  const when = card.createdAt ? moment(card.createdAt) : null;
+  return (
+    <span className={c('cd-created-by')} title={when ? when.format('LLL') : undefined}>
+      <span
+        className={classcat([c('assignee'), { 'is-me': card.createdBy === team.user?.id }])}
+        style={{ '--assignee-hue': hueFor(card.createdBy) }}
+      >
+        {initials(name)}
+      </span>
+      <span className={c('cd-created-by-name')}>{name}</span>
+      {when && <span className={c('cd-created-by-date')}>{when.format('MMM D, YYYY')}</span>}
+    </span>
   );
 });

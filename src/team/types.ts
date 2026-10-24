@@ -76,6 +76,8 @@ export interface TeamCard {
   version: number;
   archived: boolean;
   createdBy?: string;
+  /** Creator's name from the server (also for people you can't otherwise see). */
+  createdByName?: string | null;
   createdAt: number;
   updatedAt: number;
   lastMoved: number;
