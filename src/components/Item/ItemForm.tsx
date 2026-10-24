@@ -114,6 +114,12 @@ class NewCardModal extends Modal {
     const pills = field.createDiv({ cls: 'kanban-plugin__project-pills' });
     this.drawPeople = () => {
       pills.empty();
+      // Private cards: always just me, nothing to pick.
+      if (this.projects.find((p) => p.id === this.projectId)?.isPrivate && this.meId) {
+        this.assignees = new Set([this.meId]);
+        pills.createSpan({ cls: 'kanban-plugin__new-card-empty', text: 'Only you will see this card. It stays assigned to you.' });
+        return;
+      }
       const people = this.assignable();
       // Switching project drops people who could no longer see the card.
       for (const id of [...this.assignees]) if (!people.some((u) => u.id === id)) this.assignees.delete(id);

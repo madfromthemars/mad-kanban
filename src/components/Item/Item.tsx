@@ -506,7 +506,7 @@ export const Items = memo(function Items({ isStatic, items, shouldMarkItemsCompl
             key={p.id}
             tag={p.id}
             label={p.name}
-            color={p.color}
+            color={p.isPrivate ? undefined : p.color}
             items={groups.get(p.id)}
             itemIndices={groups.get(p.id).map((item) => items.indexOf(item))}
             shouldMarkItemsComplete={shouldMarkItemsComplete}

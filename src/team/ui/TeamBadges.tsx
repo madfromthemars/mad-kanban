@@ -166,7 +166,7 @@ export const ProjectChip = memo(function ProjectChip({ projectId }: { projectId?
       style={{ '--project-color': project.color || 'var(--text-muted)' }}
       title={project.isPrivate ? 'Private: only you can see this card' : `Project: ${project.name}`}
     >
-      <span className={c('project-dot')} />
+      {!project.isPrivate && <span className={c('project-dot')} />}
       {project.name}
     </span>
   );
