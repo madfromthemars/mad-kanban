@@ -47,7 +47,8 @@ export function parseCard(content) {
     const m = TASK_RE.exec(l);
     if (m && i > 0) items.push({ line: i, done: m[2] !== ' ', text: m[3].trim() });
   });
-  const tags = [...String(content || '').matchAll(/(?:^|\s)#([^\s#]+)/g)].map((m) => m[1]);
+  // Tags start with a letter ("issue #1" isn't a tag); trailing punctuation dropped.
+  const tags = [...String(content || '').matchAll(/(?:^|\s)#(\p{L}[\p{L}\p{N}_/-]*)/gu)].map((m) => m[1]);
   const blocked = lines.find((l) => /^\s*blocked by:/i.test(l));
   return {
     title: cardTitle(content),

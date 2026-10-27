@@ -525,6 +525,11 @@ export class TeamClient {
     return this.request<{ token: string; device: TeamDevice }>('POST', '/api/me/devices', { name, platform });
   }
 
+  /** A key for an AI assistant (MCP only). The key is shown once. */
+  createAiKey(name: string) {
+    return this.request<{ token: string; device: TeamDevice; mcpUrl: string }>('POST', '/api/me/ai-keys', { name });
+  }
+
   renameDevice(id: string, name: string) {
     return this.request<{ devices: TeamDevice[] }>('PATCH', `/api/me/devices/${encodeURIComponent(id)}`, {
       name,

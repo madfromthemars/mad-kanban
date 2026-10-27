@@ -506,6 +506,11 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
             <div className={c('comment-main')}>
               <div className={c('comment-meta')}>
                 <span className={c('comment-author')}>{name}</span>
+                {cm.via === 'ai' && (
+                  <span className={c('comment-ai')} title={`Written by ${name}'s AI assistant`}>
+                    AI
+                  </span>
+                )}
                 <span className={c('comment-time')}>{timeAgo(cm.createdAt)}</span>
                 {cm.editedAt && (
                   <span className={c('comment-edited')} title={`Edited ${new Date(cm.editedAt).toLocaleString()}`}>

@@ -60,6 +60,7 @@ test('parseCard', () => {
   assert.equal(p.blockedBy, '@api0000002');
   assert.deepEqual(p.items.map((i) => [i.done, i.text]), [[false, 'one'], [true, 'two']]);
   assert.deepEqual(p.tags, ['web']);
+  assert.deepEqual(parseCard('Bug #1, see #vidora-app. and #3).').tags, ['vidora-app']);
 });
 
 test('MCP: AI keys, permissions and tools', async () => {

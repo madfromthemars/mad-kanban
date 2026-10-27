@@ -52,6 +52,11 @@ export const PLATFORM_ICON: Record<string, string> = {
   '': 'lucide-monitor-smartphone',
 };
 
+export const deviceIcon = (d: { platform: string; kind?: string }) =>
+  d.kind === 'ai' ? 'lucide-bot' : PLATFORM_ICON[d.platform] || PLATFORM_ICON[''];
+export const deviceLabel = (d: { platform: string; kind?: string }) =>
+  d.kind === 'ai' ? 'AI key' : PLATFORM_LABEL[d.platform] || 'Device';
+
 export function lastSeenText(ts: number, current?: boolean): string {
   if (current) return 'This device';
   const mins = Math.round((Date.now() - ts) / 60000);

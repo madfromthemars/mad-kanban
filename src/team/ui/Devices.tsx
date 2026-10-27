@@ -6,7 +6,7 @@ import { Icon } from 'src/components/Icon/Icon';
 
 import type { TeamManager } from '../TeamManager';
 import { PairingLink, parsePairingLink } from '../TeamClient';
-import { PLATFORM_ICON, PLATFORM_LABEL, lastSeenText } from '../devices';
+import { PLATFORM_ICON, PLATFORM_LABEL, deviceIcon, deviceLabel, lastSeenText } from '../devices';
 import { TeamDevice } from '../types';
 import { promptText } from './modals';
 
@@ -244,6 +244,13 @@ export function renderDevicesSection(containerEl: HTMLElement, team: TeamManager
           .onClick(() => team.openAddDevice())
       );
 
+    new Setting(el)
+      .setName('AI assistants')
+      .setDesc(
+        'Let an AI tool (Claude, Cursor, VS Code, Hermes…) read and update the board as you. It sees only your projects and can’t delete cards or manage the team. Remove its key below to cut it off.'
+      )
+      .addButton((b) => b.setButtonText('Create AI key').onClick(() => new AiKeyModal(team.plugin.app, team, () => void render()).open()));
+
     const list = el.createDiv({ cls: c('devices-list') });
     let devices: TeamDevice[];
     try {
@@ -260,9 +267,9 @@ export function renderDevicesSection(containerEl: HTMLElement, team: TeamManager
     for (const d of devices) {
       const row = new Setting(list)
         .setName(d.current ? `${d.name} (this device)` : d.name)
-        .setDesc(`${PLATFORM_LABEL[d.platform] || 'Device'} · ${lastSeenText(d.lastSeen, d.current)}`);
+        .setDesc(`${deviceLabel(d)} · ${lastSeenText(d.lastSeen, d.current)}`);
       const icon = createSpan({ cls: c('device-icon') });
-      setIcon(icon, PLATFORM_ICON[d.platform] || PLATFORM_ICON['']);
+      setIcon(icon, deviceIcon(d));
       row.nameEl.prepend(icon);
       row.addExtraButton((b) =>
         b
@@ -357,7 +364,7 @@ export function PersonDevices({ team, userId, name }: { team: TeamManager; userI
     <div className={c('mt-devices')}>
       {devices.map((d) => (
         <div key={d.id} className={c('mt-device')}>
-          <Icon name={PLATFORM_ICON[d.platform] || PLATFORM_ICON['']} />
+          <Icon name={deviceIcon(d)} />
           <span className={c('mt-device-name')}>{d.name}</span>
           <span className={c('mt-muted')}>{lastSeenText(d.lastSeen)}</span>
           {confirm === d.id ? (
@@ -379,4 +386,95 @@ export function PersonDevices({ team, userId, name }: { team: TeamManager; userI
       ))}
     </div>
   );
+}
+
+const AI_GUIDE_URL = 'https://github.com/madfromthemars/mad-kanban/blob/main/docs/ai/README.md';
+
+/** "Create AI key": name it, then show the key once with ready-to-paste setups. */
+export class AiKeyModal extends Modal {
+  constructor(app: App, private team: TeamManager, private onDone: () => void) {
+    super(app);
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.modalEl.addClass(c('ai-key-modal'));
+    contentEl.createEl('h2', { text: 'Create AI key' });
+    contentEl.createEl('p', {
+      cls: c('add-device-hint'),
+      text: 'Give it a name you’ll recognise in your device list, e.g. “Claude on my laptop”.',
+    });
+    const input = contentEl.createEl('input', { type: 'text', cls: c('new-board-input'), value: 'AI assistant' });
+    input.select();
+    const actions = contentEl.createDiv({ cls: c('add-device-actions') });
+    const create = actions.createEl('button', { text: 'Create key', cls: 'mod-cta' });
+    const go = async () => {
+      create.disabled = true;
+      try {
+        const r = await this.team.client.createAiKey(input.value.trim() || 'AI assistant');
+        this.showKey(r.token, r.mcpUrl, r.device.name);
+        this.onDone();
+      } catch (e) {
+        create.disabled = false;
+        new Notice(`Could not create the key: ${errorText(e)}`);
+      }
+    };
+    create.addEventListener('click', () => void go());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void go();
+    });
+  }
+
+  private showKey(token: string, url: string, name: string) {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl('h2', { text: `AI key: ${name}` });
+    contentEl.createEl('p', {
+      cls: c('add-device-hint'),
+      text: 'Copy it now: it is shown only this once. Anyone with this key can work on the board as you, so don’t share it or post it in chats.',
+    });
+    const block = (label: string, text: string) => {
+      contentEl.createDiv({ cls: c('ai-key-label'), text: label });
+      const row = contentEl.createDiv({ cls: c('add-device-link') });
+      row.createEl('code', { text });
+      const btn = row.createEl('button', { text: 'Copy' });
+      btn.addEventListener('click', () => copyText(text));
+    };
+    block('Server address (MCP)', url);
+    block('AI key', token);
+    block(
+      'Claude Code (terminal)',
+      `claude mcp add --transport http mad-kanban ${url} --header "Authorization: Bearer ${token}"`
+    );
+    block(
+      'Cursor (~/.cursor/mcp.json) / VS Code (type "http")',
+      JSON.stringify({ mcpServers: { 'mad-kanban': { url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2)
+    );
+    block(
+      'Claude Desktop (claude_desktop_config.json)',
+      JSON.stringify(
+        {
+          mcpServers: {
+            'mad-kanban': {
+              command: 'npx',
+              args: ['-y', 'mcp-remote', url, '--header', 'Authorization:${MAD_KANBAN_AUTH}'],
+              env: { MAD_KANBAN_AUTH: `Bearer ${token}` },
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+    const foot = contentEl.createEl('p', { cls: c('add-device-note') });
+    foot.appendText('Other tools and the full guide: ');
+    foot.createEl('a', { text: 'AI setup guide', href: AI_GUIDE_URL });
+    const actions = contentEl.createDiv({ cls: c('add-device-actions') });
+    actions.createEl('button', { text: 'Done', cls: 'mod-cta' }).addEventListener('click', () => this.close());
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
 }

@@ -17,6 +17,8 @@ export interface TeamDevice {
   lastSeen: number;
   /** The device making the request. */
   current?: boolean;
+  /** 'ai' = an AI assistant's key (works only with the MCP endpoint). */
+  kind?: 'ai';
 }
 
 /** Every card belongs to one project; people see only cards of projects they're in. */
@@ -103,6 +105,8 @@ export interface TeamComment {
   replyTo?: string | null;
   /** Set when the author edited the comment */
   editedAt?: number | null;
+  /** 'ai' = written by the author's AI assistant (MCP). */
+  via?: 'ai' | null;
 }
 
 export interface UploadedFile {

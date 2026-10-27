@@ -6533,3 +6533,39 @@ button.kanban-plugin__upload-cancel {
 .is-phone .kanban-plugin__card-ref {
   line-height: 1.7;
 }
+
+/* AI keys + AI-written comments */
+.kanban-plugin__comment-ai {
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+}
+.kanban-plugin__ai-key-modal {
+  width: min(620px, 94vw);
+}
+.kanban-plugin__ai-key-label {
+  margin: 12px 0 4px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.kanban-plugin__ai-key-modal .kanban-plugin__add-device-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.kanban-plugin__ai-key-modal .kanban-plugin__add-device-link code {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+.kanban-plugin__ai-key-modal .kanban-plugin__add-device-link button {
+  flex: none;
+}
