@@ -250,6 +250,7 @@ export function teamHistory(db, user, { from, to, boardId } = {}) {
       fromLane: e.from_lane,
       toLane: e.to_lane,
       detail: e.detail ? JSON.parse(e.detail) : null,
+      ...(e.via ? { via: e.via } : {}),
     }));
 
   const daily = db

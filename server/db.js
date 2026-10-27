@@ -184,6 +184,15 @@ function migrate(db) {
   if (!commentCols.includes('edited_at')) {
     db.exec('ALTER TABLE comments ADD COLUMN edited_at INTEGER');
   }
+  // 'ai' = written through an AI key (MCP).
+  if (!commentCols.includes('via')) {
+    db.exec('ALTER TABLE comments ADD COLUMN via TEXT');
+  }
+  // Device keys: kind 'ai' = an AI assistant's key (MCP only, limited actions).
+  const deviceCols = db.prepare('PRAGMA table_info(devices)').all().map((c) => c.name);
+  if (deviceCols.length && !deviceCols.includes('kind')) {
+    db.exec("ALTER TABLE devices ADD COLUMN kind TEXT NOT NULL DEFAULT ''");
+  }
 
   // Roles: one owner (sees everything), hosts (manage people and their own projects), users.
   const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
@@ -249,7 +258,8 @@ function migrate(db) {
       token_hash TEXT NOT NULL UNIQUE,
       created_at INTEGER NOT NULL,
       last_seen INTEGER NOT NULL,
-      revoked_at INTEGER
+      revoked_at INTEGER,
+      kind TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
     CREATE TABLE IF NOT EXISTS pairing_codes (
@@ -340,7 +350,7 @@ export function userByToken(db, token) {
   if (u) return { ...u, deviceId: null };
   const d = db
     .prepare(
-      `SELECT u.id, u.name, u.role, d.id AS deviceId, d.last_seen AS lastSeen FROM devices d
+      `SELECT u.id, u.name, u.role, d.id AS deviceId, d.last_seen AS lastSeen, d.kind AS kind FROM devices d
        JOIN users u ON u.id = d.user_id
        WHERE d.token_hash = ? AND d.revoked_at IS NULL AND u.disabled = 0`
     )
@@ -348,7 +358,7 @@ export function userByToken(db, token) {
   if (!d) return null;
   const now = Date.now();
   if (now - d.lastSeen > 60_000) db.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(now, d.deviceId);
-  return { id: d.id, name: d.name, role: d.role, deviceId: d.deviceId };
+  return { id: d.id, name: d.name, role: d.role, deviceId: d.deviceId, isAi: d.kind === 'ai' };
 }
 
 // ---------- devices ----------
@@ -367,17 +377,24 @@ function cleanPlatform(v) {
 }
 
 function rowToDevice(r) {
-  return { id: r.id, name: r.name, platform: r.platform, createdAt: r.created_at, lastSeen: r.last_seen };
+  return {
+    id: r.id,
+    name: r.name,
+    platform: r.platform,
+    createdAt: r.created_at,
+    lastSeen: r.last_seen,
+    ...(r.kind === 'ai' ? { kind: 'ai' } : {}),
+  };
 }
 
 /** A new device key for userId. The key is returned once and only its hash is stored. */
-export function createDevice(db, userId, name, platform) {
+export function createDevice(db, userId, name, platform, kind = '') {
   const token = newToken();
   const now = Date.now();
   const id = newId(10);
   db.prepare(
-    'INSERT INTO devices (id, user_id, name, platform, token_hash, created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, userId, cleanDeviceName(name), cleanPlatform(platform), hashToken(token), now, now);
+    'INSERT INTO devices (id, user_id, name, platform, token_hash, created_at, last_seen, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, userId, cleanDeviceName(name), cleanPlatform(platform), hashToken(token), now, now, kind === 'ai' ? 'ai' : '');
   return { token, device: rowToDevice(db.prepare('SELECT * FROM devices WHERE id = ?').get(id)) };
 }
 
@@ -782,7 +799,7 @@ export function listComments(db, boardId, cardId) {
     .prepare(
       `SELECT m.id, m.card_id AS cardId, m.user_id AS userId, u.name AS userName, m.body,
               m.created_at AS createdAt, m.updated_at AS updatedAt, m.reply_to AS replyTo,
-              m.edited_at AS editedAt
+              m.edited_at AS editedAt, m.via
        FROM comments m LEFT JOIN users u ON u.id = m.user_id
        WHERE m.board_id = ? AND m.card_id = ? ORDER BY m.created_at`
     )
@@ -793,8 +810,8 @@ export function addComment(db, user, boardId, cardId, body, replyTo = null) {
   const id = newId(12);
   const now = Date.now();
   db.prepare(
-    'INSERT INTO comments (id, board_id, card_id, user_id, body, created_at, updated_at, reply_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, boardId, cardId, user.id, body, now, now, replyTo);
+    'INSERT INTO comments (id, board_id, card_id, user_id, body, created_at, updated_at, reply_to, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, boardId, cardId, user.id, body, now, now, replyTo, user.isAi ? 'ai' : null);
   return listComments(db, boardId, cardId).find((c) => c.id === id);
 }
 

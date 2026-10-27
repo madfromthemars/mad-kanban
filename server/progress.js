@@ -76,14 +76,31 @@ export function archiveLane(db, boardId) {
  * were at that moment, so the history still reads right after the card is edited, deleted or
  * purged from the Trash. The log is never trimmed (see history.js).
  */
+/** 'ai' while an AI key's request runs (see withVia), stored on every event it causes. */
+let currentVia = null;
+export function withVia(via, fn) {
+  const prev = currentVia;
+  currentVia = via || null;
+  try {
+    return fn();
+  } finally {
+    currentVia = prev;
+  }
+}
+
+export function migrateVia(db) {
+  const cols = db.prepare('PRAGMA table_info(card_events)').all().map((c) => c.name);
+  if (cols.length && !cols.includes('via')) db.exec('ALTER TABLE card_events ADD COLUMN via TEXT');
+}
+
 export function logEvent(db, { boardId, cardId, userId, type, fromLane = null, toLane = null, ts = Date.now(), card = null, detail = null }) {
   const c =
     card ||
     db.prepare('SELECT content, project_id, assignees FROM cards WHERE id = ? AND board_id = ?').get(cardId, boardId) ||
     trashedRow(db, boardId, cardId);
   db.prepare(
-    `INSERT INTO card_events (board_id, card_id, user_id, type, from_lane, to_lane, ts, title, project_id, assignees, detail)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO card_events (board_id, card_id, user_id, type, from_lane, to_lane, ts, title, project_id, assignees, detail, via)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     boardId,
     cardId,
@@ -95,7 +112,8 @@ export function logEvent(db, { boardId, cardId, userId, type, fromLane = null, t
     c ? cardTitle(c.content) : null,
     c?.project_id ?? null,
     c ? JSON.stringify(safeArr(c.assignees)) : null,
-    detail == null ? null : JSON.stringify(detail)
+    detail == null ? null : JSON.stringify(detail),
+    currentVia
   );
 }
 

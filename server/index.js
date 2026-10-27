@@ -62,9 +62,10 @@ import {
   addToGeneral,
 } from './db.js';
 import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
-import { boardProgress, listTrash, logEvent, migrateProgress, purgeTrash, restoreCard, TRASH_DAYS } from './progress.js';
+import { boardProgress, listTrash, logEvent, migrateProgress, migrateVia, purgeTrash, restoreCard, TRASH_DAYS, withVia } from './progress.js';
 import { migrateHistory, startDailyStats, teamHistory } from './history.js';
 import { createNotifier } from './notify.js';
+import { createMcp } from './mcp.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DATA_DIR = process.env.DATA_DIR || './data';
@@ -78,6 +79,7 @@ const MOVED_TO = (process.env.MOVED_TO || '').replace(/\/+$/, '');
 const db = openDb(DATA_DIR);
 migrateProgress(db);
 migrateHistory(db);
+migrateVia(db);
 startDailyStats(db);
 purgeTrash(db);
 setInterval(() => purgeTrash(db), 6 * 60 * 60 * 1000).unref();
@@ -141,6 +143,8 @@ function bearer(req) {
 function requireUser(req) {
   const user = userByToken(db, bearer(req));
   if (!user) throw new OpError(401, 'invalid or missing token');
+  // AI keys only work through /mcp, which allows a limited set of actions.
+  if (user.isAi) throw new OpError(403, 'AI keys only work with the MCP endpoint (/mcp)');
   return user;
 }
 
@@ -180,7 +184,7 @@ function logOps(user, board, ops, result) {
     const where = op.laneTitle ? ` -> ${op.laneTitle}` : '';
     const who = op.type === 'card.assign' ? ` ${op.assigned === false ? 'unassign' : 'assign'} ${op.userId}` : '';
     console.log(
-      `${new Date().toISOString()} [${board.name}] ${user.name}: ${op.type} ${op.id || ''}${what}${where}${who}${r && !r.ok ? ` FAILED(${r.error})` : ''}`
+      `${new Date().toISOString()} [${board.name}] ${user.name}${user.isAi ? ' (AI)' : ''}: ${op.type} ${op.id || ''}${what}${where}${who}${r && !r.ok ? ` FAILED(${r.error})` : ''}`
     );
   });
 }
@@ -312,6 +316,16 @@ route('POST', '/api/me/devices', async (req) => {
   const { token, device } = createDevice(db, me.id, body.name, body.platform);
   console.log(`${new Date().toISOString()} devices: ${me.name} added "${device.name}" (${device.platform || '?'})`);
   return { token, device: { ...device, current: true } };
+});
+
+// A key for an AI assistant (Claude, Cursor, Hermes…): works only with /mcp, shows up in
+// the person's device list as kind "ai" and can be removed there like any device.
+route('POST', '/api/me/ai-keys', async (req) => {
+  const me = requireUser(req);
+  const body = await readJson(req);
+  const { token, device } = createDevice(db, me.id, body.name || 'AI assistant', '', 'ai');
+  console.log(`${new Date().toISOString()} devices: ${me.name} added AI key "${device.name}"`);
+  return { token, device, mcpUrl: `${PUBLIC_URL}/mcp` };
 });
 
 route('PATCH', '/api/me/devices/:id', async (req, params) => {
@@ -634,24 +648,22 @@ route('DELETE', '/api/boards/:id', (req, params) => {
   broadcast({ type: 'boards.changed', boardId: params.id, deleted: true, ts: Date.now() });
   return { ok: true };
 });
-route('POST', '/api/boards/:id/ops', async (req, params) => {
-  const user = requireUser(req);
-  const board = requireBoard(user, params.id);
-  const body = await readJson(req);
-  body.ops = orderOps(body.ops);
-  const reupload = detectReupload(db, board.id, body.ops);
+/** Apply ops as `user` (REST and MCP share this: audit log, notifications, fan-out). */
+function runOps(user, board, ops, clientId = null) {
+  ops = orderOps(ops);
+  const reupload = detectReupload(db, board.id, ops);
   if (reupload) {
     console.warn(`${new Date().toISOString()} [${board.name}] ${user.name}: ${reupload}`);
     throw new OpError(409, reupload);
   }
-  const result = applyOps(db, board, user, body.ops);
-  logOps(user, board, body.ops, result);
+  const result = withVia(user.isAi ? 'ai' : null, () => applyOps(db, board, user, ops));
+  logOps(user, board, ops, result);
   notifier.onOps({ actor: user, boardId: board.id, events: result.events });
   const meta = getBoardMeta(db, board.id);
   notifyBoardChanged(meta, {
     // "Archive" lands the card in the Archive list, which the sender's plugin doesn't expect:
     // let it reload too.
-    origin: body.ops.some((o) => o?.type === 'card.archive') ? null : body.clientId || null,
+    origin: ops.some((o) => o?.type === 'card.archive') ? null : clientId || null,
     users: result.affectedUsers,
     cards: result.touchedCards,
   });
@@ -662,6 +674,13 @@ route('POST', '/api/boards/:id/ops', async (req, params) => {
     conflicts: result.conflicts,
     versions: result.versions,
   };
+}
+
+route('POST', '/api/boards/:id/ops', async (req, params) => {
+  const user = requireUser(req);
+  const board = requireBoard(user, params.id);
+  const body = await readJson(req);
+  return runOps(user, board, body.ops, body.clientId);
 });
 
 // ---------- progress and trash ----------
@@ -745,33 +764,42 @@ route('DELETE', '/api/me/telegram', (req) => {
   return notifier.status(user.id);
 });
 
-route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
-  const user = requireUser(req);
-  const board = requireBoard(user, params.id);
-  requireCard(user, board.id, params.cardId);
-  const body = await readJson(req);
-  const text = String(body.body || '').trim();
+/** Add a comment as `user` (REST and MCP): checks, history, Telegram, fan-out. */
+function postComment(user, board, cardId, bodyText, replyToId = null) {
+  requireCard(user, board.id, cardId);
+  const text = String(bodyText || '').trim();
   if (!text) throw new OpError(400, 'comment is empty');
   if (text.length > 20000) throw new OpError(400, 'comment is too long');
   // A reply must point at a comment on the same card.
   let replyTo = null;
   let replyToUserId = null;
-  if (body.replyTo) {
-    const parent = getComment(db, board.id, String(body.replyTo));
-    if (!parent || parent.card_id !== params.cardId) throw new OpError(400, 'the comment you replied to is gone');
+  if (replyToId) {
+    const parent = getComment(db, board.id, String(replyToId));
+    if (!parent || parent.card_id !== cardId) throw new OpError(400, 'the comment you replied to is gone');
     replyTo = parent.id;
     replyToUserId = parent.user_id;
   }
-  const comment = addComment(db, user, board.id, params.cardId, text, replyTo);
-  logEvent(db, { boardId: board.id, cardId: params.cardId, userId: user.id, type: 'commented', ts: comment?.createdAt ?? Date.now() });
-  markCommentsRead(db, user, board.id, params.cardId);
-  notifier.onComment({ actor: user, boardId: board.id, cardId: params.cardId, body: text, replyToUserId });
-  broadcast({ type: 'comments.changed', boardId: board.id, cardId: params.cardId, ts: Date.now() });
+  const comment = addComment(db, user, board.id, cardId, text, replyTo);
+  withVia(user.isAi ? 'ai' : null, () =>
+    logEvent(db, { boardId: board.id, cardId, userId: user.id, type: 'commented', ts: comment?.createdAt ?? Date.now() })
+  );
+  if (user.isAi) console.log(`${new Date().toISOString()} [${board.name}] ${user.name} (AI): comment on ${cardId}`);
+  markCommentsRead(db, user, board.id, cardId);
+  notifier.onComment({ actor: user, boardId: board.id, cardId, body: text, replyToUserId });
+  broadcast({ type: 'comments.changed', boardId: board.id, cardId, ts: Date.now() });
   notifyBoardChanged(getBoardMeta(db, board.id), {
-    users: cardAssignees(db, board.id, params.cardId),
-    cards: [params.cardId],
+    users: cardAssignees(db, board.id, cardId),
+    cards: [cardId],
   });
-  return { comment };
+  return comment;
+}
+
+route('POST', '/api/boards/:id/cards/:cardId/comments', async (req, params) => {
+  const user = requireUser(req);
+  const board = requireBoard(user, params.id);
+  requireCard(user, board.id, params.cardId);
+  const body = await readJson(req);
+  return { comment: postComment(user, board, params.cardId, body.body, body.replyTo) };
 });
 route('PATCH', '/api/boards/:id/comments/:commentId', async (req, params) => {
   const user = requireUser(req);
@@ -980,6 +1008,8 @@ function handleMoved(req, res, url) {
 
 // ---------- server ----------
 
+const mcp = createMcp({ db, runOps, postComment });
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'OPTIONS') {
@@ -992,6 +1022,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (MOVED_TO && handleMoved(req, res, url)) return;
+  if (url.pathname === '/mcp' || url.pathname === '/mcp/') {
+    await mcp.handle(req, res);
+    return;
+  }
   try {
     if (handleStatic(req, res, url.pathname)) return;
     for (const r of routes) {
@@ -1029,7 +1063,7 @@ server.on('upgrade', (req, socket, head) => {
     return;
   }
   const user = userByToken(db, url.searchParams.get('token'));
-  if (!user) {
+  if (!user || user.isAi) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
