@@ -112,29 +112,21 @@ const PRIORITIES = PRIORITY_LEVELS;
  * Phones: a list row, label on the left. Compact controls sit in the row; bigger
  * editors (`expand`) show a summary and open under the row when tapped.
  */
-/** Card id: click copies it; on personal boards a second button copies a [[board#^id]] link. */
-function CardIdValue({ id, link }: { id: string; link?: string }) {
-  const [copied, setCopied] = useState<'' | 'id' | 'link'>('');
-  const copy = (text: string, what: 'id' | 'link') => {
-    void navigator.clipboard.writeText(text);
-    setCopied(what);
-    window.setTimeout(() => setCopied(''), 1200);
-  };
+/** Card id in the header row; double-click copies it. */
+function CardIdValue({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <span className={c('cd-card-id')}>
-      <code title="Copy ID" onClick={() => copy(id, 'id')}>
-        {id}
-      </code>
-      {copied === 'id' && <span className={c('cd-card-id-copied')}>Copied</span>}
-      {link && (
-        <button
-          className={`clickable-icon ${c('cd-card-id-link')}`}
-          aria-label={copied === 'link' ? 'Link copied' : 'Copy link to card'}
-          onClick={() => copy(link, 'link')}
-        >
-          <Icon name={copied === 'link' ? 'lucide-check' : 'lucide-link'} />
-        </button>
-      )}
+    <span
+      className={c('cd-card-id')}
+      title="Double-click to copy the ID"
+      onDblClick={() => {
+        void navigator.clipboard.writeText(id);
+        window.getSelection()?.removeAllRanges();
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+      }}
+    >
+      {copied ? 'Copied' : '#' + id}
     </span>
   );
 }
@@ -651,6 +643,9 @@ const CardDetailContent = memo(function CardDetailContent({
           <span className={c('cd-breadcrumb-sep')}>›</span>
           <span>{lanes[laneIndex]?.data.title || laneTitle}</span>
           {isTeam && <span className={c('cd-team-pill')}>Team</span>}
+          {(teamIds?.cardId || currentItem.data.blockId) && (
+            <CardIdValue id={teamIds?.cardId || currentItem.data.blockId} />
+          )}
         </div>
         <div className={c('card-detail-title')}>
           {isTeam && isRenaming ? (
@@ -867,23 +862,6 @@ const CardDetailContent = memo(function CardDetailContent({
           {isTeam && (
             <Field label="Created by">
               <CreatedBy item={currentItem} />
-            </Field>
-          )}
-
-          {(teamIds?.cardId || currentItem.data.blockId) && (
-            <Field label="ID">
-              <CardIdValue
-                id={teamIds?.cardId || currentItem.data.blockId}
-                link={
-                  !isTeam && currentItem.data.blockId
-                    ? stateManager.app.fileManager.generateMarkdownLink(
-                        stateManager.file,
-                        '',
-                        '#^' + currentItem.data.blockId
-                      )
-                    : undefined
-                }
-              />
             </Field>
           )}
 
