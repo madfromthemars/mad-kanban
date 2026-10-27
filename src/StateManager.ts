@@ -15,6 +15,7 @@ import { defaultMetadataPosition } from './settingHelpers';
 import { sortByPriority } from './cardTasks';
 import { mergeTagColors } from './tagColors';
 import { ensureCardIds } from './cardIds';
+import { refreshCardRefChips } from './components/cardRefDom';
 import { teamBoardIdKey } from './team/types';
 
 
@@ -135,6 +136,17 @@ export class StateManager {
     }
   }
 
+  private refRefreshTimer: number | null = null;
+
+  /** Re-label `@card` chips on screen once the board has re-rendered. */
+  scheduleRefRefresh() {
+    if (this.refRefreshTimer != null) return;
+    this.refRefreshTimer = window.setTimeout(() => {
+      this.refRefreshTimer = null;
+      refreshCardRefChips(this);
+    }, 50);
+  }
+
   /** Not a server-owned team board (those use the server's card ids). */
   isPersonalBoard(board: Board = this.state) {
     if (this.teamSync) return false;
@@ -237,6 +249,7 @@ export class StateManager {
       }
 
       this.stateReceivers.forEach((receiver) => receiver(this.state));
+      this.scheduleRefRefresh();
 
       if (oldSettings !== newSettings && newSettings) {
         this.settingsNotifiers.forEach((notifiers, key) => {

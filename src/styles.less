@@ -6395,3 +6395,141 @@ button.kanban-plugin__upload-cancel {
   color: var(--text-muted);
   background: var(--background-modifier-hover);
 }
+
+/* ---------------------------------------------------------------------------
+ * @card references: chips + picker
+ * ------------------------------------------------------------------------- */
+.kanban-plugin__card-ref {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  padding: 0 7px 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 0.92em;
+  line-height: 1.5;
+  vertical-align: baseline;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-tap-highlight-color: transparent;
+}
+.kanban-plugin__card-ref:hover,
+.kanban-plugin__card-ref:focus-visible {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+.kanban-plugin__card-ref-dot {
+  flex: none;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--kb-status-other, var(--color-purple, #a855f7));
+}
+.is-todo > .kanban-plugin__card-ref-dot,
+.kanban-plugin__card-ref-dot.is-todo {
+  background: var(--color-base-50, #8a8a8a);
+}
+.is-inprogress > .kanban-plugin__card-ref-dot,
+.kanban-plugin__card-ref-dot.is-inprogress {
+  background: var(--color-blue, #3b82f6);
+}
+.is-review > .kanban-plugin__card-ref-dot,
+.kanban-plugin__card-ref-dot.is-review {
+  background: var(--color-orange, #f59e0b);
+}
+.is-done > .kanban-plugin__card-ref-dot,
+.kanban-plugin__card-ref-dot.is-done {
+  background: var(--color-green, #22c55e);
+}
+.is-backlog > .kanban-plugin__card-ref-dot,
+.kanban-plugin__card-ref-dot.is-backlog,
+.is-archive > .kanban-plugin__card-ref-dot,
+.kanban-plugin__card-ref-dot.is-archive {
+  background: transparent;
+  border: 1.5px solid var(--color-base-50, #8a8a8a);
+}
+.kanban-plugin__card-ref-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kanban-plugin__card-ref-lane {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 0.88em;
+}
+.kanban-plugin__card-ref.is-done .kanban-plugin__card-ref-title,
+.kanban-plugin__card-ref.is-archive .kanban-plugin__card-ref-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.kanban-plugin__card-ref.is-missing {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-faint);
+}
+.kanban-plugin__card-ref.is-missing .kanban-plugin__card-ref-dot {
+  background: transparent;
+  border: 1.5px dashed var(--text-faint);
+}
+.kanban-plugin__cd-mentioned-in {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.kanban-plugin__mention-section {
+  padding: 6px 8px 2px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.kanban-plugin__mention-option .kanban-plugin__card-ref-dot {
+  margin: 0 5px;
+}
+.kanban-plugin__checklist-edit-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+.kanban-plugin__checklist-add-row {
+  position: relative;
+}
+.kanban-plugin__checklist-edit-wrap .kanban-plugin__mention-popup,
+.kanban-plugin__checklist-add-row .kanban-plugin__mention-popup {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+/* Editor (description) suggestion rows */
+.kanban-plugin__ref-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.kanban-plugin__ref-option-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kanban-plugin__ref-option-meta {
+  flex: none;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+.is-phone .kanban-plugin__card-ref {
+  line-height: 1.7;
+}

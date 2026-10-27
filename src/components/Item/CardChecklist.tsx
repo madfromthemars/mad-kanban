@@ -6,23 +6,32 @@ import { KanbanContext } from '../context';
 import { Icon } from '../Icon/Icon';
 import { saveFilesToVault } from 'src/team/ui/CardPanel';
 import { c, useGetTagColorFn } from '../helpers';
+import { useMentions } from 'src/team/ui/Mentions';
+import { RefText } from '../RefText';
 
 /** Interactive checklist built from the `- [ ]` lines of a card body. */
 export function Checklist({
   body,
   onChange,
   compact,
+  selfRefId,
 }: {
   body: string;
   onChange: (body: string) => void;
   compact?: boolean;
+  /** This card's ref id, left out of the `@` card list. */
+  selfRefId?: string | null;
 }) {
+  const { stateManager } = useContext(KanbanContext);
   const tasks = parseTasks(body);
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const [adding, setAdding] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const addRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLInputElement | null>(null);
+  const addPicker = useMentions({ stateManager, selfRefId, withPeople: false, value: draft, setValue: setDraft, inputRef: addRef });
+  const editPicker = useMentions({ stateManager, selfRefId, withPeople: false, value: '', setValue: () => {}, inputRef: editRef });
   // Enter and the blur that follows it must only save once.
   const committedRef = useRef(false);
 
@@ -102,15 +111,23 @@ export function Checklist({
               onChange={(e) => onChange(toggleTask(body, task.line, (e.target as HTMLInputElement).checked))}
             />
             {editing === i ? (
+              <span className={c('checklist-edit-wrap')}>
+              {editPicker.popup}
               <input
                 type="text"
                 className={c('checklist-edit')}
                 defaultValue={task.text}
                 ref={(el) => {
-                  if (el) setTimeout(() => el.focus(), 0);
+                  if (el && editRef.current !== el) {
+                    editRef.current = el;
+                    setTimeout(() => el.focus(), 0);
+                  }
                 }}
+                onInput={editPicker.onCaret}
+                onClick={editPicker.onCaret}
                 onKeyDown={(e) => {
                   e.stopPropagation();
+                  if (editPicker.onKeyDown(e as unknown as KeyboardEvent)) return;
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     commitEdit(task, (e.target as HTMLInputElement).value);
@@ -120,8 +137,12 @@ export function Checklist({
                     setEditing(null);
                   }
                 }}
-                onBlur={(e) => commitEdit(task, (e.target as HTMLInputElement).value)}
+                onBlur={(e) => {
+                  editPicker.close();
+                  commitEdit(task, (e.target as HTMLInputElement).value);
+                }}
               />
+              </span>
             ) : (
               <span
                 className={c('checklist-text')}
@@ -132,7 +153,7 @@ export function Checklist({
                   else startEdit(i);
                 }}
               >
-                {task.text}
+                <RefText text={task.text} />
               </span>
             )}
             {!compact && (
@@ -153,16 +174,24 @@ export function Checklist({
 
       {adding ? (
         <div className={c('checklist-add-row')}>
+          {addPicker.popup}
           <input
             ref={addRef}
             type="text"
             className={c('checklist-add-input')}
             placeholder="New item — Enter to add, Esc to close"
             value={draft}
-            onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
-            onClick={(e) => e.stopPropagation()}
+            onInput={(e) => {
+              setDraft((e.target as HTMLInputElement).value);
+              addPicker.onCaret();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              addPicker.onCaret();
+            }}
             onKeyDown={(e) => {
               e.stopPropagation();
+              if (addPicker.onKeyDown(e as unknown as KeyboardEvent)) return;
               if (e.key === 'Enter') {
                 e.preventDefault();
                 commitAdd();
@@ -173,6 +202,7 @@ export function Checklist({
               }
             }}
             onBlur={() => {
+              addPicker.close();
               if (draft.trim()) commitAdd();
               else setAdding(false);
             }}

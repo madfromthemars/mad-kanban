@@ -8,6 +8,7 @@ import { DndManagerContext, EntityManagerContext } from 'src/dnd/components/cont
 import { PromiseCapability } from 'src/helpers/util';
 
 import { applyCheckboxIndexes } from '../../helpers/renderMarkdown';
+import { decorateCardRefs } from '../cardRefDom';
 import { IntersectionObserverContext, KanbanContext, SortContext } from '../context';
 import { c, useGetTagColorFn } from '../helpers';
 import { TagColor } from '../types';
@@ -115,6 +116,8 @@ export class BasicMarkdownRenderer extends Component {
       this.view.file.path,
       this
     );
+    // `@cardId` → clickable chip of the referenced card.
+    decorateCardRefs(this.containerEl, this.view.plugin?.getStateManager?.(this.view.file));
 
     this.renderCapability.resolve();
     if (!(this.view as unknown as { _loaded?: boolean })?._loaded || !(this as unknown as { _loaded?: boolean })._loaded) return;

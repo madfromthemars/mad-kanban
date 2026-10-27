@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/compat';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'preact/compat';
 import { c } from 'src/components/helpers';
 import { cardWindowEscape } from 'src/components/copyOnClick';
 
 import type { TeamManager } from '../TeamManager';
 import { TeamUser } from '../types';
 import { hueFor, initials } from './TeamBadges';
+import type { StateManager } from 'src/StateManager';
+import { CardRefInfo, buildCardIndex, rankCards, rankPeople } from 'src/cardRefs';
 
 /** The "@query" being typed right before the caret, or null. */
 function activeQuery(value: string, caret: number): { start: number; query: string } | null {
@@ -19,58 +21,66 @@ function activeQuery(value: string, caret: number): { start: number; query: stri
   return { start: at, query };
 }
 
-function rank(users: TeamUser[], query: string, meId: string | undefined) {
-  const q = query.toLowerCase();
-  const scored = users
-    .map((u) => {
-      const name = u.name.toLowerCase();
-      const score = name.startsWith(q) ? 0 : name.split(/\s+/).some((w) => w.startsWith(q)) ? 1 : name.includes(q) ? 2 : -1;
-      return { u, score };
-    })
-    .filter((x) => x.score >= 0)
-    .sort((a, b) => a.score - b.score || Number(a.u.id === meId) - Number(b.u.id === meId) || a.u.name.localeCompare(b.u.name));
-  return scored.map((x) => x.u).slice(0, 6);
-}
+type Option = { kind: 'person'; user: TeamUser } | { kind: 'card'; card: CardRefInfo };
 
 /**
- * "@" suggestions for a comment textarea: who can see the card, filtered as you type.
- * Returns props for the textarea and the popup to render next to it.
+ * "@" suggestions for a textarea/input: people who can see the card (comments on team
+ * cards) and cards of the board (`@cardId`), filtered as you type.
+ * Returns props for the field and the popup to render next to it (in a position:relative box).
  */
 export function useMentions({
   team,
   boardId,
   cardId,
+  stateManager,
+  selfRefId,
+  withPeople = true,
   value,
   setValue,
   inputRef,
 }: {
-  team: TeamManager;
-  boardId: string;
-  cardId: string;
+  team?: TeamManager | null;
+  boardId?: string;
+  cardId?: string;
+  /** Board whose cards can be referenced. Omit to offer people only. */
+  stateManager?: StateManager | null;
+  /** This card's own ref id (left out of the card list). */
+  selfRefId?: string | null;
+  withPeople?: boolean;
   value: string;
   setValue: (v: string) => void;
-  inputRef: { current: HTMLTextAreaElement | null };
+  inputRef: { current: HTMLTextAreaElement | HTMLInputElement | null };
 }) {
   const [people, setPeople] = useState<TeamUser[] | null>(null);
   const [state, setState] = useState<{ start: number; query: string } | null>(null);
   const [index, setIndex] = useState(0);
   const loading = useRef(false);
+  const usePeople = withPeople && !!team && !!boardId && !!cardId;
 
   const load = useCallback(() => {
-    if (people || loading.current) return;
+    if (!usePeople || people || loading.current) return;
     loading.current = true;
-    team.client
-      .cardPeople(boardId, cardId)
+    team!.client
+      .cardPeople(boardId!, cardId!)
       .then((u) => setPeople(u))
       // Older servers: fall back to everyone this person can see.
-      .catch(() => setPeople(team.users))
+      .catch(() => setPeople(team!.users))
       .finally(() => (loading.current = false));
-  }, [people, team, boardId, cardId]);
+  }, [usePeople, people, team, boardId, cardId]);
 
-  const matches = useMemo(
-    () => (state && people ? rank(people, state.query, team.user?.id) : []),
-    [state, people, team.user?.id]
-  );
+  const matches = useMemo<Option[]>(() => {
+    if (!state) return [];
+    const out: Option[] = [];
+    if (usePeople && people) {
+      for (const user of rankPeople(people, state.query, team?.user?.id, 6)) out.push({ kind: 'person', user });
+    }
+    if (stateManager?.state && !/\s/.test(state.query)) {
+      for (const card of rankCards(buildCardIndex(stateManager.state), state.query, selfRefId, 6)) {
+        out.push({ kind: 'card', card });
+      }
+    }
+    return out;
+  }, [state, people, usePeople, team?.user?.id, stateManager?.state, selfRefId]);
   const open = !!state && matches.length > 0;
 
   useEffect(() => setIndex(0), [state?.query]);
@@ -96,12 +106,15 @@ export function useMentions({
     if (q) load();
   };
 
-  const pick = (u: TeamUser) => {
+  const pick = (o: Option) => {
     const el = inputRef.current;
     if (!el || !state) return;
-    const caret = el.selectionStart ?? value.length;
-    const next = `${value.slice(0, state.start)}@${u.name} ${value.slice(caret)}`;
-    const pos = state.start + u.name.length + 2;
+    const current = el.value;
+    const caret = el.selectionStart ?? current.length;
+    const token = o.kind === 'person' ? o.user.name : o.card.id;
+    const next = `${current.slice(0, state.start)}@${token} ${current.slice(caret)}`;
+    const pos = state.start + token.length + 2;
+    el.value = next;
     setValue(next);
     setState(null);
     window.setTimeout(() => {
@@ -110,7 +123,7 @@ export function useMentions({
     }, 0);
   };
 
-  /** Call first in the textarea's keydown; true means the key was used by the picker. */
+  /** Call first in the field's keydown; true means the key was used by the picker. */
   const onKeyDown = (e: KeyboardEvent): boolean => {
     if (!open) return false;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -131,27 +144,40 @@ export function useMentions({
     return false;
   };
 
+  const firstCard = matches.findIndex((o) => o.kind === 'card');
   const popup = open ? (
     <div className={c('mention-popup')} role="listbox">
-      {matches.map((u, i) => (
-        <div
-          key={u.id}
-          role="option"
-          aria-selected={i === index}
-          className={`${c('mention-option')} ${i === index ? 'is-selected' : ''}`}
-          // mousedown, so the textarea keeps focus (and the phone keyboard stays up)
-          onMouseDown={(e) => {
-            e.preventDefault();
-            pick(u);
-          }}
-          onMouseEnter={() => setIndex(i)}
-        >
-          <span className={c('assignee')} style={{ '--assignee-hue': hueFor(u.id) }}>
-            {initials(u.name)}
-          </span>
-          <span className={c('mention-name')}>{u.name}</span>
-          {u.id === team.user?.id && <span className={c('mention-me')}>you</span>}
-        </div>
+      {matches.map((o, i) => (
+        <Fragment key={o.kind === 'person' ? 'p:' + o.user.id : 'c:' + o.card.id}>
+          {i === firstCard && firstCard > 0 && <div className={c('mention-section')}>Cards</div>}
+          <div
+            role="option"
+            aria-selected={i === index}
+            className={`${c('mention-option')} ${i === index ? 'is-selected' : ''}`}
+            // mousedown, so the field keeps focus (and the phone keyboard stays up)
+            onMouseDown={(e) => {
+              e.preventDefault();
+              pick(o);
+            }}
+            onMouseEnter={() => setIndex(i)}
+          >
+            {o.kind === 'person' ? (
+              <>
+                <span className={c('assignee')} style={{ '--assignee-hue': hueFor(o.user.id) }}>
+                  {initials(o.user.name)}
+                </span>
+                <span className={c('mention-name')}>{o.user.name}</span>
+                {o.user.id === team?.user?.id && <span className={c('mention-me')}>you</span>}
+              </>
+            ) : (
+              <>
+                <span className={`${c('card-ref-dot')} is-${o.card.status}`} />
+                <span className={c('mention-name')}>{o.card.title}</span>
+                <span className={c('mention-me')}>{o.card.laneTitle}</span>
+              </>
+            )}
+          </div>
+        </Fragment>
       ))}
     </div>
   ) : null;
@@ -159,7 +185,7 @@ export function useMentions({
   return {
     popup,
     onKeyDown,
-    /** For onInput / onClick / onKeyUp of the textarea. */
+    /** For onInput / onClick / onKeyUp of the field. */
     onCaret: update,
     close: () => setState(null),
   };

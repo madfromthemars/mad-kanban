@@ -10,6 +10,7 @@ import { UploadCancelled } from '../TeamClient';
 import { TeamComment, UploadedFile } from '../types';
 import { hueFor, initials } from './TeamBadges';
 import { highlightMentions, useMentions } from './Mentions';
+import { decorateCardRefs } from 'src/components/cardRefDom';
 
 /** Types the team server shows in place; it serves every other upload as a download. */
 const INLINE_IMAGE = /^image\/(png|jpe?g|gif|webp|avif|bmp)$/;
@@ -250,6 +251,7 @@ const CommentBody = memo(function CommentBody({ markdown, sourcePath }: { markdo
     const team = stateManager.plugin?.team;
     void MarkdownRenderer.render(stateManager.app, markdown, el, sourcePath, comp).then(() => {
       if (team && markdown.includes('@')) highlightMentions(el, team.users, team.user?.id);
+      if (markdown.includes('@')) decorateCardRefs(el, stateManager);
     });
     return () => comp.unload();
   }, [markdown, sourcePath]);
@@ -338,11 +340,13 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const editRef = useRef<HTMLTextAreaElement | null>(null);
-  const mention = useMentions({ team: team!, boardId, cardId, value: draft, setValue: setDraft, inputRef });
+  const mention = useMentions({ team: team!, boardId, cardId, stateManager, selfRefId: cardId, value: draft, setValue: setDraft, inputRef });
   const editMention = useMentions({
     team: team!,
     boardId,
     cardId,
+    stateManager,
+    selfRefId: cardId,
     value: editDraft,
     setValue: setEditDraft,
     inputRef: editRef,

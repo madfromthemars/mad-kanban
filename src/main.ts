@@ -32,6 +32,8 @@ import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './t
 import { ErrorReporter } from './ErrorReporter';
 import { teamBoardIdKey } from './team/types';
 import { PluginUpdater } from './team/PluginUpdater';
+import { bindCardRefClicks } from './cardRefOpen';
+import { CardRefSuggest } from './components/Editor/CardRefSuggest';
 
 interface WindowRegistry {
   viewMap: Map<string, KanbanView>;
@@ -242,6 +244,7 @@ export default class KanbanPlugin extends Plugin {
       this.mount(c.win);
     });
 
+    this.registerEditorSuggest(new CardRefSuggest(this));
     this.registerDomEvent(window, 'keydown', this.handleShift);
     this.registerDomEvent(window, 'keyup', this.handleShift);
 
@@ -491,6 +494,7 @@ export default class KanbanPlugin extends Plugin {
     });
 
     render(createApp(win, this), el);
+    bindCardRefClicks(this, win);
   }
 
   unmount(win: Window) {

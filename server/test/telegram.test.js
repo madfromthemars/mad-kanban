@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cardTitle, findMentions, notesToHtml, preview } from '../notify.js';
+import { cardTitle, expandCardRefs, findMentions, notesToHtml, preview } from '../notify.js';
 
 // ---------- a fake Telegram Bot API ----------
 
@@ -236,6 +236,20 @@ test('telegram: connect, the four notifications, /stop', async () => {
   await new Promise((r2) => setTimeout(r2, 400));
   assert.equal(sent.filter((m) => m.chat_id === '201').length, 0);
 
+  // @cardId in a comment reads as the card's title; private cards stay hidden from others.
+  r = await api('POST', `/api/boards/${bid}/ops`, {
+    ops: [
+      { type: 'card.create', id: 'ref0000002', laneId: todo.id, content: 'Login API [priority:: 0]' },
+      { type: 'card.create', id: 'sec0000003', laneId: todo.id, content: 'Secret plan', projectId: `me:${A.id}` },
+    ],
+  }, A.token);
+  assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  await new Promise((r2) => setTimeout(r2, 300));
+  sent.length = 0;
+  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: '@Bob Stone waits on @ref0000002 and @sec0000003, not @zz99zz99zz' }, A.token);
+  const refMsg = await waitFor((m) => m.chat_id === '201', 'B mention with card refs');
+  assert.match(refMsg.text, /waits on «Login API» and @sec0000003, not @zz99zz99zz/);
+
   // The host sees who has Telegram connected.
   const dir = (await api('GET', '/api/team', null, A.token)).json;
   const tgOf = (name) => dir.users.find((u) => u.name === name).telegram;
@@ -288,4 +302,12 @@ test('telegram: "what\'s new" goes out once per release, /updates off opts out',
   publish('1.0.2', null);
   await new Promise((r) => setTimeout(r, 600));
   assert.equal(sent.filter((m) => /What's new/.test(m.text)).length, 0);
+});
+
+test('expandCardRefs: @id -> «title», leaves people, emails and unknown ids', () => {
+  const titles = { ab12cd: 'Fix login', ref0000002: 'Login API' };
+  const t = (id) => titles[id] || null;
+  assert.equal(expandCardRefs('see @ab12cd, then (@ref0000002)', t), 'see «Fix login», then («Login API»)');
+  assert.equal(expandCardRefs('@Bekhzod and me@ab12cd.com', t), '@Bekhzod and me@ab12cd.com');
+  assert.equal(expandCardRefs('@ab12cdx and @nope12', t), '@ab12cdx and @nope12');
 });

@@ -183,6 +183,8 @@ export function MarkdownEditor({
         }
 
         const makeEnterHandler = (mod: boolean, shift: boolean) => (cm: EditorView) => {
+          // An open suggestion list (@ people/cards, [[links]]) takes Enter.
+          if ((this.app.workspace as any).editorSuggest?.currentSuggest) return false;
           const didRun = onEnter(cm, mod, shift);
           if (didRun) return true;
           if (this.app.vault.getConfig('smartIndentList')) {

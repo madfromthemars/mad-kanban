@@ -14,7 +14,7 @@
     "rlnotes": "git log $(git describe --tags --abbrev=0)..HEAD --oneline > release-notes.md && git add release-notes.md",
     "bump": "node version-bump.mjs && git add package.json manifest.json versions.json && yarn rlnotes",
     "release": "git commit -m $npm_package_version && git tag $npm_package_version && git push && git push --tags",
-    "test:team": "esbuild test/boardDiff.test.ts --bundle --platform=node --format=esm --outfile=test/.out/boardDiff.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/boardDiff.mjs && esbuild test/cardIds.test.ts --bundle --platform=node --format=esm --outfile=test/.out/cardIds.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/cardIds.mjs"
+    "test:team": "esbuild test/boardDiff.test.ts --bundle --platform=node --format=esm --outfile=test/.out/boardDiff.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/boardDiff.mjs && esbuild test/cardIds.test.ts --bundle --platform=node --format=esm --outfile=test/.out/cardIds.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/cardIds.mjs && esbuild test/cardRefs.test.ts --bundle --platform=node --format=esm --outfile=test/.out/cardRefs.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/cardRefs.mjs"
   },
   "keywords": [],
   "author": "",

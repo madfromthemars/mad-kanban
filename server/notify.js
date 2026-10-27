@@ -37,6 +37,17 @@ export function cardTitle(content) {
   return t || 'Untitled card';
 }
 
+/**
+ * `@cardId` -> «Card title» (for messages). `titleOf(id)` returns the title, or null for
+ * unknown / not-visible cards (left as written). Same token rule as the plugin's cardRefs.ts.
+ */
+export function expandCardRefs(text, titleOf) {
+  return String(text || '').replace(/(^|[\s([{"'«>*_~])@([a-z0-9]{1,12})(?![\p{L}\p{N}_])/gu, (m, pre, id) => {
+    const t = titleOf(id);
+    return t ? `${pre}«${t}»` : m;
+  });
+}
+
 /** Shorten a comment for a preview: markdown links/images to their text, one paragraph. */
 export function preview(body, max = 280) {
   let t = String(body || '')
@@ -384,11 +395,16 @@ export function createNotifier(db, { log = console } = {}) {
     const people = peopleForCard(boardId, cardId);
     const mentioned = findMentions(body, people);
     const before = previousBody != null ? new Set(findMentions(previousBody, people)) : new Set();
-    const title = esc(cardTitle(card.content));
-    const quote = `\n\n<blockquote>${esc(preview(body))}</blockquote>`;
+    // @cardId refs read as the card's title, but only cards the recipient can see.
+    const refs = (uid) => (id) => {
+      const rc = id === cardId ? card : cardInfo(boardId, id);
+      return rc && canSee(uid, rc) ? cardTitle(rc.content) : null;
+    };
+    const titleFor = (uid) => esc(expandCardRefs(cardTitle(card.content), refs(uid)));
+    const quoteFor = (uid) => `\n\n<blockquote>${esc(preview(expandCardRefs(body, refs(uid))))}</blockquote>`;
     for (const id of mentioned) {
       if (id === actor.id || before.has(id) || !canSee(id, card)) continue;
-      queue(id, `mention:${cardId}:${body.length}:${Date.now()}`, `💬 <b>${esc(actor.name)}</b> mentioned you on <b>${title}</b>\n${where(card)}${quote}`);
+      queue(id, `mention:${cardId}:${body.length}:${Date.now()}`, `💬 <b>${esc(actor.name)}</b> mentioned you on <b>${titleFor(id)}</b>\n${where(card)}${quoteFor(id)}`);
     }
     if (previousBody != null) return; // edits only notify new mentions
     // A reply tells the author of the comment it answers (once, even if also assigned).
@@ -397,12 +413,12 @@ export function createNotifier(db, { log = console } = {}) {
         ? replyToUserId
         : null;
     if (replied) {
-      queue(replied, `reply:${cardId}:${Date.now()}`, `↩️ <b>${esc(actor.name)}</b> replied to your comment on <b>${title}</b>\n${where(card)}${quote}`);
+      queue(replied, `reply:${cardId}:${Date.now()}`, `↩️ <b>${esc(actor.name)}</b> replied to your comment on <b>${titleFor(replied)}</b>\n${where(card)}${quoteFor(replied)}`);
     }
     for (const id of assigneesOf(card)) {
       if (id === replied) continue;
       if (id === actor.id || mentioned.includes(id) || !canSee(id, card)) continue;
-      queue(id, `comment:${cardId}:${Date.now()}`, `💬 <b>${esc(actor.name)}</b> commented on <b>${title}</b>\n${where(card)}${quote}`);
+      queue(id, `comment:${cardId}:${Date.now()}`, `💬 <b>${esc(actor.name)}</b> commented on <b>${titleFor(id)}</b>\n${where(card)}${quoteFor(id)}`);
     }
   }
 
@@ -411,10 +427,14 @@ export function createNotifier(db, { log = console } = {}) {
     for (const ev of events || []) {
       const card = cardInfo(boardId, ev.cardId);
       if (!card) continue;
-      const title = esc(cardTitle(card.content));
+      const refs = (uid) => (id) => {
+        const rc = id === ev.cardId ? card : cardInfo(boardId, id);
+        return rc && canSee(uid, rc) ? cardTitle(rc.content) : null;
+      };
+      const titleFor = (uid) => esc(expandCardRefs(cardTitle(card.content), refs(uid)));
       if (ev.type === 'assigned') {
         if (ev.userId === actor.id || !canSee(ev.userId, card)) continue;
-        queue(ev.userId, `assigned:${ev.cardId}`, `👤 <b>${esc(actor.name)}</b> assigned you to <b>${title}</b>\n${where(card)}`);
+        queue(ev.userId, `assigned:${ev.cardId}`, `👤 <b>${esc(actor.name)}</b> assigned you to <b>${titleFor(ev.userId)}</b>\n${where(card)}`);
       } else if (ev.type === 'moved') {
         if (card.archived) continue;
         // Backlog is "later": parking a card there isn't news.
@@ -422,7 +442,7 @@ export function createNotifier(db, { log = console } = {}) {
         for (const id of assigneesOf(card)) {
           if (id === actor.id || !canSee(id, card)) continue;
           // Keyed by card: dragging through several lists sends only where it ended up.
-          queue(id, `moved:${ev.cardId}`, `➡️ <b>${esc(actor.name)}</b> moved <b>${title}</b> to <b>${esc(card.lane || '?')}</b>\n<i>${esc(card.board)}</i>`);
+          queue(id, `moved:${ev.cardId}`, `➡️ <b>${esc(actor.name)}</b> moved <b>${titleFor(id)}</b> to <b>${esc(card.lane || '?')}</b>\n<i>${esc(card.board)}</i>`);
         }
       }
     }

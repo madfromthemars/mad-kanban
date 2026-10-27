@@ -44,6 +44,8 @@ import {
 } from 'src/team/ui/CardPanel';
 import { LocalAttachButton } from './CardChecklist';
 import { parseTeamItemId } from 'src/team/ids';
+import { referencedBy } from 'src/cardRefs';
+import { CardChip } from '../RefText';
 
 import { MarkdownEditor, allowNewLine } from '../Editor/MarkdownEditor';
 import { MarkdownRenderer } from '../MarkdownRenderer/MarkdownRenderer';
@@ -219,6 +221,8 @@ const CardDetailContent = memo(function CardDetailContent({
 
   const isTeam = isTeamItem(currentItem);
   const teamIds = isTeam ? parseTeamItemId(currentItem.id) : null;
+  const selfRefId = teamIds?.cardId || currentItem.data.blockId || null;
+  const mentionedIn = useMemo(() => (selfRefId ? referencedBy(board, selfRefId) : []), [board, selfRefId]);
 
   // Team boards reload from the server while the modal is open, so the card's
   // index can shift; always look it up by id before writing.
@@ -759,7 +763,7 @@ const CardDetailContent = memo(function CardDetailContent({
             <div className={c('cd-section-head')}>
               <span className={c('cd-section-title')}>Checklist</span>
             </div>
-            <Checklist body={bodyText} onChange={(next) => writeCard(next)} />
+            <Checklist body={bodyText} onChange={(next) => writeCard(next)} selfRefId={selfRefId} />
           </section>
 
           {teamIds && (
@@ -862,6 +866,20 @@ const CardDetailContent = memo(function CardDetailContent({
           {isTeam && (
             <Field label="Created by">
               <CreatedBy item={currentItem} />
+            </Field>
+          )}
+
+          {mentionedIn.length > 0 && (
+            <Field
+              label="Mentioned in"
+              expand
+              summary={`${mentionedIn.length} card${mentionedIn.length === 1 ? '' : 's'}`}
+            >
+              <div className={c('cd-mentioned-in')}>
+                {mentionedIn.map((r) => (
+                  <CardChip key={r.id} id={r.id} />
+                ))}
+              </div>
             </Field>
           )}
 
