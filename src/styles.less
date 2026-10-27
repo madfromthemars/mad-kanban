@@ -6377,3 +6377,40 @@ button.kanban-plugin__upload-cancel {
     white-space: nowrap;
   }
 }
+
+.kanban-plugin__cd-card-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--font-ui-small);
+
+  code {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--background-modifier-hover);
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: all;
+    -webkit-user-select: all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  code:hover {
+    color: var(--text-normal);
+  }
+  .kanban-plugin__cd-card-id-copied {
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
+  }
+  button.kanban-plugin__cd-card-id-link {
+    padding: 2px;
+    height: auto;
+    color: var(--text-faint);
+  }
+  button.kanban-plugin__cd-card-id-link svg {
+    width: 14px;
+    height: 14px;
+  }
+}

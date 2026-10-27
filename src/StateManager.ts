@@ -14,6 +14,8 @@ import { getTaskStatusDone } from './parsers/helpers/inlineMetadata';
 import { defaultMetadataPosition } from './settingHelpers';
 import { sortByPriority } from './cardTasks';
 import { mergeTagColors } from './tagColors';
+import { ensureCardIds } from './cardIds';
+import { teamBoardIdKey } from './team/types';
 
 
 function sortBoardByPriority(board: Board): Board {
@@ -117,9 +119,13 @@ export class StateManager {
   async newBoard(view: KanbanView, md: string) {
     try {
       let board = this.getParsedBoard(md);
+      // Personal boards: cards without an id get one, saved back once.
+      const withIds = this.isPersonalBoard(board) ? ensureCardIds(board) : board;
+      const addedIds = withIds !== board;
+      board = withIds;
       await view.prerender(board);
       if (this.teamMirror) board = this.teamMirror.inject(board);
-      this.setRemoteState(board, false);
+      this.setRemoteState(board, addedIds);
       if (!this.teamAttached && this.plugin?.team) {
         this.teamAttached = true;
         this.plugin.team.attach(this);
@@ -127,6 +133,13 @@ export class StateManager {
     } catch (e) {
       this.setError(e);
     }
+  }
+
+  /** Not a server-owned team board (those use the server's card ids). */
+  isPersonalBoard(board: Board = this.state) {
+    if (this.teamSync) return false;
+    const id = board?.data?.frontmatter?.[teamBoardIdKey];
+    return !(typeof id === 'string' && id.trim());
   }
 
   /** Cards stay ordered by priority unless the board or global setting turns it off. */
@@ -194,6 +207,9 @@ export class StateManager {
       let newState = typeof state === 'function' ? state(this.state) : state;
       if (this.teamSync?.ready && !this.applyingRemote && newState) {
         newState = this.teamSync.assignIds(newState);
+      }
+      if (!this.applyingRemote && newState && this.isPersonalBoard(newState)) {
+        newState = ensureCardIds(newState);
       }
       if (newState && this.sortsByPriority(newState)) {
         newState = sortBoardByPriority(newState);

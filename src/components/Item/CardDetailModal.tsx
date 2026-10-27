@@ -112,6 +112,33 @@ const PRIORITIES = PRIORITY_LEVELS;
  * Phones: a list row, label on the left. Compact controls sit in the row; bigger
  * editors (`expand`) show a summary and open under the row when tapped.
  */
+/** Card id: click copies it; on personal boards a second button copies a [[board#^id]] link. */
+function CardIdValue({ id, link }: { id: string; link?: string }) {
+  const [copied, setCopied] = useState<'' | 'id' | 'link'>('');
+  const copy = (text: string, what: 'id' | 'link') => {
+    void navigator.clipboard.writeText(text);
+    setCopied(what);
+    window.setTimeout(() => setCopied(''), 1200);
+  };
+  return (
+    <span className={c('cd-card-id')}>
+      <code title="Copy ID" onClick={() => copy(id, 'id')}>
+        {id}
+      </code>
+      {copied === 'id' && <span className={c('cd-card-id-copied')}>Copied</span>}
+      {link && (
+        <button
+          className={`clickable-icon ${c('cd-card-id-link')}`}
+          aria-label={copied === 'link' ? 'Link copied' : 'Copy link to card'}
+          onClick={() => copy(link, 'link')}
+        >
+          <Icon name={copied === 'link' ? 'lucide-check' : 'lucide-link'} />
+        </button>
+      )}
+    </span>
+  );
+}
+
 function Field({
   label,
   children,
@@ -840,6 +867,23 @@ const CardDetailContent = memo(function CardDetailContent({
           {isTeam && (
             <Field label="Created by">
               <CreatedBy item={currentItem} />
+            </Field>
+          )}
+
+          {(teamIds?.cardId || currentItem.data.blockId) && (
+            <Field label="ID">
+              <CardIdValue
+                id={teamIds?.cardId || currentItem.data.blockId}
+                link={
+                  !isTeam && currentItem.data.blockId
+                    ? stateManager.app.fileManager.generateMarkdownLink(
+                        stateManager.file,
+                        '',
+                        '#^' + currentItem.data.blockId
+                      )
+                    : undefined
+                }
+              />
             </Field>
           )}
 
