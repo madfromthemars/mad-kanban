@@ -601,6 +601,27 @@ export class TeamManager {
     return host;
   }
 
+  /** Re-renders the caller (once per frame at most) whenever the card index changes. */
+  useCardsVersion(): number {
+    const [v, setV] = useState(0);
+    useEffect(() => {
+      let frame: number | null = null;
+      const fn = () => {
+        if (frame != null) return;
+        frame = activeWindow.requestAnimationFrame(() => {
+          frame = null;
+          setV((n) => n + 1);
+        });
+      };
+      this.emitter.on('cards', fn);
+      return () => {
+        this.emitter.off('cards', fn);
+        if (frame != null) activeWindow.cancelAnimationFrame(frame);
+      };
+    }, []);
+    return v;
+  }
+
   useCardInfo(cardId: string | null): CardInfo | null {
     const [info, setInfo] = useState(cardId ? this.getCardInfo(cardId) : null);
     useEffect(() => {

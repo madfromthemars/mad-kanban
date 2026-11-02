@@ -238,7 +238,9 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     (item: Item) => {
       const ids = parseTeamItemId(item.id);
       if (!ids || !team) return null;
-      return team.getCard(ids.cardId)?.assignees || [];
+      const card = team.getCard(ids.cardId);
+      // A card created a moment ago isn't indexed until the server answers; use what it was created with.
+      return card ? card.assignees || [] : item.data.teamAssignees || [];
     },
     [team]
   );
@@ -246,10 +248,13 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     (item: Item) => {
       const ids = parseTeamItemId(item.id);
       if (!ids || !team) return null;
-      return team.getCard(ids.cardId)?.projectId || null;
+      const card = team.getCard(ids.cardId);
+      return card ? card.projectId || null : item.data.teamProject || null;
     },
     [team]
   );
+  // Filters read assignees/projects from the card index, so redraw when it changes.
+  if (team) team.useCardsVersion();
   const filterValue = useFilterValue(boardData, cardBodyCache, filePath, getAssignees, team?.user?.id, getProject);
 
   return (
