@@ -33,6 +33,7 @@ import { ErrorReporter } from './ErrorReporter';
 import { teamBoardIdKey } from './team/types';
 import { PluginUpdater } from './team/PluginUpdater';
 import { bindCardRefClicks } from './cardRefOpen';
+import { bindPhoneKeyboard } from './phoneKeyboard';
 import { CardRefSuggest } from './components/Editor/CardRefSuggest';
 
 interface WindowRegistry {
@@ -495,6 +496,7 @@ export default class KanbanPlugin extends Plugin {
 
     render(createApp(win, this), el);
     bindCardRefClicks(this, win);
+    bindPhoneKeyboard(this, win);
   }
 
   unmount(win: Window) {

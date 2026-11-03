@@ -5704,7 +5704,8 @@ button.kanban-plugin__upload-cancel {
       bottom: 0;
       z-index: 2;
       margin-left: 0;
-      margin-bottom: env(safe-area-inset-bottom);
+      // The home-bar gap only matters while the keyboard is down.
+      margin-bottom: ~"max(0px, calc(env(safe-area-inset-bottom) - var(--keyboard-height, 0px)))";
       background: var(--background-primary);
       box-shadow: 0 -8px 16px var(--background-primary);
     }
@@ -5728,6 +5729,34 @@ button.kanban-plugin__upload-cancel {
     .cm-content {
       font-size: 16px;
     }
+  }
+
+  // The keyboard covers the bottom of the screen, and Obsidian only shrinks
+  // .app-container for it (modals sit outside). Lift the bottom of our modals
+  // above the keyboard so the comment box and other fields stay visible;
+  // phoneKeyboard.ts then scrolls the focused field into view.
+  .modal-container:has(
+      .kanban-plugin__card-detail-window,
+      .kanban-plugin__new-card-window,
+      .kanban-plugin__new-board-modal,
+      .kanban-plugin__board-settings-modal,
+      .kanban-plugin__manage-team-modal,
+      .kanban-plugin__add-device-modal,
+      .kanban-plugin__ai-key-modal,
+      .kanban-plugin__progress-modal
+    ) {
+    bottom: var(--keyboard-height, 0px);
+  }
+  // @ suggestions sit above the field; keep them inside the space left over.
+  .kanban-plugin__mention-popup {
+    max-height: ~"min(260px, calc((100vh - var(--keyboard-height, 0px)) * 0.4))";
+  }
+  // Checklist suggestions open below the field on desktop; on a phone that's
+  // where the keyboard is, so open them above like the comment box does.
+  .kanban-plugin__checklist-edit-wrap .kanban-plugin__mention-popup,
+  .kanban-plugin__checklist-add-row .kanban-plugin__mention-popup {
+    top: auto;
+    bottom: calc(100% + 4px);
   }
 
   // Add card: a sheet at the top, so the keyboard doesn't cover it.
