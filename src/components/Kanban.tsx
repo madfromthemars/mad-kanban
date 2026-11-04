@@ -256,6 +256,14 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
   // Filters read assignees/projects from the card index, so redraw when it changes.
   if (team) team.useCardsVersion();
   const filterValue = useFilterValue(boardData, cardBodyCache, filePath, getAssignees, team?.user?.id, getProject);
+  // Priority changes don't move cards right away; changing a filter re-sorts the lists.
+  const filtersKey = JSON.stringify(filterValue.filters);
+  const lastFiltersKey = useRef(filtersKey);
+  useEffect(() => {
+    if (lastFiltersKey.current === filtersKey) return;
+    lastFiltersKey.current = filtersKey;
+    stateManager.resortByPriority();
+  }, [filtersKey]);
 
   return (
     <DndScope id={view.id}>

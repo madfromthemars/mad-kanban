@@ -131,7 +131,8 @@ export class TeamSync {
       board = update(board, { data: { settings: { $set: { ...personal, ...serverShared } } } });
     }
 
-    this.stateManager.setRemoteState(board, true);
+    // First server data since the board opened: sort by current priorities.
+    this.stateManager.setRemoteState(board, true, !prevSnapshot);
     if (push.length) {
       this.queue.push(...push);
       void this.flush();

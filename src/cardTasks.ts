@@ -120,16 +120,34 @@ export function priorityRank(p: string | undefined | null) {
 
 /** Stable sort by priority; returns the same array when already in order. */
 export function sortByPriority<T>(items: T[], getPriority: (item: T) => string | undefined) {
+  return sortByRank(items, (item) => priorityRank(getPriority(item)));
+}
+
+/**
+ * Priority rank as of the last re-sort. A card keeps the rank it had when it was
+ * first seen, so changing its priority doesn't move it until the ranks are reset
+ * (board opened again or a filter changed).
+ */
+export function frozenRank(frozen: Map<string, number>, key: string, priority: string | undefined | null) {
+  const known = frozen.get(key);
+  if (known !== undefined) return known;
+  const rank = priorityRank(priority);
+  frozen.set(key, rank);
+  return rank;
+}
+
+/** Stable sort by a numeric rank; returns the same array when already in order. */
+export function sortByRank<T>(items: T[], getRank: (item: T) => number) {
   let sorted = true;
   for (let i = 1; i < items.length; i++) {
-    if (priorityRank(getPriority(items[i - 1])) > priorityRank(getPriority(items[i]))) {
+    if (getRank(items[i - 1]) > getRank(items[i])) {
       sorted = false;
       break;
     }
   }
   if (sorted) return items;
   return items
-    .map((item, i) => ({ item, i, r: priorityRank(getPriority(item)) }))
+    .map((item, i) => ({ item, i, r: getRank(item) }))
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map((x) => x.item);
 }

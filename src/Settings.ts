@@ -407,7 +407,7 @@ export class SettingsManager {
 
     new Setting(contentEl)
       .setName('Sort cards by priority')
-      .setDesc('Keep cards in each list ordered Highest → Low, then cards without a priority. Cards with the same priority keep your order.')
+      .setDesc('Keep cards in each list ordered Highest → Low, then cards without a priority. Cards with the same priority keep your order. A card whose priority you change stays in place until you change a filter or open the board again.')
       .then((setting) => {
         let toggleComponent: ToggleComponent;
 

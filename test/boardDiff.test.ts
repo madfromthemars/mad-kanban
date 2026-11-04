@@ -1,7 +1,7 @@
 // Run: npm run test:team
 import { diffMirror, diffTeamBoard } from 'src/team/boardDiff';
 import { mirrorLaneId, teamItemId, teamLaneId } from 'src/team/ids';
-import { joinCardBody, splitCardBody, splitFrontmatter, removeTagTokens, addTask, deleteTask, editTask, moveTask, parseTasks, setDueInTitle, sortByPriority, stripDateTokens, toggleTask } from 'src/cardTasks';
+import { joinCardBody, splitCardBody, splitFrontmatter, removeTagTokens, addTask, deleteTask, editTask, moveTask, parseTasks, setDueInTitle, sortByPriority, sortByRank, frozenRank, stripDateTokens, toggleTask } from 'src/cardTasks';
 
 const B = 'board1';
 const item = (id: string, titleRaw: string, checked = false): any => ({
@@ -77,6 +77,16 @@ check('due: strip for display', stripDateTokens('Task @{2026-10-01} @@{10:00}'),
 check('priority: stable sort', sortByPriority([['a', undefined], ['b', '1'], ['c', '0'], ['d', '1'], ['e', '4']], (x) => x[1]).map((x) => x[0]), ['c', 'b', 'd', 'e', 'a']);
 const already = [['a', '0'], ['b', undefined]];
 check('priority: unchanged array kept', sortByPriority(already, (x) => x[1]) === already, true);
+{
+  // A priority change keeps the card in place until the remembered ranks are reset.
+  const ranks = new Map<string, number>();
+  const sortLane = (lane: [string, string | undefined][]) => sortByRank(lane, (x) => frozenRank(ranks, x[0], x[1])).map((x) => x[0]);
+  check('priority: opens sorted', sortLane([['a', '2'], ['b', '0']]), ['b', 'a']);
+  check('priority: change keeps place', sortLane([['b', '4'], ['a', '0']]), ['b', 'a']);
+  check('priority: new card sorted in', sortLane([['b', '4'], ['a', '0'], ['n', '0']]), ['b', 'n', 'a']);
+  ranks.clear();
+  check('priority: re-sort after reset', sortLane([['b', '4'], ['n', '0'], ['a', '0']]), ['n', 'a', 'b']);
+}
 
 // card parts
 const cardBody = 'Fix the #urgent login bug\n\n- [ ] Repro #qa\n- [x] Patch\n\nSee [docs](http://x.io/#anchor)\n#vidora #backend';

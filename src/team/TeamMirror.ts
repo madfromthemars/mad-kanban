@@ -26,6 +26,8 @@ export class TeamMirror {
   private refreshTimer: number | null = null;
   private destroyed = false;
   private refreshing = false;
+  /** Set after the first successful refresh (fresh priorities since the board opened). */
+  private loaded = false;
   private refreshRequested = false;
 
   constructor(manager: TeamManager, stateManager: StateManager) {
@@ -114,7 +116,8 @@ export class TeamMirror {
       for (const c of cards) this.versions.set(c.id, c.version);
       this.manager.indexMyCards(cards);
       this.lastError = null;
-      this.apply();
+      this.apply(!this.loaded);
+      this.loaded = true;
     } catch (e) {
       this.lastError = e instanceof TeamApiError ? e.message : String(e?.message || e);
       console.error('[Kanban team] mirror refresh failed', e);
@@ -135,10 +138,10 @@ export class TeamMirror {
     }, delay);
   }
 
-  private apply() {
+  private apply(resort = false) {
     const base = this.stateManager.state;
     if (!base) return;
-    this.stateManager.setRemoteState(this.inject(base), false);
+    this.stateManager.setRemoteState(this.inject(base), false, resort);
   }
 
   onLocalChange(prev: Board, next: Board) {

@@ -12,17 +12,20 @@ import { ListFormat } from './parsers/List';
 import { BaseFormat, frontmatterKey, shouldRefreshBoard } from './parsers/common';
 import { getTaskStatusDone } from './parsers/helpers/inlineMetadata';
 import { defaultMetadataPosition } from './settingHelpers';
-import { sortByPriority } from './cardTasks';
+import { frozenRank, sortByRank } from './cardTasks';
 import { mergeTagColors } from './tagColors';
 import { ensureCardIds } from './cardIds';
 import { refreshCardRefChips } from './components/cardRefDom';
 import { teamBoardIdKey } from './team/types';
 
 
-function sortBoardByPriority(board: Board): Board {
+/** Sort each lane by the priority each card had at the last re-sort (see `frozenRank`). */
+function sortBoardByPriority(board: Board, frozen: Map<string, number>): Board {
   let changed = false;
   const lanes = board.children.map((lane) => {
-    const children = sortByPriority(lane.children, (item) => item.data.metadata?.priority);
+    const children = sortByRank(lane.children, (item) =>
+      frozenRank(frozen, item.data.blockId || item.id, item.data.metadata?.priority)
+    );
     if (children === lane.children) return lane;
     changed = true;
     return { ...lane, children };
@@ -161,8 +164,25 @@ export class StateManager {
     return this.getGlobalSetting('sort-by-priority') !== false;
   }
 
-  /** Apply a board that did not originate from a user edit (server snapshot, mirror, re-parse). */
-  setRemoteState(board: Board, shouldSave: boolean) {
+  /**
+   * Priority each card had at the last re-sort. Priority changes (ours or a
+   * teammate's) don't move a card; it moves when the board is opened again or a
+   * filter changes. Starts empty, so the board opens sorted by current priority.
+   */
+  private priorityRanks = new Map<string, number>();
+
+  /** Re-sort every list by the cards' current priorities (filter changed). */
+  resortByPriority() {
+    this.priorityRanks.clear();
+    if (this.state && this.sortsByPriority(this.state)) this.setState((board) => board);
+  }
+
+  /**
+   * Apply a board that did not originate from a user edit (server snapshot, mirror, re-parse).
+   * `resort`: forget remembered priorities first (first fresh data after the board opened).
+   */
+  setRemoteState(board: Board, shouldSave: boolean, resort = false) {
+    if (resort) this.priorityRanks.clear();
     const prev = this.applyingRemote;
     this.applyingRemote = true;
     try {
@@ -224,7 +244,10 @@ export class StateManager {
         newState = ensureCardIds(newState);
       }
       if (newState && this.sortsByPriority(newState)) {
-        newState = sortBoardByPriority(newState);
+        newState = sortBoardByPriority(newState, this.priorityRanks);
+      } else {
+        // Sorting off: when it's turned back on, sort by current priorities.
+        this.priorityRanks.clear();
       }
       const newSettings = newState?.data.settings;
 
