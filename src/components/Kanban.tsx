@@ -393,6 +393,10 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                     ?.querySelector<HTMLElement>(`.${c('lane-items')}`)
                     ?.scrollTo({ top: 0 });
                 }}
+                onAdd={() => {
+                  // The list's own "+ Add a card" button is hidden on phones; the tab row has this one.
+                  rootRef.current?.querySelector<HTMLElement>(`.${c('new-item-button')}`)?.click();
+                }}
                 onMenu={() => {
                   // The list's own menu (archive cards, sort) lives in its hidden header.
                   rootRef.current

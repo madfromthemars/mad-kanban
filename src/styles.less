@@ -6832,7 +6832,7 @@ button.kanban-plugin__upload-cancel {
     display: none;
   }
   .kanban-plugin__lane-items {
-    padding: 8px 12px calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 88px);
+    padding: 8px 12px calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 24px);
     gap: 0;
   }
 
@@ -6864,36 +6864,15 @@ button.kanban-plugin__upload-cancel {
     display: none;
   }
 
-  // "+ Add a card" becomes a round button floating over the list.
+  // The list's own "+ Add a card" is replaced by the + in the tab row.
   .kanban-plugin__lane .kanban-plugin__item-button-wrapper {
-    position: fixed;
-    right: 18px;
-    // Above Obsidian's bottom bar (floating or not).
-    bottom: calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 14px);
-    z-index: 5;
-    padding: 0;
-    border: 0;
-    background: none;
+    display: none;
   }
-  .kanban-plugin__lane button.kanban-plugin__new-item-button {
-    width: 56px;
-    height: 56px;
-    padding: 0;
-    border-radius: 50%;
-    justify-content: center;
+  button.kanban-plugin__phone-tabs-add {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
-    font-size: 0;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-
-    .kanban-plugin__item-button-plus {
-      margin: 0;
-      font-size: 30px;
-      font-weight: 400;
-    }
-  }
-  &.something-is-dragging .kanban-plugin__item-button-wrapper {
-    display: none;
+    border-radius: 50%;
+    --icon-size: 20px;
   }
 }
 
@@ -6907,4 +6886,387 @@ button.kanban-plugin__upload-cancel {
 .is-phone .kanban-plugin__trash-float {
   bottom: calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 14px);
   white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * Phone card window (2.1.57): a top bar (close · title · ⋯), status / priority /
+ * due as chips under the title, the rest folded under "Details", compact comment row.
+ * ------------------------------------------------------------------------- */
+.is-phone .modal.kanban-plugin__card-detail-window {
+  // Obsidian's own header (a floating ✕) is replaced by our top bar.
+  > .modal-close-button,
+  > .modal-header,
+  > .modal-header-button {
+    display: none;
+  }
+
+  // The window itself scrolls; the content grows with it so the top bar stays stuck.
+  .kanban-plugin__card-detail-content {
+    flex: none;
+    height: auto;
+    min-height: 100%;
+  }
+  .kanban-plugin__cd-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 52px;
+    padding: 0 8px;
+    background: var(--modal-background, var(--background-primary));
+    border-bottom: 1px solid transparent;
+    transition: border-color 150ms ease;
+
+    &.is-scrolled {
+      border-bottom-color: var(--background-modifier-border);
+    }
+  }
+  button.kanban-plugin__cd-topbar-button {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+
+    svg {
+      width: 22px;
+      height: 22px;
+    }
+  }
+  .kanban-plugin__cd-topbar-title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0;
+    transition: opacity 150ms ease;
+  }
+  .kanban-plugin__cd-topbar.is-scrolled .kanban-plugin__cd-topbar-title {
+    opacity: 1;
+  }
+
+  .kanban-plugin__cd-header {
+    padding: 0 16px 14px;
+  }
+  .kanban-plugin__card-detail-title h2 {
+    font-size: 22px;
+    line-height: 1.3;
+  }
+
+  // Status · priority · due
+  .kanban-plugin__cd-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  button.kanban-plugin__cd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 18px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    box-shadow: none;
+    color: var(--text-normal);
+    font-size: 15px;
+    font-weight: 500;
+    --icon-size: 16px;
+
+    .kanban-plugin__icon {
+      display: inline-flex;
+    }
+    &.is-empty {
+      color: var(--text-muted);
+    }
+    &.is-open {
+      border-color: var(--interactive-accent);
+    }
+  }
+  .kanban-plugin__cd-chip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-purple, #a855f7);
+  }
+  [data-status='todo'] > .kanban-plugin__cd-chip-dot,
+  [data-status='backlog'] > .kanban-plugin__cd-chip-dot,
+  [data-status='archive'] > .kanban-plugin__cd-chip-dot {
+    background: var(--color-base-50, #8a8a8a);
+  }
+  [data-status='inprogress'] > .kanban-plugin__cd-chip-dot {
+    background: var(--color-blue, #3b82f6);
+  }
+  [data-status='review'] > .kanban-plugin__cd-chip-dot {
+    background: var(--color-orange, #f59e0b);
+  }
+  [data-status='done'] > .kanban-plugin__cd-chip-dot {
+    background: var(--color-green, #22c55e);
+  }
+  .kanban-plugin__cd-chip-editor {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    background: var(--background-secondary);
+  }
+  .kanban-plugin__cd-people {
+    margin-top: 12px;
+
+    .kanban-plugin__team-extras {
+      justify-content: flex-start;
+      gap: 10px;
+      padding: 0;
+
+      > * {
+        margin: 0;
+      }
+    }
+    .kanban-plugin__assignee {
+      width: 32px;
+      height: 32px;
+      font-size: 12px;
+    }
+    .kanban-plugin__assign-button {
+      opacity: 1;
+      height: 32px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 16px;
+      border: 1px dashed var(--background-modifier-border);
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+  }
+
+  // Everything else is folded under "Details".
+  .kanban-plugin__cd-sidebar.is-folded > :not(.kanban-plugin__cd-details-toggle) {
+    display: none;
+  }
+  button.kanban-plugin__cd-details-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 48px;
+    height: auto;
+    margin: 0;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-normal);
+    font: inherit;
+    text-align: left;
+  }
+  .kanban-plugin__cd-sidebar:not(.is-folded) > .kanban-plugin__cd-details-toggle {
+    border-bottom: 1px solid var(--background-modifier-border);
+  }
+  .kanban-plugin__cd-sidebar > .kanban-plugin__cd-details-toggle + * {
+    border-top: 0 !important;
+  }
+
+  // Comment box: one row — attach · growing field · send.
+  .kanban-plugin__comment-form {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-auto-flow: row dense;
+    align-items: end;
+    gap: 6px;
+    padding: 8px 0;
+
+    > :not(.kanban-plugin__comment-input):not(.kanban-plugin__comment-actions) {
+      grid-column: 1 / -1;
+    }
+    .kanban-plugin__comment-input {
+      grid-column: 2;
+      min-height: 40px;
+      max-height: 140px;
+      padding: 9px 12px;
+      border-radius: 20px;
+      resize: none;
+      line-height: 1.35;
+    }
+    .kanban-plugin__comment-actions {
+      display: contents;
+    }
+    .kanban-plugin__attach-button {
+      grid-column: 1;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      justify-content: center;
+      border-radius: 50%;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text-muted);
+      --icon-size: 20px;
+    }
+    .kanban-plugin__cd-hint {
+      display: none;
+    }
+    button.kanban-plugin__comment-send {
+      grid-column: 3;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      --icon-size: 18px;
+
+      &:disabled {
+        opacity: 0.4;
+      }
+    }
+  }
+}
+
+/* Phone filters: a sheet from the bottom with every option as a chip (2.1.57). */
+.is-phone {
+  .kanban-plugin__fs-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--layer-modal);
+    display: flex;
+    align-items: flex-end;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .kanban-plugin__fs-sheet {
+    width: 100%;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 18px 18px 0 0;
+    background: var(--background-primary);
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.3);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .kanban-plugin__fs-grabber {
+    width: 40px;
+    height: 5px;
+    margin: 8px auto 2px;
+    border-radius: 3px;
+    background: var(--background-modifier-border);
+  }
+  .kanban-plugin__fs-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 18px 10px;
+  }
+  .kanban-plugin__fs-title {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .kanban-plugin__fs-clear,
+  .kanban-plugin__fs-section-head a {
+    color: var(--text-accent);
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    text-decoration: none;
+  }
+  .kanban-plugin__fs-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 18px 8px;
+  }
+  .kanban-plugin__fs-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--background-modifier-border);
+  }
+  .kanban-plugin__fs-section {
+    padding: 14px 0 4px;
+  }
+  .kanban-plugin__fs-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .kanban-plugin__fs-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  button.kanban-plugin__fs-option,
+  button.kanban-plugin__fs-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 38px;
+    max-width: 100%;
+    padding: 0 14px;
+    border-radius: 19px;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-normal);
+    font-size: 15px;
+    font-weight: 500;
+    --icon-size: 16px;
+
+    .kanban-plugin__icon {
+      display: inline-flex;
+    }
+    .kanban-plugin__assignee {
+      width: 22px;
+      height: 22px;
+      font-size: 9px;
+    }
+    &.is-on {
+      border-color: var(--interactive-accent);
+      background: hsla(var(--interactive-accent-hsl), 0.18);
+    }
+  }
+  button.kanban-plugin__fs-more {
+    border-style: dashed;
+    color: var(--text-muted);
+  }
+  .kanban-plugin__fs-option-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kanban-plugin__fs-option-count {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .kanban-plugin__fs-foot {
+    padding: 10px 18px 14px;
+    border-top: 1px solid var(--background-modifier-border);
+  }
+  button.kanban-plugin__fs-done {
+    width: 100%;
+    height: 46px;
+    border-radius: 12px;
+    font-size: 16px;
+  }
 }

@@ -64,11 +64,17 @@ async function teamCardOp(stateManager: StateManager, item: Item, type: 'card.de
 const isMirrored = (stateManager: StateManager, item: Item) => isTeamItem(item) && !stateManager.teamSync;
 
 /** A card was dropped on the Delete zone: confirm, then delete. */
-export function deleteDroppedCard(stateManager: StateManager, modifiers: BoardModifiers, path: Path) {
+export function deleteDroppedCard(
+  stateManager: StateManager,
+  modifiers: BoardModifiers,
+  path: Path,
+  onDeleted?: () => void
+) {
   const item = getEntityFromPath(stateManager.state, path) as Item;
   if (!item || item.type !== DataTypes.Item) return;
   const title = extractCardTitle(item.data.titleRaw) || 'this card';
   new ConfirmDeleteModal(stateManager.app, title, () => {
+    onDeleted?.();
     if (isMirrored(stateManager, item)) {
       void teamCardOp(stateManager, item, 'card.delete');
       return;

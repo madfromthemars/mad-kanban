@@ -1,4 +1,4 @@
-import { App, Modal, Platform, TFile } from 'obsidian';
+import { App, Menu, Modal, Notice, Platform, TFile } from 'obsidian';
 import { render } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
@@ -30,7 +30,9 @@ import {
   tagsIn,
 } from 'src/cardTasks';
 import { Checklist, DuePicker, TagEditor } from './CardChecklist';
-import { PRIORITY_LEVELS, PriorityIcon } from './PriorityIcon';
+import { PRIORITY_LEVELS, PriorityIcon, priorityLevel } from './PriorityIcon';
+import { deleteDroppedCard } from '../BoardZones';
+import { laneKey } from 'src/team/laneKey';
 import { Icon } from '../Icon/Icon';
 import { cardWindowEscape, copyInlineCode, openLightbox } from '../copyOnClick';
 import {
@@ -206,7 +208,22 @@ const CardDetailContent = memo(function CardDetailContent({
   const [currentItem, setCurrentItem] = useState(item);
   const [isRenaming, setIsRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Phones: due date picker under the chips, the less-used fields folded under "Details".
+  const [dueOpen, setDueOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const board = stateManager.useState();
+
+  // Phones: the top bar shows the title once the big one has scrolled away.
+  useEffect(() => {
+    if (!Platform.isPhone) return;
+    const scroller = rootRef.current?.closest('.modal-content') as HTMLElement | null;
+    if (!scroller) return;
+    const onScroll = () => setScrolled(scroller.scrollTop > 72);
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', onScroll);
+  }, []);
 
   // Keep showing the latest version of this card (server syncs, edits from the board).
   useEffect(() => {
@@ -639,8 +656,77 @@ const CardDetailContent = memo(function CardDetailContent({
   const descriptionMd = splitCardBody(splitFrontmatter(contentToRender).rest).description;
   const editing = isEditing(editState);
 
+  // Phone header: status / priority / due as chips, card actions in the ⋯ menu.
+  const isPhone = Platform.isPhone;
+  const laneName = lanes[laneIndex]?.data.title || laneTitle;
+  const due = currentItem.data.metadata.date;
+  const projectName = teamIds ? team?.project(team.getCard(teamIds.cardId)?.projectId)?.name : null;
+  const refId = teamIds?.cardId || currentItem.data.blockId;
+
+  const openStatusMenu = (e: MouseEvent) => {
+    const menu = new Menu();
+    lanes.forEach((l, i) =>
+      menu.addItem((mi) => mi.setTitle(l.data.title).setChecked(i === laneIndex).onClick(() => moveToLane(i)))
+    );
+    menu.showAtMouseEvent(e);
+  };
+  const openPriorityMenu = (e: MouseEvent) => {
+    const menu = new Menu();
+    [...PRIORITIES].reverse().forEach((p) =>
+      menu.addItem((mi) =>
+        mi
+          .setTitle(p.label)
+          .setIcon(p.icon)
+          .setChecked(p.value === currentPriority)
+          .onClick(() => setPriority(p.value))
+      )
+    );
+    menu.showAtMouseEvent(e);
+  };
+  const openCardMenu = (e: MouseEvent) => {
+    const menu = new Menu();
+    if (refId) {
+      menu.addItem((mi) =>
+        mi
+          .setTitle('Copy card ID')
+          .setIcon('lucide-hash')
+          .onClick(() => {
+            void navigator.clipboard.writeText(refId);
+            new Notice('Card ID copied');
+          })
+      );
+    }
+    menu.addItem((mi) =>
+      mi
+        .setTitle('Archive card')
+        .setIcon('lucide-archive')
+        .onClick(() => {
+          boardModifiers.archiveItem(resolvePath());
+          onClose?.();
+        })
+    );
+    menu.addItem((mi) => {
+      mi.setTitle('Delete card')
+        .setIcon('lucide-trash-2')
+        .onClick(() => deleteDroppedCard(stateManager, boardModifiers, resolvePath(), () => onClose?.()));
+      (mi as any).setWarning?.(true);
+    });
+    menu.showAtMouseEvent(e);
+  };
+
   return (
-    <div className={c('card-detail-content')}>
+    <div className={c('card-detail-content')} ref={rootRef}>
+      {isPhone && (
+        <div className={`${c('cd-topbar')} ${scrolled ? 'is-scrolled' : ''}`}>
+          <button className={c('cd-topbar-button')} aria-label="Close" onClick={() => onClose?.()}>
+            <Icon name="lucide-x" />
+          </button>
+          <div className={c('cd-topbar-title')}>{cardTitle || titleLine}</div>
+          <button className={c('cd-topbar-button')} aria-label="Card actions" onClick={openCardMenu}>
+            <Icon name="lucide-more-horizontal" />
+          </button>
+        </div>
+      )}
       <div className={c('cd-header')}>
         <div className={c('cd-breadcrumb')}>
           <span>{boardName}</span>
@@ -681,6 +767,38 @@ const CardDetailContent = memo(function CardDetailContent({
             </h2>
           )}
         </div>
+        {isPhone && (
+          <>
+            <div className={c('cd-chips')}>
+              <button className={c('cd-chip')} data-status={laneKey(laneName || '')} onClick={openStatusMenu}>
+                <span className={c('cd-chip-dot')} />
+                {laneName}
+                <Icon name="lucide-chevron-down" />
+              </button>
+              <button className={c('cd-chip')} onClick={openPriorityMenu}>
+                <PriorityIcon value={currentPriority} />
+                {currentPriority ? priorityLevel(currentPriority).label : 'Priority'}
+              </button>
+              <button
+                className={`${c('cd-chip')} ${dueOpen ? 'is-open' : ''} ${due?.isValid?.() ? '' : 'is-empty'}`}
+                onClick={() => setDueOpen(!dueOpen)}
+              >
+                <Icon name="lucide-calendar" />
+                {due?.isValid?.() ? due.format('ddd, MMM D') : 'Due date'}
+              </button>
+            </div>
+            {dueOpen && (
+              <div className={c('cd-chip-editor')}>
+                <DuePicker date={due} onChange={setDue} />
+              </div>
+            )}
+            {isTeam && (
+              <div className={c('cd-people')}>
+                <TeamCardExtras item={currentItem} detail={true} />
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className={c('cd-layout')}>
@@ -772,46 +890,31 @@ const CardDetailContent = memo(function CardDetailContent({
             </section>
           )}
 
-          {/* Phones have no card menu on the board, so the card's own actions live here. */}
-          {Platform.isPhone && (
-            <section className={`${c('cd-section')} ${c('cd-actions')}`}>
-              <button
-                className={c('cd-action')}
-                onClick={() => {
-                  boardModifiers.archiveItem(resolvePath());
-                  onClose?.();
-                }}
-              >
-                <Icon name="lucide-archive" />
-                Archive card
-              </button>
-              <button
-                className={`${c('cd-action')} is-danger`}
-                onClick={() => {
-                  if (!confirmDelete) {
-                    setConfirmDelete(true);
-                    window.setTimeout(() => setConfirmDelete(false), 4000);
-                    return;
-                  }
-                  boardModifiers.deleteEntity(resolvePath());
-                  onClose?.();
-                }}
-              >
-                <Icon name="lucide-trash-2" />
-                {confirmDelete ? (isTeam ? 'Tap again: to the Trash' : 'Tap again to delete') : 'Delete card'}
-              </button>
-            </section>
-          )}
         </div>
 
-        <aside className={c('cd-sidebar')}>
+        <aside className={`${c('cd-sidebar')} ${isPhone && !detailsOpen ? 'is-folded' : ''}`}>
+          {isPhone && (
+            <button
+              className={c('cd-details-toggle')}
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen(!detailsOpen)}
+            >
+              <span className={c('cd-row-label')}>Details</span>
+              <span className={c('cd-row-summary')}>
+                {[projectName, allTags.length ? `${allTags.length} tag${allTags.length === 1 ? '' : 's'}` : null]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+              <Icon name={detailsOpen ? 'lucide-chevron-up' : 'lucide-chevron-down'} className={c('cd-row-chevron')} />
+            </button>
+          )}
           {isTeam && stateManager.teamSync && (
             <Field label="Project">
               <ProjectSelect item={currentItem} />
             </Field>
           )}
 
-          {lanes.length > 0 && (
+          {lanes.length > 0 && !isPhone && (
             <Field label="Status">
               <select
                 className={`dropdown ${c('cd-select')}`}
@@ -827,6 +930,7 @@ const CardDetailContent = memo(function CardDetailContent({
             </Field>
           )}
 
+          {!isPhone && (
           <Field label="Priority">
             <div className={c('cd-priority')}>
               {PRIORITIES.map((p) => (
@@ -842,7 +946,9 @@ const CardDetailContent = memo(function CardDetailContent({
               ))}
             </div>
           </Field>
+          )}
 
+          {!isPhone && (
           <Field
             label="Due date"
             expand
@@ -856,8 +962,9 @@ const CardDetailContent = memo(function CardDetailContent({
           >
             <DuePicker date={currentItem.data.metadata.date} onChange={setDue} />
           </Field>
+          )}
 
-          {isTeam && (
+          {isTeam && !isPhone && (
             <Field label="Assignees">
               <TeamCardExtras item={currentItem} detail={true} />
             </Field>

@@ -47,6 +47,7 @@ interface PhoneLaneTabsProps {
   filePath: string;
   onSelect: (index: number) => void;
   onMenu: () => void;
+  onAdd: () => void;
 }
 
 /**
@@ -54,7 +55,7 @@ interface PhoneLaneTabsProps {
  * the other tabs are drop targets (data-kanban-zone="lane:<index>"): drop a card on a
  * tab to move it to the top of that list.
  */
-export function PhoneLaneTabs({ lanes, active, counts, filePath, onSelect, onMenu }: PhoneLaneTabsProps) {
+export function PhoneLaneTabs({ lanes, active, counts, filePath, onSelect, onMenu, onAdd }: PhoneLaneTabsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep the chosen tab in view when the row is wider than the screen.
@@ -82,6 +83,9 @@ export function PhoneLaneTabs({ lanes, active, counts, filePath, onSelect, onMen
           </button>
         ))}
       </div>
+      <button className={`${c('phone-tabs-menu')} ${c('phone-tabs-add')}`} aria-label="Add a card" onClick={onAdd}>
+        <Icon name="lucide-plus" />
+      </button>
       <button className={c('phone-tabs-menu')} aria-label="List options" onClick={onMenu}>
         <Icon name="lucide-more-vertical" />
       </button>

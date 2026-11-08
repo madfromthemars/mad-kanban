@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState } from 'preact/compat';
+import { createPortal, useContext, useMemo, useState } from 'preact/compat';
 import { Platform } from 'obsidian';
 import useOnclickOutside from 'react-cool-onclickoutside';
 import { hueFor, initials } from 'src/team/ui/TeamBadges';
@@ -143,6 +143,7 @@ export function QuickFilters() {
   const board = stateManager.useState();
   // Phones: the filters fold behind one button instead of filling a quarter of the screen.
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [allTags, setAllTags] = useState(false);
 
   const items = useMemo(() => {
     const all: Item[] = [];
@@ -302,17 +303,71 @@ export function QuickFilters() {
     (filterContext.isGroupingByTag ? 1 : 0);
 
   if (Platform.isPhone) {
+    // Phones: one Filters button; the options open in a sheet from the bottom with every
+    // choice visible as a tappable chip (no nested pop-ups).
+    const section = <T extends string>(
+      label: string,
+      options: Option<T>[],
+      selected: T[],
+      onChange: (next: T[]) => void,
+      limit?: number
+    ) => {
+      // Long lists (tags) show the most used ones first, plus whatever is selected.
+      const cut = limit && !allTags && options.length > limit;
+      const shownOptions = cut
+        ? [...options]
+            .sort((a, b) => b.count - a.count)
+            .filter((o, i) => i < limit || selected.includes(o.value))
+        : options;
+      return options.length > 0 && (
+        <section className={c('fs-section')}>
+          <div className={c('fs-section-head')}>
+            <span>{label}</span>
+            {selected.length > 0 && <a onClick={() => onChange([])}>Clear</a>}
+          </div>
+          <div className={c('fs-options')}>
+            {shownOptions.map((o) => {
+              const on = selected.includes(o.value);
+              return (
+                <button
+                  key={o.value}
+                  className={`${c('fs-option')} ${on ? 'is-on' : ''}`}
+                  aria-pressed={on}
+                  onClick={() => onChange(toggle(selected, o.value))}
+                >
+                  {o.icon}
+                  <span className={c('fs-option-label')}>{o.label}</span>
+                  <span className={c('fs-option-count')}>{o.count}</span>
+                </button>
+              );
+            })}
+            {cut && (
+              <button className={`${c('fs-option')} ${c('fs-more')}`} onClick={() => setAllTags(true)}>
+                Show all {options.length}
+              </button>
+            )}
+          </div>
+        </section>
+      );
+    };
+    const onlyMine = !!meId && filters.assignees.length === 1 && filters.assignees[0] === 'me';
+    const toggleChip = (on: boolean, icon: string, label: string, onClick: () => void) => (
+      <button className={`${c('fs-toggle')} ${on ? 'is-on' : ''}`} aria-pressed={on} onClick={onClick}>
+        <Icon name={icon} />
+        {label}
+      </button>
+    );
+
     return (
       <div className={`${c('filter-bar')} ${c('filter-bar-phone')}`}>
         <button
           className={`${c('filter-chip')} ${activeCount ? 'is-active' : ''}`}
-          onClick={() => setPhoneOpen(!phoneOpen)}
+          onClick={() => setPhoneOpen(true)}
           aria-expanded={phoneOpen}
         >
           <Icon name="lucide-sliders-horizontal" />
           <span className={c('filter-chip-label')}>Filters</span>
           {activeCount > 0 && <span className={c('filter-chip-value')}>{activeCount}</span>}
-          <Icon name={phoneOpen ? 'lucide-chevron-up' : 'lucide-chevron-down'} className={c('filter-chip-caret')} />
         </button>
         {hasActiveFilters && (
           <div className={c('filter-bar-end')}>
@@ -324,7 +379,58 @@ export function QuickFilters() {
             </a>
           </div>
         )}
-        {phoneOpen && <div className={c('filter-panel')}>{chips}</div>}
+        {phoneOpen &&
+          // On <body>, so the sheet sits above Obsidian's bottom bar like a dialog does.
+          createPortal(
+          <div className={c('fs-backdrop')} onClick={() => setPhoneOpen(false)}>
+            <div className={c('fs-sheet')} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Filters">
+              <div className={c('fs-grabber')} />
+              <div className={c('fs-head')}>
+                <span className={c('fs-title')}>Filters</span>
+                {(hasActiveFilters || filterContext.isGroupingByTag) && (
+                  <a
+                    className={c('fs-clear')}
+                    onClick={() => {
+                      clearFilters();
+                      filterContext.setGroupingByTag(false);
+                    }}
+                  >
+                    Clear all
+                  </a>
+                )}
+              </div>
+              <div className={c('fs-body')}>
+                <div className={c('fs-toggles')}>
+                  {hasTeamCards &&
+                    meId &&
+                    toggleChip(onlyMine, 'lucide-user-check', 'Only my cards', () =>
+                      set({ assignees: onlyMine ? [] : ['me'] })
+                    )}
+                  {toggleChip(filters.hideChecked, 'lucide-eye-off', 'Hide checked', () =>
+                    set({ hideChecked: !filters.hideChecked })
+                  )}
+                  {toggleChip(
+                    !!filterContext.isGroupingByTag,
+                    'lucide-layout-list',
+                    groupByProject ? 'Group by project' : 'Group by tag',
+                    () => filterContext.setGroupingByTag(!filterContext.isGroupingByTag)
+                  )}
+                </div>
+                {section('Project', projectOptions, filters.projects, (projects) => set({ projects }))}
+                {hasTeamCards && section('Assignee', assigneeOptions, filters.assignees, (assignees) => set({ assignees }))}
+                {section('Priority', priorityOptions, filters.priorities, (priorities) => set({ priorities }))}
+                {section('Due', dateOptions, filters.dates, (dates) => set({ dates }))}
+                {section('Tags', tagOptions, filters.tags, (tags) => set({ tags }), 12)}
+              </div>
+              <div className={c('fs-foot')}>
+                <button className={`mod-cta ${c('fs-done')}`} onClick={() => setPhoneOpen(false)}>
+                  {hasActiveFilters ? `Show ${shown} of ${items.length} cards` : 'Done'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          stateManager.getAView()?.getWindow?.()?.document.body || document.body
+        )}
       </div>
     );
   }

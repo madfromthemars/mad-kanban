@@ -1,4 +1,4 @@
-import { moment } from 'obsidian';
+import { Platform, moment } from 'obsidian';
 import { useContext, useRef, useState } from 'preact/compat';
 import { addTask, deleteTask, editTask, moveTask, parseTasks, toggleTask } from 'src/cardTasks';
 
@@ -156,12 +156,18 @@ export function Checklist({
                 <RefText text={task.text} />
               </span>
             )}
-            {!compact && (
+            {/* Phones: the delete button shows only on the item being edited, so it can't be hit by accident. */}
+            {!compact && (!Platform.isPhone || editing === i) && (
               <button
                 className={`${c('checklist-delete')} clickable-icon`}
                 aria-label="Delete item"
+                // Keep the field focused, so its blur doesn't remove this button before the tap lands.
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
+                  committedRef.current = true;
+                  setEditing(null);
                   onChange(deleteTask(body, task.line));
                 }}
               >

@@ -625,12 +625,18 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
         <textarea
           ref={inputRef}
           className={c('comment-input')}
-          placeholder={replyTo ? 'Write a reply…' : 'Write a comment… (@ to mention)'}
+          placeholder={replyTo ? 'Write a reply…' : Platform.isPhone ? 'Write a comment…' : 'Write a comment… (@ to mention)'}
           value={draft}
-          rows={2}
+          rows={Platform.isPhone ? 1 : 2}
           onInput={(e) => {
-            setDraft((e.target as HTMLTextAreaElement).value);
+            const el = e.target as HTMLTextAreaElement;
+            setDraft(el.value);
             mention.onCaret();
+            // Phones: one line that grows with the text (up to ~5 lines).
+            if (Platform.isPhone) {
+              el.style.height = 'auto';
+              el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+            }
           }}
           onClick={mention.onCaret}
           onBlur={mention.close}
@@ -666,13 +672,27 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
           <AttachButton
             boardId={boardId}
             target={commentTarget}
-            label="Attach"
+            label={Platform.isPhone ? '' : 'Attach'}
             onUploaded={(md) => setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md}` : md))}
           />
           <span className={c('cd-hint')}>⌘/Ctrl + Enter</span>
-          <button className="mod-cta" disabled={!draft.trim() || sending} onClick={() => void send()}>
-            {sending ? 'Sending…' : replyTo ? 'Reply' : 'Comment'}
-          </button>
+          {Platform.isPhone ? (
+            <button
+              className={`mod-cta ${c('comment-send')}`}
+              aria-label={replyTo ? 'Reply' : 'Send comment'}
+              disabled={!draft.trim() || sending}
+              onClick={() => {
+                void send();
+                if (inputRef.current) inputRef.current.style.height = '';
+              }}
+            >
+              <Icon name="lucide-send" />
+            </button>
+          ) : (
+            <button className="mod-cta" disabled={!draft.trim() || sending} onClick={() => void send()}>
+              {sending ? 'Sending…' : replyTo ? 'Reply' : 'Comment'}
+            </button>
+          )}
         </div>
       </div>
     </div>
