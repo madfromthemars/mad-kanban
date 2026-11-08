@@ -6832,7 +6832,7 @@ button.kanban-plugin__upload-cancel {
     display: none;
   }
   .kanban-plugin__lane-items {
-    padding: 8px 12px calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 24px);
+    padding: 8px 12px calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 88px);
     gap: 0;
   }
 
@@ -6868,11 +6868,28 @@ button.kanban-plugin__upload-cancel {
   .kanban-plugin__lane .kanban-plugin__item-button-wrapper {
     display: none;
   }
-  button.kanban-plugin__phone-tabs-add {
+  button.kanban-plugin__phone-fab {
+    position: fixed;
+    right: 18px;
+    bottom: calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 14px);
+    z-index: 5;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
     background: var(--interactive-accent);
     color: var(--text-on-accent);
-    border-radius: 50%;
-    --icon-size: 20px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+
+    svg {
+      width: 26px;
+      height: 26px;
+    }
+  }
+  &.something-is-dragging button.kanban-plugin__phone-fab {
+    display: none;
   }
 }
 

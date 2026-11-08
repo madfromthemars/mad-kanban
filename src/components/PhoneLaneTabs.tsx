@@ -83,11 +83,12 @@ export function PhoneLaneTabs({ lanes, active, counts, filePath, onSelect, onMen
           </button>
         ))}
       </div>
-      <button className={`${c('phone-tabs-menu')} ${c('phone-tabs-add')}`} aria-label="Add a card" onClick={onAdd}>
-        <Icon name="lucide-plus" />
-      </button>
       <button className={c('phone-tabs-menu')} aria-label="List options" onClick={onMenu}>
         <Icon name="lucide-more-vertical" />
+      </button>
+      {/* Floating + (bottom right, above Obsidian's bottom bar); hidden while dragging. */}
+      <button className={c('phone-fab')} aria-label="Add a card" onClick={onAdd}>
+        <Icon name="lucide-plus" />
       </button>
     </div>
   );
