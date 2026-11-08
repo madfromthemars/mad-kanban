@@ -1,4 +1,4 @@
-import { App, Menu, Modal, Notice, Platform, TFile } from 'obsidian';
+import { App, Modal, Notice, Platform, TFile } from 'obsidian';
 import { render } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
@@ -32,6 +32,9 @@ import {
 import { Checklist, DuePicker, TagEditor } from './CardChecklist';
 import { PRIORITY_LEVELS, PriorityIcon, priorityLevel } from './PriorityIcon';
 import { deleteDroppedCard } from '../BoardZones';
+import { PhoneSheet, SheetRow } from '../PhoneSheet';
+import { PhoneCalendar } from '../PhoneCalendar';
+import { hueFor, initials } from 'src/team/ui/TeamBadges';
 import { laneKey } from 'src/team/laneKey';
 import { Icon } from '../Icon/Icon';
 import { cardWindowEscape, copyInlineCode, openLightbox } from '../copyOnClick';
@@ -209,8 +212,7 @@ const CardDetailContent = memo(function CardDetailContent({
   const [isRenaming, setIsRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Phones: due date picker under the chips, the less-used fields folded under "Details".
-  const [dueOpen, setDueOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [sheet, setSheet] = useState<null | 'status' | 'priority' | 'due' | 'people' | 'project' | 'menu'>(null);
   const [scrolled, setScrolled] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const board = stateManager.useState();
@@ -656,64 +658,21 @@ const CardDetailContent = memo(function CardDetailContent({
   const descriptionMd = splitCardBody(splitFrontmatter(contentToRender).rest).description;
   const editing = isEditing(editState);
 
-  // Phone header: status / priority / due as chips, card actions in the ⋯ menu.
+  // Phone: status / priority / due / people / project as one row of equal chips; each opens
+  // a sheet from the bottom. Card actions live in the ⋯ sheet.
   const isPhone = Platform.isPhone;
   const laneName = lanes[laneIndex]?.data.title || laneTitle;
   const due = currentItem.data.metadata.date;
-  const projectName = teamIds ? team?.project(team.getCard(teamIds.cardId)?.projectId)?.name : null;
+  const hasDue = !!due?.isValid?.();
   const refId = teamIds?.cardId || currentItem.data.blockId;
-
-  const openStatusMenu = (e: MouseEvent) => {
-    const menu = new Menu();
-    lanes.forEach((l, i) =>
-      menu.addItem((mi) => mi.setTitle(l.data.title).setChecked(i === laneIndex).onClick(() => moveToLane(i)))
-    );
-    menu.showAtMouseEvent(e);
-  };
-  const openPriorityMenu = (e: MouseEvent) => {
-    const menu = new Menu();
-    [...PRIORITIES].reverse().forEach((p) =>
-      menu.addItem((mi) =>
-        mi
-          .setTitle(p.label)
-          .setIcon(p.icon)
-          .setChecked(p.value === currentPriority)
-          .onClick(() => setPriority(p.value))
-      )
-    );
-    menu.showAtMouseEvent(e);
-  };
-  const openCardMenu = (e: MouseEvent) => {
-    const menu = new Menu();
-    if (refId) {
-      menu.addItem((mi) =>
-        mi
-          .setTitle('Copy card ID')
-          .setIcon('lucide-hash')
-          .onClick(() => {
-            void navigator.clipboard.writeText(refId);
-            new Notice('Card ID copied');
-          })
-      );
-    }
-    menu.addItem((mi) =>
-      mi
-        .setTitle('Archive card')
-        .setIcon('lucide-archive')
-        .onClick(() => {
-          boardModifiers.archiveItem(resolvePath());
-          onClose?.();
-        })
-    );
-    menu.addItem((mi) => {
-      mi.setTitle('Delete card')
-        .setIcon('lucide-trash-2')
-        .onClick(() => deleteDroppedCard(stateManager, boardModifiers, resolvePath(), () => onClose?.()));
-      (mi as any).setWarning?.(true);
-    });
-    menu.showAtMouseEvent(e);
-  };
-
+  const cardInfo = team ? team.useCardInfo(teamIds?.cardId ?? null) : null;
+  const projects = team ? team.useProjects() : [];
+  const project = cardInfo ? projects.find((p) => p.id === cardInfo.card.projectId) || null : null;
+  const assigneeIds: string[] = cardInfo?.card.assignees || [];
+  const people = team ? (project ? team.users.filter((u) => project.memberIds.includes(u.id)) : team.users) : [];
+  const canAssign = !!teamIds && !project?.isPrivate;
+  const mineToMove = cardInfo?.card.createdBy === team?.user?.id;
+  const projectOptions = projects.filter((p) => !p.isPrivate || p.id === project?.id || mineToMove);
   return (
     <div className={c('card-detail-content')} ref={rootRef}>
       {isPhone && (
@@ -722,7 +681,7 @@ const CardDetailContent = memo(function CardDetailContent({
             <Icon name="lucide-x" />
           </button>
           <div className={c('cd-topbar-title')}>{cardTitle || titleLine}</div>
-          <button className={c('cd-topbar-button')} aria-label="Card actions" onClick={openCardMenu}>
+          <button className={c('cd-topbar-button')} aria-label="Card actions" onClick={() => setSheet('menu')}>
             <Icon name="lucide-more-horizontal" />
           </button>
         </div>
@@ -768,36 +727,48 @@ const CardDetailContent = memo(function CardDetailContent({
           )}
         </div>
         {isPhone && (
-          <>
-            <div className={c('cd-chips')}>
-              <button className={c('cd-chip')} data-status={laneKey(laneName || '')} onClick={openStatusMenu}>
-                <span className={c('cd-chip-dot')} />
-                {laneName}
-                <Icon name="lucide-chevron-down" />
+          <div className={c('cd-props')}>
+            <button className={c('cd-prop')} data-status={laneKey(laneName || '')} onClick={() => setSheet('status')}>
+              <span className={c('cd-chip-dot')} />
+              <span className={c('cd-prop-text')}>{laneName}</span>
+            </button>
+            <button className={`${c('cd-prop')} ${currentPriority ? '' : 'is-empty'}`} onClick={() => setSheet('priority')}>
+              <PriorityIcon value={currentPriority} />
+              <span className={c('cd-prop-text')}>{currentPriority ? priorityLevel(currentPriority).label : 'Priority'}</span>
+            </button>
+            <button className={`${c('cd-prop')} ${hasDue ? '' : 'is-empty'}`} onClick={() => setSheet('due')}>
+              <Icon name="lucide-calendar" />
+              <span className={c('cd-prop-text')}>{hasDue ? due.format('ddd, MMM D') : 'Due date'}</span>
+            </button>
+            {canAssign && (
+              <button className={`${c('cd-prop')} ${assigneeIds.length ? '' : 'is-empty'}`} onClick={() => setSheet('people')}>
+                {assigneeIds.length ? (
+                  <span className={c('cd-prop-avatars')}>
+                    {assigneeIds.slice(0, 3).map((id) => (
+                      <span key={id} className={c('assignee')} style={{ '--assignee-hue': hueFor(id) }}>
+                        {initials(team?.userName(id) || '?')}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <Icon name="lucide-user-plus" />
+                )}
+                <span className={c('cd-prop-text')}>
+                  {assigneeIds.length === 1 ? team?.userName(assigneeIds[0]) : assigneeIds.length ? `${assigneeIds.length} people` : 'Assign'}
+                </span>
               </button>
-              <button className={c('cd-chip')} onClick={openPriorityMenu}>
-                <PriorityIcon value={currentPriority} />
-                {currentPriority ? priorityLevel(currentPriority).label : 'Priority'}
-              </button>
+            )}
+            {teamIds && stateManager.teamSync && projects.length > 0 && (
               <button
-                className={`${c('cd-chip')} ${dueOpen ? 'is-open' : ''} ${due?.isValid?.() ? '' : 'is-empty'}`}
-                onClick={() => setDueOpen(!dueOpen)}
+                className={c('cd-prop')}
+                style={{ '--project-color': project?.color || 'var(--text-faint)' }}
+                onClick={() => setSheet('project')}
               >
-                <Icon name="lucide-calendar" />
-                {due?.isValid?.() ? due.format('ddd, MMM D') : 'Due date'}
+                <span className={c('project-dot')} />
+                <span className={c('cd-prop-text')}>{project?.name || 'Project'}</span>
               </button>
-            </div>
-            {dueOpen && (
-              <div className={c('cd-chip-editor')}>
-                <DuePicker date={due} onChange={setDue} />
-              </div>
             )}
-            {isTeam && (
-              <div className={c('cd-people')}>
-                <TeamCardExtras item={currentItem} detail={true} />
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
 
@@ -892,23 +863,9 @@ const CardDetailContent = memo(function CardDetailContent({
 
         </div>
 
-        <aside className={`${c('cd-sidebar')} ${isPhone && !detailsOpen ? 'is-folded' : ''}`}>
-          {isPhone && (
-            <button
-              className={c('cd-details-toggle')}
-              aria-expanded={detailsOpen}
-              onClick={() => setDetailsOpen(!detailsOpen)}
-            >
-              <span className={c('cd-row-label')}>Details</span>
-              <span className={c('cd-row-summary')}>
-                {[projectName, allTags.length ? `${allTags.length} tag${allTags.length === 1 ? '' : 's'}` : null]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </span>
-              <Icon name={detailsOpen ? 'lucide-chevron-up' : 'lucide-chevron-down'} className={c('cd-row-chevron')} />
-            </button>
-          )}
-          {isTeam && stateManager.teamSync && (
+        <aside className={c('cd-sidebar')}>
+          {isPhone && <div className={c('cd-section-title')}>Details</div>}
+          {isTeam && stateManager.teamSync && !isPhone && (
             <Field label="Project">
               <ProjectSelect item={currentItem} />
             </Field>
@@ -1038,6 +995,122 @@ const CardDetailContent = memo(function CardDetailContent({
         </aside>
       </div>
 
+      {isPhone && sheet === 'status' && (
+        <PhoneSheet title="Status" onClose={() => setSheet(null)}>
+          {lanes.map((l, i) => (
+            <SheetRow
+              key={l.id}
+              icon={<span className={c('cd-chip-dot')} data-status={laneKey(l.data.title || '')} />}
+              label={l.data.title}
+              checked={i === laneIndex}
+              onClick={() => {
+                moveToLane(i);
+                setSheet(null);
+              }}
+            />
+          ))}
+        </PhoneSheet>
+      )}
+      {isPhone && sheet === 'priority' && (
+        <PhoneSheet title="Priority" onClose={() => setSheet(null)}>
+          {[...PRIORITIES].reverse().map((pr) => (
+            <SheetRow
+              key={pr.key}
+              icon={<PriorityIcon value={pr.value} />}
+              label={pr.label}
+              checked={pr.value === currentPriority}
+              onClick={() => {
+                setPriority(pr.value);
+                setSheet(null);
+              }}
+            />
+          ))}
+        </PhoneSheet>
+      )}
+      {isPhone && sheet === 'due' && (
+        <PhoneSheet
+          title="Due date"
+          onClose={() => setSheet(null)}
+          action={hasDue ? { label: 'Remove', onClick: () => { setDue(null); setSheet(null); } } : null}
+        >
+          <PhoneCalendar
+            value={hasDue ? due : null}
+            onPick={(iso) => {
+              setDue(iso);
+              setSheet(null);
+            }}
+          />
+        </PhoneSheet>
+      )}
+      {isPhone && sheet === 'people' && teamIds && team && (
+        <PhoneSheet title="Assignees" onClose={() => setSheet(null)} footer={
+          <button className={`mod-cta ${c('sheet-done')}`} onClick={() => setSheet(null)}>Done</button>
+        }>
+          {people.map((u) => (
+            <SheetRow
+              key={u.id}
+              icon={
+                <span className={c('assignee')} style={{ '--assignee-hue': hueFor(u.id) }}>
+                  {initials(u.name)}
+                </span>
+              }
+              label={u.id === team.user?.id ? `${u.name} (me)` : u.name}
+              checked={assigneeIds.includes(u.id)}
+              onClick={() => void team.toggleAssignee(teamIds.boardId, teamIds.cardId, u.id)}
+            />
+          ))}
+        </PhoneSheet>
+      )}
+      {isPhone && sheet === 'project' && teamIds && team && (
+        <PhoneSheet title="Project" onClose={() => setSheet(null)}>
+          {projectOptions.map((pr) => (
+            <SheetRow
+              key={pr.id}
+              icon={<span className={c('project-dot')} style={{ '--project-color': pr.color || 'var(--text-faint)' }} />}
+              label={pr.name}
+              checked={pr.id === project?.id}
+              onClick={() => {
+                if (pr.id !== project?.id) void team.setCardProject(teamIds.boardId, teamIds.cardId, pr.id);
+                setSheet(null);
+              }}
+            />
+          ))}
+        </PhoneSheet>
+      )}
+      {isPhone && sheet === 'menu' && (
+        <PhoneSheet title="Card" onClose={() => setSheet(null)}>
+          {refId && (
+            <SheetRow
+              icon={<Icon name="lucide-hash" />}
+              label="Copy card ID"
+              value={`#${refId}`}
+              onClick={() => {
+                void navigator.clipboard.writeText(refId);
+                new Notice('Card ID copied');
+                setSheet(null);
+              }}
+            />
+          )}
+          <SheetRow
+            icon={<Icon name="lucide-archive" />}
+            label="Archive card"
+            onClick={() => {
+              setSheet(null);
+              boardModifiers.archiveItem(resolvePath());
+              onClose?.();
+            }}
+          />
+          <SheetRow
+            icon={<Icon name="lucide-trash-2" />}
+            label="Delete card"
+            danger
+            onClick={() => {
+              setSheet(null);
+              deleteDroppedCard(stateManager, boardModifiers, resolvePath(), () => onClose?.());
+            }}
+          />
+        </PhoneSheet>
+      )}
     </div>
   );
 });

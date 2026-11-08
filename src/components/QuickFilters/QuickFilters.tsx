@@ -1,4 +1,5 @@
-import { createPortal, useContext, useMemo, useState } from 'preact/compat';
+import { useContext, useMemo, useState } from 'preact/compat';
+import { PhoneSheet, SheetRow, SheetSwitch } from '../PhoneSheet';
 import { Platform } from 'obsidian';
 import useOnclickOutside from 'react-cool-onclickoutside';
 import { hueFor, initials } from 'src/team/ui/TeamBadges';
@@ -143,7 +144,7 @@ export function QuickFilters() {
   const board = stateManager.useState();
   // Phones: the filters fold behind one button instead of filling a quarter of the screen.
   const [phoneOpen, setPhoneOpen] = useState(false);
-  const [allTags, setAllTags] = useState(false);
+  const [phonePage, setPhonePage] = useState<string | null>(null);
 
   const items = useMemo(() => {
     const all: Item[] = [];
@@ -303,135 +304,106 @@ export function QuickFilters() {
     (filterContext.isGroupingByTag ? 1 : 0);
 
   if (Platform.isPhone) {
-    // Phones: one Filters button; the options open in a sheet from the bottom with every
-    // choice visible as a tappable chip (no nested pop-ups).
-    const section = <T extends string>(
-      label: string,
-      options: Option<T>[],
-      selected: T[],
-      onChange: (next: T[]) => void,
-      limit?: number
-    ) => {
-      // Long lists (tags) show the most used ones first, plus whatever is selected.
-      const cut = limit && !allTags && options.length > limit;
-      const shownOptions = cut
-        ? [...options]
-            .sort((a, b) => b.count - a.count)
-            .filter((o, i) => i < limit || selected.includes(o.value))
-        : options;
-      return options.length > 0 && (
-        <section className={c('fs-section')}>
-          <div className={c('fs-section-head')}>
-            <span>{label}</span>
-            {selected.length > 0 && <a onClick={() => onChange([])}>Clear</a>}
-          </div>
-          <div className={c('fs-options')}>
-            {shownOptions.map((o) => {
-              const on = selected.includes(o.value);
-              return (
-                <button
-                  key={o.value}
-                  className={`${c('fs-option')} ${on ? 'is-on' : ''}`}
-                  aria-pressed={on}
-                  onClick={() => onChange(toggle(selected, o.value))}
-                >
-                  {o.icon}
-                  <span className={c('fs-option-label')}>{o.label}</span>
-                  <span className={c('fs-option-count')}>{o.count}</span>
-                </button>
-              );
-            })}
-            {cut && (
-              <button className={`${c('fs-option')} ${c('fs-more')}`} onClick={() => setAllTags(true)}>
-                Show all {options.length}
-              </button>
-            )}
-          </div>
-        </section>
-      );
+    // Phones: one icon button (with a count when filters are on). It opens a short list:
+    // three switches, then one row per filter that opens its options on a second page.
+    type Page = 'project' | 'assignee' | 'priority' | 'due' | 'tags';
+    const pages: { key: Page; label: string; options: Option<string>[]; selected: string[]; set: (v: string[]) => void }[] = [
+      ...(projectOptions.length ? [{ key: 'project' as Page, label: 'Project', options: projectOptions, selected: filters.projects, set: (projects: string[]) => set({ projects }) }] : []),
+      ...(hasTeamCards ? [{ key: 'assignee' as Page, label: 'Assignee', options: assigneeOptions, selected: filters.assignees, set: (assignees: string[]) => set({ assignees }) }] : []),
+      { key: 'priority', label: 'Priority', options: priorityOptions, selected: filters.priorities, set: (v: string[]) => set({ priorities: v as PriorityFilterType[] }) },
+      { key: 'due', label: 'Due date', options: dateOptions, selected: filters.dates, set: (v: string[]) => set({ dates: v as DateFilterType[] }) },
+      ...(tagOptions.length ? [{ key: 'tags' as Page, label: 'Tags', options: tagOptions, selected: filters.tags, set: (tags: string[]) => set({ tags }) }] : []),
+    ];
+    const current = pages.find((p) => p.key === phonePage) || null;
+    const summaryOf = (pg: (typeof pages)[number]) => {
+      const names = pg.options.filter((o) => pg.selected.includes(o.value)).map((o) => o.label);
+      return names.length ? (names.length <= 2 ? names.join(', ') : `${names[0]} +${names.length - 1}`) : 'Any';
     };
     const onlyMine = !!meId && filters.assignees.length === 1 && filters.assignees[0] === 'me';
-    const toggleChip = (on: boolean, icon: string, label: string, onClick: () => void) => (
-      <button className={`${c('fs-toggle')} ${on ? 'is-on' : ''}`} aria-pressed={on} onClick={onClick}>
-        <Icon name={icon} />
-        {label}
-      </button>
-    );
+    const anything = hasActiveFilters || !!filterContext.isGroupingByTag;
+    const close = () => {
+      setPhoneOpen(false);
+      setPhonePage(null);
+    };
 
     return (
-      <div className={`${c('filter-bar')} ${c('filter-bar-phone')}`}>
+      <>
         <button
-          className={`${c('filter-chip')} ${activeCount ? 'is-active' : ''}`}
+          className={`${c('toolbar-button')} ${c('phone-filter-button')} ${hasActiveFilters ? 'is-active' : ''}`}
           onClick={() => setPhoneOpen(true)}
-          aria-expanded={phoneOpen}
+          aria-label="Filters"
         >
-          <Icon name="lucide-sliders-horizontal" />
-          <span className={c('filter-chip-label')}>Filters</span>
-          {activeCount > 0 && <span className={c('filter-chip-value')}>{activeCount}</span>}
+          <Icon name="lucide-list-filter" />
+          {activeCount > 0 && <span className={c('phone-filter-badge')}>{activeCount}</span>}
         </button>
-        {hasActiveFilters && (
-          <div className={c('filter-bar-end')}>
-            <span className={c('filter-count')}>
-              {shown}/{items.length}
-            </span>
-            <a className={c('filter-clear-all')} onClick={clearFilters}>
-              Clear
-            </a>
-          </div>
-        )}
-        {phoneOpen &&
-          // On <body>, so the sheet sits above Obsidian's bottom bar like a dialog does.
-          createPortal(
-          <div className={c('fs-backdrop')} onClick={() => setPhoneOpen(false)}>
-            <div className={c('fs-sheet')} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Filters">
-              <div className={c('fs-grabber')} />
-              <div className={c('fs-head')}>
-                <span className={c('fs-title')}>Filters</span>
-                {(hasActiveFilters || filterContext.isGroupingByTag) && (
-                  <a
-                    className={c('fs-clear')}
-                    onClick={() => {
-                      clearFilters();
-                      filterContext.setGroupingByTag(false);
-                    }}
-                  >
-                    Clear all
-                  </a>
+        {phoneOpen && (
+          <PhoneSheet
+            title={current ? current.label : 'Filters'}
+            onClose={close}
+            onBack={current ? () => setPhonePage(null) : undefined}
+            action={
+              current
+                ? current.selected.length
+                  ? { label: 'Clear', onClick: () => current.set([]) }
+                  : null
+                : anything
+                  ? { label: 'Clear all', onClick: () => { clearFilters(); filterContext.setGroupingByTag(false); } }
+                  : null
+            }
+            footer={
+              <button className={`mod-cta ${c('sheet-done')}`} onClick={current ? () => setPhonePage(null) : close}>
+                {current ? 'Done' : hasActiveFilters ? `Show ${shown} of ${items.length} cards` : 'Done'}
+              </button>
+            }
+          >
+            {current ? (
+              current.options.map((o) => (
+                <SheetRow
+                  key={o.value}
+                  icon={o.icon ?? null}
+                  label={o.label}
+                  value={String(o.count)}
+                  checked={current.selected.includes(o.value)}
+                  onClick={() => current.set(toggle(current.selected, o.value))}
+                />
+              ))
+            ) : (
+              <>
+                {hasTeamCards && meId && (
+                  <SheetSwitch
+                    label="Only my cards"
+                    icon={<Icon name="lucide-user" />}
+                    on={onlyMine}
+                    onChange={(on) => set({ assignees: on ? ['me'] : [] })}
+                  />
                 )}
-              </div>
-              <div className={c('fs-body')}>
-                <div className={c('fs-toggles')}>
-                  {hasTeamCards &&
-                    meId &&
-                    toggleChip(onlyMine, 'lucide-user-check', 'Only my cards', () =>
-                      set({ assignees: onlyMine ? [] : ['me'] })
-                    )}
-                  {toggleChip(filters.hideChecked, 'lucide-eye-off', 'Hide checked', () =>
-                    set({ hideChecked: !filters.hideChecked })
-                  )}
-                  {toggleChip(
-                    !!filterContext.isGroupingByTag,
-                    'lucide-layout-list',
-                    groupByProject ? 'Group by project' : 'Group by tag',
-                    () => filterContext.setGroupingByTag(!filterContext.isGroupingByTag)
-                  )}
-                </div>
-                {section('Project', projectOptions, filters.projects, (projects) => set({ projects }))}
-                {hasTeamCards && section('Assignee', assigneeOptions, filters.assignees, (assignees) => set({ assignees }))}
-                {section('Priority', priorityOptions, filters.priorities, (priorities) => set({ priorities }))}
-                {section('Due', dateOptions, filters.dates, (dates) => set({ dates }))}
-                {section('Tags', tagOptions, filters.tags, (tags) => set({ tags }), 12)}
-              </div>
-              <div className={c('fs-foot')}>
-                <button className={`mod-cta ${c('fs-done')}`} onClick={() => setPhoneOpen(false)}>
-                  {hasActiveFilters ? `Show ${shown} of ${items.length} cards` : 'Done'}
-                </button>
-              </div>
-            </div>
-          </div>,
-          stateManager.getAView()?.getWindow?.()?.document.body || document.body
+                <SheetSwitch
+                  label="Hide checked"
+                  icon={<Icon name="lucide-eye-off" />}
+                  on={filters.hideChecked}
+                  onChange={(on) => set({ hideChecked: on })}
+                />
+                <SheetSwitch
+                  label={groupByProject ? 'Group by project' : 'Group by tag'}
+                  icon={<Icon name="lucide-layout-list" />}
+                  on={!!filterContext.isGroupingByTag}
+                  onChange={(on) => filterContext.setGroupingByTag(on)}
+                />
+                <div className={c('sheet-gap')} />
+                {pages.map((pg) => (
+                  <SheetRow
+                    key={pg.key}
+                    label={pg.label}
+                    value={<span className={pg.selected.length ? 'is-set' : ''}>{summaryOf(pg)}</span>}
+                    chevron
+                    onClick={() => setPhonePage(pg.key)}
+                  />
+                ))}
+              </>
+            )}
+          </PhoneSheet>
         )}
-      </div>
+      </>
     );
   }
 
