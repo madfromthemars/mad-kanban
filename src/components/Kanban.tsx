@@ -1,6 +1,6 @@
 import classcat from 'classcat';
 import update from 'immutability-helper';
-import { Notice } from 'obsidian';
+import { Notice, Platform } from 'obsidian';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/compat';
 import { KanbanView } from 'src/KanbanView';
 import { StateManager } from 'src/StateManager';
@@ -21,10 +21,18 @@ import { Lanes } from './Lane/Lane';
 import { FIXED_LANES, createListArtifacts } from './Lane/LaneForm';
 import { TrashZone } from './BoardZones';
 import { QuickFilters } from './QuickFilters/QuickFilters';
+import { PhoneLaneTabs, readPhoneLane, resolvePhoneLane, savePhoneLane } from './PhoneLaneTabs';
 import { TeamSyncStatus } from 'src/team/ui/TeamBadges';
 import { TableView } from './Table/Table';
 import { FilterContext, KanbanContext, SearchContext } from './context';
-import { baseClassName, c, generateInstanceId, useFilterValue, useSearchValue } from './helpers';
+import {
+  baseClassName,
+  c,
+  generateInstanceId,
+  itemMatchesFilters,
+  useFilterValue,
+  useSearchValue,
+} from './helpers';
 import { DataTypes, Item, LaneTemplate } from './types';
 import { isMirrorLane, parseTeamItemId } from 'src/team/ids';
 import { laneKey } from 'src/team/laneKey';
@@ -67,6 +75,9 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
   const maxArchiveLength = stateManager.useSetting('max-archive-size');
   const tagColors = stateManager.useSetting('tag-colors');
   const boardView = view.useViewState(frontmatterKey);
+  // Phones show one list at a time, picked from tabs above the board (remembered per board).
+  const phoneTabs = Platform.isPhone && boardView !== 'list' && boardView !== 'table';
+  const [phoneLaneStored, setPhoneLaneStored] = useState<string | null>(() => readPhoneLane(filePath));
 
   // Lists are fixed (To Do / In Progress / Done / Archive). A personal board missing any of them
   // gets them added; team boards get theirs from the server.
@@ -265,6 +276,27 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
     stateManager.resortByPriority();
   }, [filtersKey]);
 
+  const phoneLane = phoneTabs ? resolvePhoneLane(boardData.children, phoneLaneStored) : null;
+  const phoneCounts = phoneTabs
+    ? boardData.children.map(
+        (lane) =>
+          lane.children.filter(
+            (it) =>
+              (!searchValue.query || searchValue.items.has(it)) &&
+              (!filterValue.hasActiveFilters ||
+                itemMatchesFilters(
+                  it,
+                  filterValue.filters,
+                  filterValue.cardBodyCache,
+                  filterValue.boardPath,
+                  filterValue.getAssignees,
+                  filterValue.meId,
+                  filterValue.getProject
+                ))
+          ).length
+      )
+    : [];
+
   return (
     <DndScope id={view.id}>
       <KanbanContext.Provider value={kanbanContext}>
@@ -276,6 +308,8 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                 baseClassName,
                 {
                   'something-is-dragging': isAnythingDragging,
+                  [c('phone-tabs-mode')]: phoneTabs,
+                  [c('is-grouped')]: !!filterValue.isGroupingByTag,
                 },
                 ...getCSSClass(boardData.data.frontmatter),
               ])}
@@ -344,6 +378,31 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                 </a>
               </div>
             )}
+            {phoneTabs && boardData.children.length > 0 && (
+              <PhoneLaneTabs
+                lanes={boardData.children}
+                active={phoneLane}
+                counts={phoneCounts}
+                filePath={filePath}
+                onSelect={(i) => {
+                  const lane = boardData.children[i];
+                  if (!lane) return;
+                  savePhoneLane(filePath, lane);
+                  setPhoneLaneStored(readPhoneLane(filePath));
+                  rootRef.current
+                    ?.querySelector<HTMLElement>(`.${c('lane-items')}`)
+                    ?.scrollTo({ top: 0 });
+                }}
+                onMenu={() => {
+                  // The list's own menu (archive cards, sort) lives in its hidden header.
+                  rootRef.current
+                    ?.querySelector<HTMLElement>(
+                      `.${c('lane-header-wrapper')} .${c('lane-settings-button')}[aria-label="${t('More options')}"]`
+                    )
+                    ?.click();
+                }}
+              />
+            )}
             {boardView === 'table' ? (
               <TableView boardData={boardData} stateManager={stateManager} />
             ) : (
@@ -360,7 +419,7 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
               >
                 <div>
                   <Sortable axis={axis}>
-                    <Lanes lanes={boardData.children} collapseDir={axis} />
+                    <Lanes lanes={boardData.children} collapseDir={axis} phoneLane={phoneLane} />
                     <SortPlaceholder
                       accepts={boardAccepts}
                       className={c('lane-placeholder')}

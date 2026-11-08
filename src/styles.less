@@ -6598,3 +6598,313 @@ button.kanban-plugin__upload-cancel {
 .kanban-plugin__ai-key-modal .kanban-plugin__add-device-link button {
   flex: none;
 }
+
+// Compact phone card row: priority left, title + one meta line, avatar right.
+.mk-phone-card() {
+  .kanban-plugin__item,
+  .kanban-plugin__item.priority-highest,
+  .kanban-plugin__item.priority-high,
+  .kanban-plugin__item.priority-medium,
+  .kanban-plugin__item.priority-low {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    box-shadow: none;
+  }
+  .kanban-plugin__item .kanban-plugin__item-content-wrapper {
+    position: relative;
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 9px 12px 9px 38px;
+    gap: 4px;
+  }
+  .kanban-plugin__item:has(.kanban-plugin__assignees) .kanban-plugin__item-content-wrapper {
+    padding-right: 48px;
+  }
+  .kanban-plugin__item .kanban-plugin__item-title-line-wrapper,
+  .kanban-plugin__item.priority-highest .kanban-plugin__item-title-line-wrapper,
+  .kanban-plugin__item.priority-high .kanban-plugin__item-title-line-wrapper,
+  .kanban-plugin__item.priority-medium .kanban-plugin__item-title-line-wrapper,
+  .kanban-plugin__item.priority-low .kanban-plugin__item-title-line-wrapper {
+    padding: 0;
+  }
+  .kanban-plugin__item .kanban-plugin__item-title-line-text {
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  // Priority icon on the left, centred on the row.
+  .kanban-plugin__item .kanban-plugin__priority-button {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    right: auto;
+    transform: translateY(-50%);
+    margin: 0;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    background: transparent;
+  }
+
+  // One meta line: due · checklist · project · comments. Never wraps.
+  .kanban-plugin__item .kanban-plugin__item-bottom {
+    padding: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .kanban-plugin__item .kanban-plugin__item-bottom:empty {
+    display: none;
+  }
+  .kanban-plugin__item .kanban-plugin__item-footer,
+  .kanban-plugin__item .kanban-plugin__team-extras {
+    display: contents;
+  }
+  .kanban-plugin__item .kanban-plugin__item-tags {
+    display: none !important;
+  }
+  .kanban-plugin__item .kanban-plugin__item-checkbox-progress {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+  }
+  .kanban-plugin__item .kanban-plugin__item-checkbox-progress-bar {
+    width: 28px;
+    flex: none;
+  }
+  .kanban-plugin__item .kanban-plugin__project-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    height: auto;
+    border: 0;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .kanban-plugin__item .kanban-plugin__comment-count {
+    flex: none;
+  }
+  .kanban-plugin__item .kanban-plugin__due-chip {
+    flex: none;
+    font-size: 12px;
+  }
+  // Plain dates are just text; overdue / today / soon keep their colour.
+  .kanban-plugin__item .kanban-plugin__due-chip:not(.is-overdue):not(.is-today):not(.is-tomorrow):not(.is-soon):not(.is-done) {
+    height: auto;
+    padding: 0;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  // Avatars on the right, centred on the row.
+  .kanban-plugin__item .kanban-plugin__assignees {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+  }
+  .kanban-plugin__item .kanban-plugin__assignee {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+}
+
+/* ---------------------------------------------------------------------------
+ * Phone board (2.1.56): one list at a time, picked from tabs; cards are compact
+ * rows (priority left, title + one meta line, avatar right); + floats bottom-right.
+ * ------------------------------------------------------------------------- */
+.is-phone .kanban-plugin.kanban-plugin__phone-tabs-mode {
+  // Tabs row: list name + count; the active one is filled with the accent.
+  .kanban-plugin__phone-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+  }
+  .kanban-plugin__phone-tabs-scroll {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+  button.kanban-plugin__phone-tab {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+    font-size: 15px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+
+    &.is-active {
+      background: var(--interactive-accent);
+      border-color: var(--interactive-accent);
+      color: var(--text-on-accent);
+      font-weight: 600;
+    }
+    // While dragging a card, the other tabs are drop targets.
+    &.is-over {
+      border-color: var(--interactive-accent);
+      background: hsla(var(--interactive-accent-hsl), 0.2);
+      color: var(--text-normal);
+      transform: scale(1.06);
+    }
+  }
+  .something-is-dragging & button.kanban-plugin__phone-tab:not(.is-active),
+  &.something-is-dragging button.kanban-plugin__phone-tab:not(.is-active) {
+    border-style: dashed;
+    border-color: hsla(var(--interactive-accent-hsl), 0.6);
+  }
+  .kanban-plugin__phone-tab-count {
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+  }
+  button.kanban-plugin__phone-tabs-menu {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+  }
+
+  // The one list fills the width; its header is in the tabs.
+  .kanban-plugin__board:not(.kanban-plugin__vertical) {
+    scroll-snap-type: none;
+    overflow-x: hidden;
+
+    > div {
+      padding: 0;
+      width: 100%;
+    }
+    .kanban-plugin__lane-wrapper {
+      width: 100% !important;
+      max-width: none;
+      margin: 0;
+    }
+  }
+  .kanban-plugin__lane {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+  .kanban-plugin__lane-header-wrapper {
+    display: none;
+  }
+  .kanban-plugin__lane-items {
+    padding: 8px 12px calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 88px);
+    gap: 0;
+  }
+
+  // Project group headers: quiet small caps, not boxes.
+  .kanban-plugin__tag-group {
+    margin: 0;
+  }
+  .kanban-plugin__tag-group-items {
+    padding: 0;
+  }
+  .kanban-plugin__tag-group-header {
+    padding: 12px 2px 6px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: transparent;
+    border: 0;
+  }
+
+  // Compact card row (shared with the drag ghost below).
+  .mk-phone-card();
+  .kanban-plugin__lane-items > .kanban-plugin__item-wrapper,
+  .kanban-plugin__tag-group-items > .kanban-plugin__item-wrapper {
+    margin: 0 0 8px;
+  }
+  &.kanban-plugin__is-grouped .kanban-plugin__item .kanban-plugin__project-chip {
+    display: none;
+  }
+
+  // "+ Add a card" becomes a round button floating over the list.
+  .kanban-plugin__lane .kanban-plugin__item-button-wrapper {
+    position: fixed;
+    right: 18px;
+    // Above Obsidian's bottom bar (floating or not).
+    bottom: calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 14px);
+    z-index: 5;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .kanban-plugin__lane button.kanban-plugin__new-item-button {
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    font-size: 0;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+
+    .kanban-plugin__item-button-plus {
+      margin: 0;
+      font-size: 30px;
+      font-weight: 400;
+    }
+  }
+  &.something-is-dragging .kanban-plugin__item-button-wrapper {
+    display: none;
+  }
+}
+
+// The card under your finger while dragging looks like the rows it came from, and is
+// see-through so the list tab under it stays readable.
+.is-phone .kanban-plugin__drag-container {
+  .mk-phone-card();
+  opacity: 0.88;
+}
+// Phones: the Delete target sits above Obsidian's bottom bar, not behind it.
+.is-phone .kanban-plugin__trash-float {
+  bottom: calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + 14px);
+  white-space: nowrap;
+}

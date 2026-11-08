@@ -183,6 +183,15 @@ export function DragDropApp({ win, plugin }: { win: Window; plugin: KanbanPlugin
         return;
       }
 
+      // Dropped on a phone list tab: to the top of that list (same board only).
+      if (dropEntityData.type === 'lane-tab') {
+        if (dragEntityData.type !== DataTypes.Item || sourceFile !== destinationFile) return;
+        if (dragPath[0] === dropPath[0]) return;
+        const view = plugin.getKanbanView(dragEntity.scopeId, dragEntityData.win);
+        const title = view?.file && plugin.stateManagers.get(view.file)?.state?.children?.[dropPath[0]]?.data?.title;
+        if (title) new Notice(`Moved to ${title}`, 1500);
+      }
+
       const inDropArea =
         dropEntityData.acceptsSort && !dropEntityData.acceptsSort.includes(dragEntityData.type);
 

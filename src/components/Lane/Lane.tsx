@@ -292,9 +292,11 @@ export const DraggableLane = memo(DraggableLaneRaw);
 export interface LanesProps {
   lanes: Lane[];
   collapseDir: 'horizontal' | 'vertical';
+  /** Phones: only this list is shown (the others are picked from tabs). */
+  phoneLane?: number | null;
 }
 
-function LanesRaw({ lanes, collapseDir }: LanesProps) {
+function LanesRaw({ lanes, collapseDir, phoneLane }: LanesProps) {
   const search = useContext(SearchContext);
   const { view } = useContext(KanbanContext);
   const boardView = view.useViewState(frontmatterKey) || 'board';
@@ -303,6 +305,18 @@ function LanesRaw({ lanes, collapseDir }: LanesProps) {
   return (
     <>
       {lanes.map((lane, i) => {
+        if (phoneLane != null) {
+          if (i !== phoneLane) return null;
+          return (
+            <DraggableLane
+              collapseDir={collapseDir}
+              isCollapsed={false}
+              key={boardView + lane.id}
+              lane={lane}
+              laneIndex={i}
+            />
+          );
+        }
         return (
           <DraggableLane
             collapseDir={collapseDir}

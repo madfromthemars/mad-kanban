@@ -27,11 +27,13 @@ export class DndManager {
     this.dragManager = new DragManager(win, this.emitter, this.hitboxEntities, this.scrollEntities);
 
     this.emitter.on('zoneDrop', ({ dragEntity, zone }: { dragEntity: Entity; zone: string }) => {
+      // Phone list tabs: "lane:<index>" drops the card at the top of that list.
+      const tab = /^lane:(\d+)$/.exec(zone);
       const zoneEntity = {
         scopeId: dragEntity.scopeId,
         entityId: `${dragEntity.scopeId}-${zone}`,
-        getPath: (): number[] => [],
-        getData: () => ({ type: zone, win: dragEntity.getData().win }),
+        getPath: (): number[] => (tab ? [Number(tab[1]), 0] : []),
+        getData: () => ({ type: tab ? 'lane-tab' : zone, win: dragEntity.getData().win }),
       } as unknown as Entity;
       this.onDrop(dragEntity, zoneEntity);
     });
