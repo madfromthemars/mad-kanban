@@ -335,21 +335,25 @@ export function createNotifier(db, { log = console } = {}) {
   }
 
   /**
-   * One summary for a person: per project, how many of each thing happened
-   * ("OneCatalog: 2 mentions · 1 reply"). No card titles, no comment text. Null when
-   * nothing is left to say (cards deleted, no longer visible, parked in Backlog...).
+   * One summary for a person, grouped by what happened, one line per project with a count
+   * and who did it:
+   *   📣 You were mentioned (2)
+   *   • catalog (2) [Bekhzod]
+   * No card titles, no comment text. Null when nothing is left to say (cards deleted, no
+   * longer visible, parked in Backlog...).
    */
   function summary(userId, rows) {
-    const order = ['mention', 'reply', 'comment', 'assigned', 'moved'];
-    const words = {
-      mention: ['mention', 'mentions'],
-      reply: ['reply', 'replies'],
-      comment: ['comment', 'comments'],
-      assigned: ['new card for you', 'new cards for you'],
-      moved: ['card moved', 'cards moved'],
+    const heads = {
+      mention: '📣 You were mentioned',
+      reply: '↩️ Replies to you',
+      comment: '💬 New comments on your cards',
+      assigned: '👤 Assigned to you',
+      moved: '➡️ Your cards moved',
     };
-    const projects = new Map(); // name -> { kind -> count }
+    // kind -> project -> { n, cards, actors }
+    const groups = Object.fromEntries(Object.keys(heads).map((k) => [k, new Map()]));
     const cache = new Map();
+    const allCards = new Set();
     for (const r of rows) {
       const key = `${r.board_id}/${r.card_id}`;
       if (!cache.has(key)) {
@@ -357,28 +361,31 @@ export function createNotifier(db, { log = console } = {}) {
         cache.set(key, card && canSee(userId, card) ? card : null);
       }
       const card = cache.get(key);
-      if (!card) continue;
+      if (!card || !groups[r.kind]) continue;
       if (r.kind === 'assigned' && !assigneesOf(card).includes(userId)) continue;
       if (r.kind === 'moved' && (card.archived || laneKey(card.lane || '') === 'backlog')) continue;
       const name = String(card.project_id || '').startsWith('me:') ? '🔒 Only me' : card.project || 'No project';
-      if (!projects.has(name)) projects.set(name, {});
-      const p = projects.get(name);
-      // Moves and assignments count cards, not events (a card dragged twice is one move).
-      if (r.kind === 'moved' || r.kind === 'assigned') (p[`${r.kind}:set`] ||= new Set()).add(key);
-      else p[r.kind] = (p[r.kind] || 0) + 1;
+      let g = groups[r.kind].get(name);
+      if (!g) groups[r.kind].set(name, (g = { n: 0, cards: new Set(), actors: new Set() }));
+      g.n++;
+      g.cards.add(key);
+      if (r.actor) g.actors.add(r.actor);
+      allCards.add(key);
     }
-    const lines = [];
-    for (const [name, p] of projects) {
-      const parts = [];
-      for (const kind of order) {
-        const n = p[`${kind}:set`]?.size ?? p[kind] ?? 0;
-        if (n) parts.push(`${n} ${words[kind][n === 1 ? 0 : 1]}`);
-      }
-      if (parts.length) lines.push({ name, text: `<b>${esc(name)}</b>: ${parts.join(' · ')}`, hot: !!(p.mention || p.reply) });
+    if (!allCards.size) return null;
+    // Assignments and moves count cards (a card dragged twice is one move); the rest count events.
+    const count = (kind, g) => (kind === 'assigned' || kind === 'moved' ? g.cards.size : g.n);
+    const out = [`🔔 <b>Mad Kanban</b> · ${allCards.size === 1 ? '1 card' : `${allCards.size} cards`}`];
+    for (const kind of Object.keys(heads)) {
+      const g = groups[kind];
+      if (!g.size) continue;
+      const total = [...g.values()].reduce((s, x) => s + count(kind, x), 0);
+      const lines = [...g].map(
+        ([name, x]) => `• ${esc(name)} (${count(kind, x)})${x.actors.size ? ` <i>[${esc([...x.actors].join(', '))}]</i>` : ''}`
+      );
+      out.push(`<b>${heads[kind]} (${total})</b>\n${lines.join('\n')}`);
     }
-    if (!lines.length) return null;
-    lines.sort((a, b) => b.hot - a.hot);
-    return `🔔 <b>Mad Kanban</b>\n\n${lines.map((l) => l.text).join('\n')}`;
+    return out.join('\n\n');
   }
 
   /** Send everyone whose oldest pending event has waited a full batch window. */

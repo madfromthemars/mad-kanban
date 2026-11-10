@@ -188,8 +188,17 @@ test('telegram: connect, batched summaries (no comment text), /stop', async () =
   const toB = sent.filter((m) => m.chat_id === '201');
   assert.equal(toC.length, 1, toC.map((m) => m.text).join('\n---\n'));
   assert.equal(toB.length, 1, toB.map((m) => m.text).join('\n---\n'));
-  assert.equal(toC[0].text, '🔔 <b>Mad Kanban</b>\n\n<b>General</b>: 2 comments · 1 new card for you · 1 card moved');
-  assert.equal(toB[0].text, '🔔 <b>Mad Kanban</b>\n\n<b>General</b>: 2 mentions\n<b>Web</b>: 1 mention');
+  assert.equal(
+    toC[0].text,
+    '🔔 <b>Mad Kanban</b> · 1 card\n\n' +
+      '<b>💬 New comments on your cards (2)</b>\n• General (2) <i>[Ann]</i>\n\n' +
+      '<b>👤 Assigned to you (1)</b>\n• General (1) <i>[Ann]</i>\n\n' +
+      '<b>➡️ Your cards moved (1)</b>\n• General (1) <i>[Ann]</i>'
+  );
+  assert.equal(
+    toB[0].text,
+    '🔔 <b>Mad Kanban</b> · 2 cards\n\n<b>📣 You were mentioned (3)</b>\n• General (2) <i>[Ann]</i>\n• Web (1) <i>[Ann]</i>'
+  );
   for (const m of [...toB, ...toC]) assert.doesNotMatch(m.text, /look|again|this one/, 'no comment text');
 
   // Your own comment never notifies you; an edit that adds a mention does.
@@ -200,7 +209,7 @@ test('telegram: connect, batched summaries (no comment text), /stop', async () =
   assert.equal(sent.filter((m) => m.chat_id === '301').length, 0);
   const byEdit = sent.filter((m) => m.chat_id === '201');
   assert.equal(byEdit.length, 1);
-  assert.match(byEdit[0].text, /: 1 mention$/);
+  assert.match(byEdit[0].text, /mentioned \(1\)<\/b>\n• General \(1\) <i>\[Cid\]<\/i>$/);
 
   // Parked in the Backlog: nothing to say.
   sent.length = 0;
@@ -223,11 +232,11 @@ test('telegram: connect, batched summaries (no comment text), /stop', async () =
   await settle();
   const replyB = sent.filter((m) => m.chat_id === '201');
   assert.equal(replyB.length, 1);
-  assert.match(replyB[0].text, /: 1 mention · 1 reply$/);
+  assert.match(replyB[0].text, /mentioned \(1\)<\/b>\n• General \(1\) <i>\[Ann\]<\/i>\n\n<b>↩️ Replies to you \(1\)<\/b>\n• General \(1\) <i>\[Ann\]<\/i>$/);
   assert.doesNotMatch(replyB[0].text, /shipped/);
   const replyC = sent.filter((m) => m.chat_id === '301');
   assert.equal(replyC.length, 1);
-  assert.match(replyC[0].text, /: 3 comments$/);
+  assert.match(replyC[0].text, /comments on your cards \(3\)<\/b>\n• General \(3\) <i>\[Ann, Bob Stone\]<\/i>$/);
 
   // A card that's gone by summary time is left out.
   sent.length = 0;
