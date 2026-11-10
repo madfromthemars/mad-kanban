@@ -587,6 +587,98 @@ export class NotesSync {
     new Notice(text, 10000);
   }
 
+  // ---------- canvas links ----------
+  // A canvas links to notes by vault path, and those differ per device (another root folder
+  // name, a renamed project). In the shared doc, links into project folders are stored as
+  // "team:<projectId>/<path inside the project>" and turned back into this device's path.
+
+  private toShared(data: CanvasData): CanvasData {
+    return {
+      ...data,
+      nodes: data.nodes.map((n) => {
+        if (n?.type !== 'file' || typeof n.file !== 'string') return n;
+        const at = this.place(n.file);
+        return at ? { ...n, file: `team:${at.projectId}/${at.rel}` } : n;
+      }),
+    };
+  }
+
+  private toLocal(data: CanvasData): CanvasData {
+    return {
+      ...data,
+      nodes: data.nodes.map((n) => {
+        if (n?.type !== 'file' || typeof n.file !== 'string' || !n.file.startsWith('team:')) return n;
+        const i = n.file.indexOf('/');
+        const pid = n.file.slice(5, i);
+        const rel = n.file.slice(i + 1);
+        const folder = this.folders.get(pid);
+        return { ...n, file: folder ? `${this.root}/${folder}/${rel}` : rel };
+      }),
+    };
+  }
+
+  private sharedCanvas(text: string | undefined | null) {
+    const d = text != null ? parseCanvas(text) : null;
+    return d ? this.toShared(d) : null;
+  }
+
+  /**
+   * Notes a shared canvas links to that its project can't see (outside project folders, or
+   * in another project): tell the person once, with a button to share them.
+   */
+  private checkCanvasLinks(id: string, data: CanvasData) {
+    const m = this.metas.get(id);
+    if (!m) return;
+    const outside: string[] = [];
+    const elsewhere: string[] = [];
+    for (const n of data.nodes) {
+      if (n?.type !== 'file' || typeof n.file !== 'string' || n.file.startsWith('team:')) continue;
+      const at = this.place(n.file);
+      if (at && at.projectId === m.projectId) continue;
+      if (at) elsewhere.push(n.file);
+      else if (this.app.vault.getAbstractFileByPath(n.file) instanceof TFile) outside.push(n.file);
+    }
+    const key = `links:${id}:${[...outside, ...elsewhere].sort().join('|')}`;
+    if ((!outside.length && !elsewhere.length) || this.noticed.has(key)) return;
+    this.noticed.add(key);
+    const name = m.localPath.split('/').pop()?.replace(/\.canvas$/, '') ?? 'This canvas';
+    const project = this.projects.get(m.projectId)?.name ?? 'the project';
+    const frag = document.createDocumentFragment();
+    const list = (xs: string[]) => xs.map((x) => x.split('/').pop()).join(', ');
+    const p1 = frag.createEl('div', {
+      text: `Mad Kanban: “${name}” links to ${outside.length + elsewhere.length} file${outside.length + elsewhere.length === 1 ? '' : 's'} people in ${project} don't have.`,
+    });
+    p1.style.marginBottom = '6px';
+    if (outside.length) frag.createEl('div', { text: `Not shared: ${list(outside)}` });
+    if (elsewhere.length) frag.createEl('div', { text: `In another project: ${list(elsewhere)}` });
+    let notice: Notice;
+    if (outside.length) {
+      const btn = frag.createEl('button', { text: `Share them in ${project}`, cls: 'mod-cta' });
+      btn.style.marginTop = '8px';
+      btn.onclick = () => {
+        notice?.hide();
+        void this.shareLinked(m.projectId, outside);
+      };
+    }
+    notice = new Notice(frag, 0);
+  }
+
+  /** Move linked files into the project folder (Obsidian updates the links everywhere). */
+  private async shareLinked(projectId: string, paths: string[]) {
+    const folder = this.folders.get(projectId);
+    if (!folder) return;
+    let moved = 0;
+    for (const path of paths) {
+      const f = this.app.vault.getAbstractFileByPath(path);
+      if (!(f instanceof TFile)) continue;
+      let to = `${this.root}/${folder}/${f.name}`;
+      for (let i = 2; this.app.vault.getAbstractFileByPath(to); i++) to = `${this.root}/${folder}/${f.basename} (${i}).${f.extension}`;
+      await this.app.fileManager.renameFile(f, to);
+      moved++;
+    }
+    new Notice(`Mad Kanban: moved ${moved} file${moved === 1 ? '' : 's'} into ${this.root}/${folder} and shared ${moved === 1 ? 'it' : 'them'}.`, 6000);
+  }
+
   // ---------- docs <-> disk ----------
 
   /** Bring one server doc to disk (content and place). */
@@ -628,8 +720,8 @@ export class NotesSync {
             const merged = merge3(meta.base, local, yt.toString());
             d.ydoc.transact(() => setText(yt, merged), FROM_FILE);
           } else {
-            const mine = local.trim() ? parseCanvas(local) : null;
-            if (mine) d.ydoc.transact(() => applyCanvas(d.ydoc, parseCanvas(meta.base!), mine), FROM_FILE);
+            const mine = local.trim() ? this.sharedCanvas(local) : null;
+            if (mine) d.ydoc.transact(() => applyCanvas(d.ydoc, this.sharedCanvas(meta.base), mine), FROM_FILE);
           }
         }
       }
@@ -669,7 +761,7 @@ export class NotesSync {
   }
 
   private render(d: LiveDoc) {
-    return d.kind === 'md' ? d.ydoc.getText('content').toString() : renderCanvas(canvasFromY(d.ydoc));
+    return d.kind === 'md' ? d.ydoc.getText('content').toString() : renderCanvas(this.toLocal(canvasFromY(d.ydoc)));
   }
 
   /** Write a live doc to disk after a remote change (unless an editor/canvas shows it live). */
@@ -731,7 +823,7 @@ export class NotesSync {
     const text = await this.app.vault.read(f);
     const ydoc = new Y.Doc();
     if (kind === 'md') ydoc.getText('content').insert(0, text);
-    else replaceCanvas(ydoc, parseCanvas(text) ?? { nodes: [], edges: [] });
+    else replaceCanvas(ydoc, this.sharedCanvas(text) ?? { nodes: [], edges: [] });
     const state = Y.encodeStateAsUpdate(ydoc);
     await this.store.putState(id, state);
     const meta: DocMeta = {
@@ -740,14 +832,16 @@ export class NotesSync {
       localPath: f.path,
       kind,
       syncedAt: 0,
-      base: kind === 'md' ? text : renderCanvas(canvasFromY(ydoc)),
+      base: kind === 'md' ? text : renderCanvas(this.toLocal(canvasFromY(ydoc))),
       dirty: true,
     };
     await this.saveMeta(meta);
     if (!this.client.socketOpen) return; // goes up on reconnect (fullSync keeps dirty metas)
     const doc = await this.op({ type: 'doc.create', id, projectId: where.projectId, path: where.rel, update: b64(state), rename: true });
-    if (doc) await this.adoptCreated(f, doc, {});
-    else await this.dropMeta(id);
+    if (doc) {
+      await this.adoptCreated(f, doc, {});
+      if (kind === 'canvas') this.checkCanvasLinks(doc.id, parseCanvas(text) ?? { nodes: [], edges: [] });
+    } else await this.dropMeta(id);
   }
 
   /** A note created while offline: create it on the server now with what we have. */
@@ -819,6 +913,23 @@ export class NotesSync {
     // just Obsidian writing what it shows. Never merge those back.
     if (m.kind === 'canvas' && this.isHooked(m.id) && d0?.known) {
       await this.saveMeta({ ...m, base: text, mtime: f.stat.mtime } as DocMeta);
+      const data = parseCanvas(text);
+      if (data) {
+        // Obsidian rewrote links in the file (a linked note was renamed or moved): those
+        // path changes don't go through the canvas object, so carry them over here.
+        const nodes = d0.ydoc.getMap<string>('nodes');
+        const shared = this.toShared(data);
+        d0.ydoc.transact(() => {
+          for (const n of shared.nodes) {
+            if (n?.type !== 'file') continue;
+            const cur = nodes.get(n.id);
+            if (!cur) continue;
+            const e = JSON.parse(cur);
+            if (e.v.type === 'file' && e.v.file !== n.file) nodes.set(n.id, JSON.stringify({ i: e.i, v: { ...e.v, file: n.file } }));
+          }
+        }, FROM_FILE);
+        this.checkCanvasLinks(m.id, data);
+      }
       return;
     }
     // A save that repeats text the shared doc already had (Obsidian saving a live editor
@@ -849,7 +960,8 @@ export class NotesSync {
         if (!mine) return; // half-written / broken JSON: wait for the next save
         // An empty file is a half-written save or a mistake, never "delete every box".
         if (!text.trim() && parseCanvas(m.base ?? '')?.nodes.length) return;
-        d.ydoc.transact(() => applyCanvas(d.ydoc, m.base ? parseCanvas(m.base) : null, mine), FROM_FILE);
+        d.ydoc.transact(() => applyCanvas(d.ydoc, m.base ? this.sharedCanvas(m.base) : null, this.toShared(mine)), FROM_FILE);
+        this.checkCanvasLinks(m.id, mine);
       }
       const now = this.render(d);
       const live = this.isBound(m.id) || this.isHooked(m.id);
@@ -1317,8 +1429,9 @@ export class NotesSync {
             h.timer = null;
             if (!sync.live.has(id) || !d.known) return;
             const now = canvas.getData();
-            d.ydoc.transact(() => applyCanvas(d.ydoc, h.shown, now), FROM_CANVAS);
+            d.ydoc.transact(() => applyCanvas(d.ydoc, sync.toShared(h.shown), sync.toShared(now)), FROM_CANVAS);
             h.shown = now;
+            sync.checkCanvasLinks(id, now);
           }, 60);
           return orig.apply(this, args);
         };
@@ -1331,8 +1444,9 @@ export class NotesSync {
       // Boxes changed in the file while it wasn't live, then the shared state.
       const m = this.metas.get(id);
       const now = canvas.getData();
-      if (m?.base && renderCanvas(now) !== m.base) d.ydoc.transact(() => applyCanvas(d.ydoc, parseCanvas(m.base!), now), FROM_CANVAS);
+      if (m?.base && renderCanvas(now) !== m.base) d.ydoc.transact(() => applyCanvas(d.ydoc, this.sharedCanvas(m.base), this.toShared(now)), FROM_CANVAS);
       this.applyToCanvases(d);
+      this.checkCanvasLinks(id, now);
     });
   }
 
@@ -1349,7 +1463,7 @@ export class NotesSync {
 
   /** Remote canvas changes, box by box; boxes being dragged or edited here are left alone. */
   private applyToCanvases(d: LiveDoc) {
-    const want = canvasFromY(d.ydoc);
+    const want = this.toLocal(canvasFromY(d.ydoc));
     for (const h of this.hooks.values()) {
       if (h.id !== d.id) continue;
       const c = h.canvas;

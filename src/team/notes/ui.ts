@@ -141,7 +141,9 @@ export class NotesVersionsModal extends Modal {
           if (this.file.extension === 'canvas') {
             try {
               const d = JSON.parse(content);
-              const texts = (d.nodes || []).map((n: any) => n.text || n.file || n.url || n.label || '').filter(Boolean);
+              const texts = (d.nodes || [])
+                .map((n: any) => n.text || (n.file ? String(n.file).replace(/^team:[^/]+\//, '📄 ') : '') || n.url || n.label || '')
+                .filter(Boolean);
               pre.setText(`${(d.nodes || []).length} boxes, ${(d.edges || []).length} arrows\n\n${texts.join('\n\n')}`);
             } catch {
               pre.setText(content);
