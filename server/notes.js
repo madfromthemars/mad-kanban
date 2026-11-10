@@ -35,6 +35,9 @@ export class NotesError extends Error {
 }
 
 const KINDS = { '.md': 'md', '.canvas': 'canvas' };
+const TOUCH_THROTTLE_MS = Number(process.env.NOTES_TOUCH_MS || 2000);
+const VERSION_EVERY_MS = Number(process.env.NOTES_VERSION_EVERY_MS || 10 * 60 * 1000);
+const MAX_VERSIONS = 60;
 
 /**
  * "Plans/Q1 plan.md" -> same, or a NotesError. Relative to the project folder; no "..",
@@ -55,11 +58,10 @@ export function cleanPath(p) {
   return parts.join('/');
 }
 
+/** .md -> live note, .canvas -> live canvas, anything else -> attachment (whole file). */
 export function kindOfPath(path) {
   const m = /\.[^./]+$/.exec(path);
-  const kind = m && KINDS[m[0].toLowerCase()];
-  if (!kind) throw new NotesError(400, 'only .md notes and .canvas files can be shared (attachments come later)');
-  return kind;
+  return (m && KINDS[m[0].toLowerCase()]) || 'file';
 }
 
 function rowToDoc(r) {
@@ -68,6 +70,7 @@ function rowToDoc(r) {
     projectId: r.project_id,
     path: r.path,
     kind: r.kind,
+    fileId: r.file_id || null,
     version: r.version,
     size: r.size,
     createdBy: r.created_by,
@@ -109,7 +112,18 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
       at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS doc_updates_doc ON doc_updates(doc_id, seq);
+    CREATE TABLE IF NOT EXISTS doc_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      doc_id TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      user_ids TEXT NOT NULL DEFAULT '[]',
+      data BLOB NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS doc_versions_doc ON doc_versions(doc_id, at);
   `);
+  if (!db.prepare('PRAGMA table_info(docs)').all().some((c) => c.name === 'file_id')) {
+    db.exec('ALTER TABLE docs ADD COLUMN file_id TEXT');
+  }
 
   const q = {
     get: db.prepare('SELECT * FROM docs WHERE id = ?'),
@@ -148,6 +162,15 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
       .map(rowToDoc);
   }
 
+  /** Projects whose folder the user gets (every visible real project, even empty ones). */
+  function projectsFor(user) {
+    const vis = visibleProjectIds(db, user);
+    return db
+      .prepare('SELECT id, name, color FROM projects ORDER BY name COLLATE NOCASE')
+      .all()
+      .filter((p) => vis.has(p.id));
+  }
+
   function trash(user) {
     const vis = visibleProjectIds(db, user);
     return db
@@ -171,6 +194,12 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
     }
   }
 
+  function requireFile(fileId) {
+    const f = db.prepare('SELECT id FROM files WHERE id = ?').get(String(fileId || ''));
+    if (!f) throw new NotesError(400, 'upload the file first (fileId not found)');
+    return f.id;
+  }
+
   function validUpdate(b64) {
     if (b64 == null) return null;
     const buf = Buffer.from(String(b64), 'base64');
@@ -189,6 +218,8 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
    *  {type:'doc.move', id, path?, projectId?, version?}
    *  {type:'doc.delete', id}
    *  {type:'doc.restore', id}
+   *  {type:'doc.setFile', id, fileId, version?}   (attachments: new content)
+   * Attachments (any path that isn't .md / .canvas) need `fileId` from POST /api/docs/files.
    * `rename: true` on create picks "name (2).md" instead of failing when the path is taken.
    */
   function applyOps(user, ops) {
@@ -208,11 +239,12 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
           const id = op.id != null ? String(op.id) : newId(12);
           if (!/^[a-z0-9]{8,24}$/.test(id)) throw new NotesError(400, 'bad doc id');
           if (q.get.get(id)) throw new NotesError(409, 'doc id already used');
-          const update = validUpdate(op.update);
+          const update = kind === 'file' ? null : validUpdate(op.update);
+          const fileId = kind === 'file' ? requireFile(op.fileId) : null;
           db.prepare(
-            `INSERT INTO docs (id, project_id, path, kind, created_by, created_at, updated_by, updated_at, size)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(id, op.projectId, path, kind, user.id, now, user.id, now, update?.length || 0);
+            `INSERT INTO docs (id, project_id, path, kind, file_id, created_by, created_at, updated_by, updated_at, size)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(id, op.projectId, path, kind, fileId, user.id, now, user.id, now, update?.length || 0);
           if (update) q.addUpdate.run(id, update, user.id, now);
           const doc = rowToDoc(q.get.get(id));
           changed.push({ doc });
@@ -237,6 +269,17 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
           );
           const doc = rowToDoc(q.get.get(r.id));
           changed.push({ doc, oldProjectId: r.project_id });
+          return { ok: true, doc };
+        }
+        if (op?.type === 'doc.setFile') {
+          const r = requireDoc(user, op.id);
+          if (r.kind !== 'file') throw new NotesError(400, 'only attachments have a file');
+          if (op.version != null && Number(op.version) !== r.version)
+            throw new NotesError(409, `"${r.path}" was changed by someone else; reload and try again`);
+          const fileId = requireFile(op.fileId);
+          db.prepare('UPDATE docs SET file_id = ?, version = version + 1, updated_by = ?, updated_at = ? WHERE id = ?').run(fileId, user.id, now, r.id);
+          const doc = rowToDoc(q.get.get(r.id));
+          changed.push({ doc });
           return { ok: true, doc };
         }
         if (op?.type === 'doc.delete') {
@@ -321,16 +364,25 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
       idle: null,
       size: Y.encodeStateAsUpdate(ydoc).length,
       rows: q.countUpdates.get(id).n,
+      editors: new Set(),
+      touchTimer: null,
+      touchAt: 0,
+      lastVersion: db.prepare('SELECT MAX(at) AS at FROM doc_versions WHERE doc_id = ?').get(id).at || 0,
     };
+    // Before the first change after a quiet spell, keep a copy of how the doc looked.
+    ydoc.on('beforeTransaction', () => maybeVersion(room, Date.now()));
     ydoc.on('update', (update, origin) => {
       // origin = the socket entry that sent it
       const at = Date.now();
-      q.addUpdate.run(id, update, origin?.user?.id ?? null, at);
+      const uid = origin?.user?.id ?? null;
+      q.addUpdate.run(id, update, uid, at);
       room.size += update.length;
-      q.touch.run(origin?.user?.id ?? null, at, room.size, id);
+      q.touch.run(uid, at, room.size, id);
       const data = frame(id, MSG_SYNC, (enc) => syncProtocol.writeUpdate(enc, update));
       for (const c of room.conns.keys()) if (c !== origin) sendTo(c, data);
       if (++room.rows > COMPACT_AFTER) compact(room);
+      if (uid) room.editors.add(uid);
+      touched(room, at);
     });
     awareness.on('update', ({ added, updated, removed }, origin) => {
       const changedIds = added.concat(updated, removed);
@@ -341,6 +393,72 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
     });
     rooms.set(id, room);
     return room;
+  }
+
+  /**
+   * "This doc changed" for everyone who can see it but isn't subscribed, at most every
+   * couple of seconds per doc, so their device fetches it in the background.
+   */
+  function touched(room, at) {
+    room.touchAt = at;
+    if (room.touchTimer) return;
+    room.touchTimer = setTimeout(() => {
+      room.touchTimer = null;
+      const r = q.get.get(room.id);
+      if (!r || r.deleted_at) return;
+      const msg = JSON.stringify({ type: 'docs.touched', id: room.id, updatedAt: room.touchAt, ts: Date.now() });
+      for (const s of eachSocket()) {
+        if (room.conns.has(s) || s.ws.readyState !== s.ws.OPEN) continue;
+        if (canUse(s.user, r.project_id)) s.ws.send(msg);
+      }
+    }, TOUCH_THROTTLE_MS);
+    room.touchTimer.unref?.();
+  }
+
+  /**
+   * Version history: before a change, if the last saved copy is older than ~10 minutes,
+   * save the doc as it is now (so every version is a state someone actually saw).
+   */
+  function maybeVersion(room, at) {
+    if (!room || at - room.lastVersion < VERSION_EVERY_MS) return;
+    if (!room.ydoc.share.size && !q.countUpdates.get(room.id).n) return; // nothing yet
+    room.lastVersion = at;
+    db.prepare('INSERT INTO doc_versions (doc_id, at, user_ids, data) VALUES (?, ?, ?, ?)').run(
+      room.id,
+      at,
+      JSON.stringify([...room.editors]),
+      Y.encodeStateAsUpdate(room.ydoc)
+    );
+    room.editors = new Set();
+    // Thin out: keep the newest MAX_VERSIONS.
+    db.prepare(
+      `DELETE FROM doc_versions WHERE doc_id = ? AND id NOT IN
+         (SELECT id FROM doc_versions WHERE doc_id = ? ORDER BY at DESC LIMIT ?)`
+    ).run(room.id, room.id, MAX_VERSIONS);
+  }
+
+  function versions(user, id) {
+    requireDoc(user, id, { deleted: true });
+    const names = new Map(db.prepare('SELECT id, name FROM users').all().map((u) => [u.id, u.name]));
+    return db
+      .prepare('SELECT id, at, user_ids FROM doc_versions WHERE doc_id = ? ORDER BY at DESC')
+      .all(id)
+      .map((v) => ({ id: v.id, at: v.at, by: JSON.parse(v.user_ids).map((u) => names.get(u) || u) }));
+  }
+
+  function versionContent(user, id, versionId) {
+    const r = requireDoc(user, id, { deleted: true });
+    const v = db.prepare('SELECT data FROM doc_versions WHERE doc_id = ? AND id = ?').get(id, Number(versionId));
+    if (!v) throw new NotesError(404, 'version not found');
+    const d = new Y.Doc();
+    Y.applyUpdate(d, v.data);
+    return render(r.kind, d);
+  }
+
+  function render(kind, ydoc) {
+    if (kind === 'md') return ydoc.getText('content').toString();
+    const parts = (m) => [...m.values()].map((s) => JSON.parse(s)).sort((a, b) => a.i - b.i).map((x) => x.v);
+    return JSON.stringify({ nodes: parts(ydoc.getMap('nodes')), edges: parts(ydoc.getMap('edges')) });
   }
 
   /** Many small updates -> one snapshot row (same content, faster loads). */
@@ -422,6 +540,10 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
           sendJson(entry, { type: 'doc.error', id, error: r?.deleted_at ? 'deleted' : 'not found' });
           return;
         }
+        if (r.kind === 'file') {
+          sendJson(entry, { type: 'doc.error', id, error: 'attachments are not live documents' });
+          return;
+        }
         room = loadRoom(id);
       }
       clearTimeout(room.idle);
@@ -474,14 +596,13 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
   /** Text of a markdown doc / JSON of a canvas, as stored now (tests, MCP later). */
   function contentOf(user, id) {
     const r = requireDoc(user, id);
+    if (r.kind === 'file') throw new NotesError(400, 'attachments have no text content');
     const ydoc = rooms.get(id)?.ydoc ?? (() => {
       const d = new Y.Doc();
       for (const u of q.updates.all(id)) Y.applyUpdate(d, u.data);
       return d;
     })();
-    if (r.kind === 'md') return ydoc.getText('content').toString();
-    const parts = (m) => [...m.values()].map((s) => JSON.parse(s)).sort((a, b) => a.i - b.i).map((x) => x.v);
-    return JSON.stringify({ nodes: parts(ydoc.getMap('nodes')), edges: parts(ydoc.getMap('edges')) });
+    return render(r.kind, ydoc);
   }
 
   /** Deleted more than 30 days ago: gone for good. */
@@ -490,6 +611,7 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
     for (const { id } of old) {
       transaction(db, () => {
         db.prepare('DELETE FROM doc_updates WHERE doc_id = ?').run(id);
+        db.prepare('DELETE FROM doc_versions WHERE doc_id = ?').run(id);
         db.prepare('DELETE FROM docs WHERE id = ?').run(id);
       });
     }
@@ -498,5 +620,5 @@ export function createNotes(db, { eachSocket, log = console } = {}) {
   const purgeTimer = setInterval(() => purge(), 6 * 3600e3);
   purgeTimer.unref?.();
 
-  return { list, trash, applyOps, onFrame, onClose, recheckAll, contentOf, purge, rooms };
+  return { list, projectsFor, trash, applyOps, onFrame, onClose, recheckAll, contentOf, versions, versionContent, purge, rooms };
 }

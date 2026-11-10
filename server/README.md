@@ -73,3 +73,15 @@ daily counts per project and person (`daily_stats`, days in UTC+5, override with
   permissions yet.
 - Data lives in the `kanban-data` volume (`/data/kanban.db`). Back that up.
 - Tests: `npm install && npm test` (needs Node ≥ 22.13).
+
+
+## Shared project notes (`notes.js`)
+
+Notes, canvases and attachments in each member's `Team/<project>/` folder. Live editing is
+Yjs over binary frames on `/ws`; tree changes over REST:
+
+- `GET /api/docs` → `{docs, projects}` · `GET /api/docs/trash` · `POST /api/docs/ops`
+  (`doc.create`, `doc.move`, `doc.delete`, `doc.restore`, `doc.setFile`; all-or-nothing)
+- `GET /api/docs/:id/content`, `/versions`, `/versions/:vid` · `POST /api/docs/files` (upload)
+- Env: `NOTES_MAX_DOC_BYTES` (10 MB), `NOTES_COMPACT_AFTER` (500), `NOTES_TOUCH_MS` (2000),
+  `NOTES_VERSION_EVERY_MS` (10 min). Design: `docs/design/shared-notes.md`.

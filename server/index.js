@@ -607,7 +607,10 @@ route('DELETE', '/api/team/projects/:id/members/:userId', (req, params) => {
 });
 
 // shared notes and canvases (notes.js)
-route('GET', '/api/docs', (req) => ({ docs: notes.list(requireUser(req)) }));
+route('GET', '/api/docs', (req) => {
+  const user = requireUser(req);
+  return { docs: notes.list(user), projects: notes.projectsFor(user) };
+});
 route('GET', '/api/docs/trash', (req) => ({ docs: notes.trash(requireUser(req)) }));
 route('POST', '/api/docs/ops', async (req) => {
   const user = requireUser(req);
@@ -615,6 +618,10 @@ route('POST', '/api/docs/ops', async (req) => {
   return notes.applyOps(user, body.ops);
 });
 route('GET', '/api/docs/:id/content', (req, params) => ({ content: notes.contentOf(requireUser(req), params.id) }));
+route('GET', '/api/docs/:id/versions', (req, params) => ({ versions: notes.versions(requireUser(req), params.id) }));
+route('GET', '/api/docs/:id/versions/:vid', (req, params) => ({
+  content: notes.versionContent(requireUser(req), params.id, params.vid),
+}));
 
 // boards
 route('GET', '/api/boards', (req) => {
@@ -855,6 +862,12 @@ route('DELETE', '/api/boards/:id/comments/:commentId', (req, params) => {
 route('POST', '/api/boards/:id/files', async (req, params) => {
   const user = requireUser(req);
   const board = requireBoard(user, params.id);
+  return receiveUpload(req, user, board.id);
+});
+// Attachments in shared project folders (notes.js): same storage, no board.
+route('POST', '/api/docs/files', async (req) => receiveUpload(req, requireUser(req), 'docs'));
+
+async function receiveUpload(req, user, boardId) {
   const mime = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim();
   let name = 'file';
   try {
@@ -890,7 +903,7 @@ route('POST', '/api/boards/:id/files', async (req, params) => {
     fs.rm(dest, { force: true }, () => {});
     throw new OpError(400, 'empty file');
   }
-  addFile(db, user, board.id, { id, name, mime, size });
+  addFile(db, user, boardId, { id, name, mime, size });
   return {
     id,
     name,
@@ -898,7 +911,7 @@ route('POST', '/api/boards/:id/files', async (req, params) => {
     size,
     url: `${PUBLIC_URL}/files/${id}/${encodeURIComponent(name)}`,
   };
-});
+}
 
 // ---------- static: uploaded files (public by unguessable id) and downloads ----------
 

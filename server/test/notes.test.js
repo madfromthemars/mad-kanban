@@ -30,6 +30,8 @@ async function startServer() {
       TELEGRAM_BOT_TOKEN: '',
       NOTES_MAX_DOC_BYTES: '20000',
       NOTES_COMPACT_AFTER: '50',
+      NOTES_TOUCH_MS: '100',
+      NOTES_VERSION_EVERY_MS: '300',
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -322,4 +324,69 @@ test('notes: size cap, compaction, survives a restart', async () => {
   const d2 = a2.open('plan00000001');
   await until(() => d2.text.toString() === expected, 'fresh client after restart');
   a2.close();
+});
+
+test('notes: project list, "changed" pings for people not subscribed', async () => {
+  const lst = (await api('GET', '/api/docs', null, B.token)).json;
+  assert.ok(lst.projects.some((p) => p.name === 'catalog'));
+  assert.ok(!(await api('GET', '/api/docs', null, C.token)).json.projects.some((p) => p.name === 'catalog'));
+  const a = await client(A.token);
+  const b = await client(B.token); // not subscribed: should get docs.touched
+  const d = a.open('plan00000001');
+  await until(() => d.text.length > 0, 'loaded');
+  for (let i = 0; i < 5; i++) d.text.insert(0, 'z');
+  await until(() => b.json.some((m) => m.type === 'docs.touched' && m.id === 'plan00000001'), 'B told doc changed');
+  await sleep(300);
+  assert.equal(b.json.filter((m) => m.type === 'docs.touched').length, 1, 'throttled to one ping');
+  assert.ok(!a.json.some((m) => m.type === 'docs.touched'), 'subscriber not pinged');
+  a.close();
+  b.close();
+});
+
+test('notes: attachments upload, create, replace, download', async () => {
+  const up = async (bytes, name) =>
+    (
+      await fetch(BASE + '/api/docs/files', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${B.token}`, 'Content-Type': 'image/png', 'X-Filename': name },
+        body: bytes,
+      })
+    ).json();
+  const f1 = await up(new Uint8Array([1, 2, 3]), 'shot.png');
+  let r = await ops(B.token, [{ type: 'doc.create', projectId: P.id, path: 'Pics/shot.png', fileId: f1.id }]);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const doc = r.json.results[0].doc;
+  assert.equal(doc.kind, 'file');
+  assert.equal(doc.fileId, f1.id);
+  assert.deepEqual([...new Uint8Array(await (await fetch(`${BASE}/files/${f1.id}`)).arrayBuffer())], [1, 2, 3]);
+  const f2 = await up(new Uint8Array([9, 9]), 'shot.png');
+  r = await ops(B.token, [{ type: 'doc.setFile', id: doc.id, fileId: f2.id, version: doc.version }]);
+  assert.equal(r.json.results[0].doc.fileId, f2.id);
+  assert.equal((await ops(B.token, [{ type: 'doc.setFile', id: doc.id, fileId: f1.id, version: doc.version }])).status, 409);
+  assert.equal((await ops(B.token, [{ type: 'doc.create', projectId: P.id, path: 'x.pdf', fileId: 'nope' }])).status, 400);
+  // attachments aren't live docs
+  const b = await client(B.token);
+  b.open(doc.id);
+  await until(() => b.json.some((m) => m.type === 'doc.error' && m.id === doc.id), 'not live');
+  b.close();
+});
+
+test('notes: version history', async () => {
+  const a = await client(A.token);
+  const d = a.open('plan00000001');
+  await until(() => d.text.length > 0, 'loaded');
+  await sleep(350);
+  d.text.delete(0, d.text.length);
+  d.text.insert(0, 'version one');
+  await sleep(400);
+  d.text.insert(d.text.length, ' and two');
+  await sleep(300);
+  const vs = (await api('GET', '/api/docs/plan00000001/versions', null, B.token)).json.versions;
+  assert.ok(vs.length >= 2, JSON.stringify(vs));
+  assert.ok(vs[0].at >= vs[1].at, 'newest first');
+  assert.ok(vs.some((v) => v.by.includes('Ann')));
+  const contents = await Promise.all(vs.map(async (v) => (await api('GET', `/api/docs/plan00000001/versions/${v.id}`, null, B.token)).json.content));
+  assert.ok(contents.includes('version one'), JSON.stringify(contents));
+  assert.equal((await api('GET', '/api/docs/plan00000001/versions', null, C.token)).status, 404);
+  a.close();
 });
