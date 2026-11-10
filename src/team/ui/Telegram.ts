@@ -39,7 +39,7 @@ export function renderTelegramSection(containerEl: HTMLElement, team: TeamManage
     if (st.linked) {
       setting
         .setDesc(
-          `On${st.telegramName ? ` for ${st.telegramName}` : ''}. You get a message from @${st.bot} when someone @mentions you, comments on your cards, assigns you, or moves one of your cards, plus a short note when Mad Kanban gets something new (send /updates off to the bot to skip those).`
+          `On${st.telegramName ? ` for ${st.telegramName}` : ''}. At most every 5 minutes @${st.bot} sends you one short summary: @mentions, replies, comments on your cards, new assignments and moved cards (counts and card names, no comment text). Plus a short note when Mad Kanban gets something new (send /updates off to the bot to skip those).`
         )
         .addButton((b) =>
           b
@@ -60,7 +60,7 @@ export function renderTelegramSection(containerEl: HTMLElement, team: TeamManage
     }
     setting
       .setDesc(
-        'Get a Telegram message when someone @mentions you, comments on your cards, assigns you, or moves one of your cards. Works even when Obsidian is closed.'
+        'Get one short Telegram summary (at most every 5 minutes) of @mentions, replies, comments on your cards, assignments and moves. Works even when Obsidian is closed.'
       )
       .addButton((b) =>
         b

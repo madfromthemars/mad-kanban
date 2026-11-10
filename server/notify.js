@@ -1,8 +1,8 @@
 // Telegram notifications for Mad Kanban.
 //
 // The bot lives inside this server: it long-polls Telegram for /start and /stop, and sends
-// people a message when they're @mentioned, someone comments on their card, they're
-// assigned, or a card of theirs changes list. Obsidian can't push notifications to phones
+// people a short summary (at most every 5 minutes) of mentions, replies, comments on their
+// cards, assignments and moves: counts and card titles only, never comment text. Obsidian can't push notifications to phones
 // (plugins only run while the app is open), so Telegram does that part.
 //
 // Off unless TELEGRAM_BOT_TOKEN is set. TELEGRAM_API overrides the API base (tests).
@@ -18,7 +18,10 @@ dns.setDefaultResultOrder('ipv4first');
 
 const API = (process.env.TELEGRAM_API || 'https://api.telegram.org').replace(/\/+$/, '');
 const LINK_TTL_MS = 15 * 60 * 1000;
-const SEND_DELAY_MS = Number(process.env.TELEGRAM_SEND_DELAY_MS || 4000);
+// Everything a person would be told is collected and sent as one summary at most this
+// often (counted from the first event). Saved in the db, so a restart loses nothing.
+const BATCH_MS = Number(process.env.TELEGRAM_BATCH_MS || 5 * 60 * 1000);
+const MAX_CARDS = 15;
 
 const hash = (s) => createHash('sha256').update(s).digest('hex');
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -118,6 +121,16 @@ export function createNotifier(db, { log = console } = {}) {
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       expires_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS telegram_pending (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      board_id TEXT NOT NULL,
+      card_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      actor TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS telegram_pending_user ON telegram_pending(user_id, created_at);
   `);
 
   // Release announcements ("What's new in 2.1.44") can be turned off per person: /updates off
@@ -129,8 +142,7 @@ export function createNotifier(db, { log = console } = {}) {
   let botUsername = null;
   let stopped = false;
   let offset = 0;
-  /** userId -> { timer, items: Map<key, text> } */
-  const pending = new Map();
+  let flushTimer = null;
 
   async function call(method, body) {
     const res = await fetch(`${API}/bot${token}/${method}`, {
@@ -189,6 +201,7 @@ export function createNotifier(db, { log = console } = {}) {
   function unlink(userId) {
     const row = db.prepare('SELECT chat_id FROM telegram_links WHERE user_id = ?').get(userId);
     db.prepare('DELETE FROM telegram_links WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM telegram_pending WHERE user_id = ?').run(userId);
     if (row && botUsername) {
       send(row.chat_id, 'Mad Kanban notifications are off for this chat.').catch(() => {});
     }
@@ -222,7 +235,7 @@ export function createNotifier(db, { log = console } = {}) {
       log.log(`${new Date().toISOString()} telegram: ${row.name} connected`);
       await send(
         chatId,
-        `✅ Connected as <b>${esc(row.name)}</b>.\n\nYou'll get a message when someone @mentions you, comments on your cards, assigns you, or moves one of your cards, and a short note when Mad Kanban gets something new.\n\n/updates off: no release notes\n/stop: turn everything off`
+        `✅ Connected as <b>${esc(row.name)}</b>.\n\nAt most every 5 minutes you'll get one short summary: @mentions, replies, comments on your cards, new assignments and moved cards. Plus a short note when Mad Kanban gets something new.\n\n/updates off: no release notes\n/stop: turn everything off`
       );
       return;
     }
@@ -246,6 +259,7 @@ export function createNotifier(db, { log = console } = {}) {
     if (/^\/stop\b/i.test(text)) {
       const row = db.prepare('SELECT user_id FROM telegram_links WHERE chat_id = ?').get(chatId);
       db.prepare('DELETE FROM telegram_links WHERE chat_id = ?').run(chatId);
+      if (row) db.prepare('DELETE FROM telegram_pending WHERE user_id = ?').run(row.user_id);
       await send(chatId, row ? 'Notifications are off. Connect again from Obsidian any time.' : 'This chat isn\'t connected.');
       return;
     }
@@ -292,6 +306,7 @@ export function createNotifier(db, { log = console } = {}) {
         await call('deleteWebhook', {}).catch(() => {});
         log.log(`telegram: notifications on via @${botUsername}`);
         void poll();
+        startFlushing();
         return;
       } catch (e) {
         if (e.code === 401 || e.code === 404) {
@@ -306,39 +321,117 @@ export function createNotifier(db, { log = console } = {}) {
 
   function stop() {
     stopped = true;
-    for (const p of pending.values()) clearTimeout(p.timer);
+    clearInterval(flushTimer);
   }
 
   // ---------- sending ----------
 
-  /**
-   * Queue a message for a person. Messages wait a few seconds so a burst (a card dragged
-   * through two lists, several quick comments) goes out once, latest version per key.
-   */
-  function queue(userId, key, text) {
+  /** Remember something to tell a person; it goes out with their next summary. */
+  function queue(userId, { boardId, cardId, kind, actor }) {
     if (!botUsername) return;
-    const link = db.prepare('SELECT chat_id FROM telegram_links WHERE user_id = ?').get(userId);
-    if (!link) return;
-    let p = pending.get(userId);
-    if (!p) {
-      p = { items: new Map(), timer: null };
-      pending.set(userId, p);
+    if (!db.prepare('SELECT 1 FROM telegram_links WHERE user_id = ?').get(userId)) return;
+    db.prepare(
+      'INSERT INTO telegram_pending (user_id, board_id, card_id, kind, actor, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(userId, boardId, cardId, kind, actor?.name || '', Date.now());
+  }
+
+  const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+  /**
+   * One summary for a person from their pending events: a totals line, then one block per
+   * card (counts, who, where it is now). No comment text. Null when nothing is left to say
+   * (cards deleted, no longer visible, moved back to Backlog...).
+   */
+  function summary(userId, rows) {
+    const cards = new Map();
+    for (const r of rows) {
+      const key = `${r.board_id}/${r.card_id}`;
+      let c = cards.get(key);
+      if (!c) cards.set(key, (c = { boardId: r.board_id, cardId: r.card_id, kinds: {}, actors: new Set(), first: r.id }));
+      c.kinds[r.kind] = (c.kinds[r.kind] || 0) + 1;
+      if (r.actor) c.actors.add(r.actor);
     }
-    p.items.set(key, text);
-    clearTimeout(p.timer);
-    p.timer = setTimeout(() => {
-      pending.delete(userId);
+    const blocks = [];
+    const totals = { mention: new Set(), reply: 0, comment: 0, assigned: 0, moved: 0 };
+    for (const c of cards.values()) {
+      const card = cardInfo(c.boardId, c.cardId);
+      if (!card || !canSee(userId, card)) continue;
+      const k = c.kinds;
+      const parts = [];
+      if (k.mention) parts.push(`@ ${plural(k.mention, 'mention')}`);
+      if (k.reply) parts.push(`↩️ ${plural(k.reply, 'reply', 'replies')}`);
+      if (k.comment) parts.push(`💬 ${plural(k.comment, 'comment')}`);
+      if (k.assigned && assigneesOf(card).includes(userId)) parts.push('👤 assigned to you');
+      const lane = card.lane || '';
+      if (k.moved && !card.archived && laneKey(lane) !== 'backlog') parts.push(`➡️ moved to <b>${esc(lane || '?')}</b>`);
+      if (!parts.length) continue;
+      if (k.mention) totals.mention.add(c.cardId);
+      totals.reply += k.reply || 0;
+      totals.comment += k.comment || 0;
+      if (parts.some((p) => p.startsWith('👤'))) totals.assigned++;
+      if (parts.some((p) => p.startsWith('➡️'))) totals.moved++;
+      const title = esc(expandCardRefs(cardTitle(card.content), (id) => {
+        const rc = id === c.cardId ? card : cardInfo(c.boardId, id);
+        return rc && canSee(userId, rc) ? cardTitle(rc.content) : null;
+      }));
+      const by = c.actors.size ? `\nby ${esc([...c.actors].join(', '))}` : '';
+      blocks.push({
+        important: !!(k.mention || k.reply),
+        first: c.first,
+        text: `<b>${title}</b>\n<i>${esc(card.board)}${lane ? ` · ${esc(lane)}` : ''}</i>\n${parts.join(' · ')}${by}`,
+      });
+    }
+    if (!blocks.length) return null;
+    // Mentions and replies first, then in the order things happened.
+    blocks.sort((a, b) => b.important - a.important || a.first - b.first);
+    const head = [];
+    if (totals.mention.size) head.push(`mentioned on ${plural(totals.mention.size, 'card')}`);
+    if (totals.reply) head.push(plural(totals.reply, 'reply', 'replies'));
+    if (totals.comment) head.push(plural(totals.comment, 'comment'));
+    if (totals.assigned) head.push(`assigned to ${plural(totals.assigned, 'card')}`);
+    if (totals.moved) head.push(`${plural(totals.moved, 'card')} moved`);
+    const shown = blocks.slice(0, MAX_CARDS).map((b) => b.text);
+    const more = blocks.length > MAX_CARDS ? `\n\n…and ${plural(blocks.length - MAX_CARDS, 'more card')}` : '';
+    return `🔔 <b>${esc(head.join(' · '))}</b>\n\n${shown.join('\n\n')}${more}`;
+  }
+
+  /** Send everyone whose oldest pending event has waited a full batch window. */
+  async function flush() {
+    const due = db
+      .prepare('SELECT user_id FROM telegram_pending GROUP BY user_id HAVING MIN(created_at) <= ?')
+      .all(Date.now() - BATCH_MS);
+    for (const { user_id: userId } of due) {
+      const rows = db.prepare('SELECT * FROM telegram_pending WHERE user_id = ? ORDER BY id').all(userId);
+      if (!rows.length) continue;
+      db.prepare('DELETE FROM telegram_pending WHERE user_id = ? AND id <= ?').run(userId, rows[rows.length - 1].id);
       const chat = db.prepare('SELECT chat_id FROM telegram_links WHERE user_id = ?').get(userId);
-      if (!chat) return;
-      for (const t of p.items.values()) {
-        send(chat.chat_id, t).catch((e) => {
-          log.warn(`telegram: send failed (${e.message})`);
-          // The person blocked the bot: forget the chat.
-          if (e.code === 403) db.prepare('DELETE FROM telegram_links WHERE user_id = ?').run(userId);
-        });
+      if (!chat) continue;
+      let text;
+      try {
+        text = summary(userId, rows);
+      } catch (e) {
+        log.warn(`telegram: summary failed (${e.message})`);
+        continue;
       }
-    }, SEND_DELAY_MS);
-    p.timer.unref?.();
+      if (!text) continue;
+      await send(chat.chat_id, text).catch((e) => {
+        log.warn(`telegram: send failed (${e.message})`);
+        // The person blocked the bot: forget the chat.
+        if (e.code === 403) db.prepare('DELETE FROM telegram_links WHERE user_id = ?').run(userId);
+      });
+    }
+  }
+
+  function startFlushing() {
+    if (flushTimer) return;
+    let busy = false;
+    flushTimer = setInterval(async () => {
+      if (busy || stopped) return;
+      busy = true;
+      await flush().catch((e) => log.warn(`telegram: flush failed (${e.message})`));
+      busy = false;
+    }, Math.max(20, Math.min(30000, Math.floor(BATCH_MS / 4))));
+    flushTimer.unref?.();
   }
 
   function cardInfo(boardId, cardId) {
@@ -395,16 +488,10 @@ export function createNotifier(db, { log = console } = {}) {
     const people = peopleForCard(boardId, cardId);
     const mentioned = findMentions(body, people);
     const before = previousBody != null ? new Set(findMentions(previousBody, people)) : new Set();
-    // @cardId refs read as the card's title, but only cards the recipient can see.
-    const refs = (uid) => (id) => {
-      const rc = id === cardId ? card : cardInfo(boardId, id);
-      return rc && canSee(uid, rc) ? cardTitle(rc.content) : null;
-    };
-    const titleFor = (uid) => esc(expandCardRefs(cardTitle(card.content), refs(uid)));
-    const quoteFor = (uid) => `\n\n<blockquote>${esc(preview(expandCardRefs(body, refs(uid))))}</blockquote>`;
+    const ev = (kind) => ({ boardId, cardId, kind, actor });
     for (const id of mentioned) {
       if (id === actor.id || before.has(id) || !canSee(id, card)) continue;
-      queue(id, `mention:${cardId}:${body.length}:${Date.now()}`, `💬 <b>${esc(actor.name)}</b> mentioned you on <b>${titleFor(id)}</b>\n${where(card)}${quoteFor(id)}`);
+      queue(id, ev('mention'));
     }
     if (previousBody != null) return; // edits only notify new mentions
     // A reply tells the author of the comment it answers (once, even if also assigned).
@@ -412,13 +499,11 @@ export function createNotifier(db, { log = console } = {}) {
       replyToUserId && replyToUserId !== actor.id && !mentioned.includes(replyToUserId) && canSee(replyToUserId, card)
         ? replyToUserId
         : null;
-    if (replied) {
-      queue(replied, `reply:${cardId}:${Date.now()}`, `↩️ <b>${esc(actor.name)}</b> replied to your comment on <b>${titleFor(replied)}</b>\n${where(card)}${quoteFor(replied)}`);
-    }
+    if (replied) queue(replied, ev('reply'));
     for (const id of assigneesOf(card)) {
       if (id === replied) continue;
       if (id === actor.id || mentioned.includes(id) || !canSee(id, card)) continue;
-      queue(id, `comment:${cardId}:${Date.now()}`, `💬 <b>${esc(actor.name)}</b> commented on <b>${titleFor(id)}</b>\n${where(card)}${quoteFor(id)}`);
+      queue(id, ev('comment'));
     }
   }
 
@@ -427,22 +512,15 @@ export function createNotifier(db, { log = console } = {}) {
     for (const ev of events || []) {
       const card = cardInfo(boardId, ev.cardId);
       if (!card) continue;
-      const refs = (uid) => (id) => {
-        const rc = id === ev.cardId ? card : cardInfo(boardId, id);
-        return rc && canSee(uid, rc) ? cardTitle(rc.content) : null;
-      };
-      const titleFor = (uid) => esc(expandCardRefs(cardTitle(card.content), refs(uid)));
       if (ev.type === 'assigned') {
         if (ev.userId === actor.id || !canSee(ev.userId, card)) continue;
-        queue(ev.userId, `assigned:${ev.cardId}`, `👤 <b>${esc(actor.name)}</b> assigned you to <b>${titleFor(ev.userId)}</b>\n${where(card)}`);
+        queue(ev.userId, { boardId, cardId: ev.cardId, kind: 'assigned', actor });
       } else if (ev.type === 'moved') {
         if (card.archived) continue;
-        // Backlog is "later": parking a card there isn't news.
-        if (laneKey(card.lane || '') === 'backlog') continue;
         for (const id of assigneesOf(card)) {
           if (id === actor.id || !canSee(id, card)) continue;
-          // Keyed by card: dragging through several lists sends only where it ended up.
-          queue(id, `moved:${ev.cardId}`, `➡️ <b>${esc(actor.name)}</b> moved <b>${titleFor(id)}</b> to <b>${esc(card.lane || '?')}</b>\n<i>${esc(card.board)}</i>`);
+          // Where it ended up (and Backlog = nothing to say) is decided when the summary goes out.
+          queue(id, { boardId, cardId: ev.cardId, kind: 'moved', actor });
         }
       }
     }

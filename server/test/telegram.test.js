@@ -56,6 +56,8 @@ const waitFor = async (pred, what) => {
 
 // ---------- the kanban server ----------
 
+const BATCH = 700; // summary window for the test (5 min in real life)
+const settle = () => new Promise((r) => setTimeout(r, BATCH + 500));
 const PORT = 18990 + Math.floor(Math.random() * 100);
 const BASE = `http://127.0.0.1:${PORT}`;
 const ADMIN = 'test-admin';
@@ -91,7 +93,7 @@ before(async () => {
       ADMIN_TOKEN: ADMIN,
       TELEGRAM_BOT_TOKEN: '123:test',
       TELEGRAM_API: `http://127.0.0.1:${tg.address().port}`,
-      TELEGRAM_SEND_DELAY_MS: '60',
+      TELEGRAM_BATCH_MS: String(BATCH),
       PUBLIC_DIR: publicDir,
       RELEASE_CHECK_MS: '150',
     },
@@ -130,7 +132,7 @@ test('helpers: mentions, card titles, previews', () => {
   assert.equal(preview('see ![](x.png) and [docs](http://x)'), 'see [picture] and docs');
 });
 
-test('telegram: connect, the four notifications, /stop', async () => {
+test('telegram: connect, batched summaries (no comment text), /stop', async () => {
   const A = (await api('POST', '/api/admin/users', { name: 'Ann' }, ADMIN)).json; // owner
   const B = (await api('POST', '/api/admin/users', { name: 'Bob Stone' }, ADMIN)).json;
   const C = (await api('POST', '/api/admin/users', { name: 'Cid' }, ADMIN)).json;
@@ -153,102 +155,87 @@ test('telegram: connect, the four notifications, /stop', async () => {
   assert.equal(st.json.linked, true);
   assert.equal(st.json.telegramName, 'Bob');
 
-  // A board with one card, assigned to Cid by Ann.
   const board = (await api('POST', '/api/boards', { name: 'Team' }, A.token)).json.board;
   for (const u of [B, C]) await api('POST', `/api/boards/${board.board.id}/join`, null, u.token);
-  const todo = board.lanes.find((l) => l.title === 'To Do');
-  const done = board.lanes.find((l) => l.title === 'Done');
+  const lane = (t) => board.lanes.find((l) => l.title === t).id;
   const bid = board.board.id;
   let r = await api('POST', `/api/boards/${bid}/ops`, {
-    ops: [{ type: 'card.create', id: 'card000001', laneId: todo.id, content: 'Ship it [priority:: 1] #web' }],
+    ops: [
+      { type: 'card.create', id: 'card000001', laneId: lane('To Do'), content: 'Ship it [priority:: 1] #web' },
+      { type: 'card.create', id: 'ref0000002', laneId: lane('To Do'), content: 'Login API [priority:: 0]' },
+      { type: 'card.create', id: 'sec0000003', laneId: lane('To Do'), content: 'Secret plan', projectId: `me:${A.id}` },
+    ],
   }, A.token);
   assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  await settle();
   sent.length = 0;
 
-  // assigned
+  // A burst: assign Cid, comment with an @mention of Bob, drag through two lists.
   await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.assign', id: 'card000001', userId: C.id }] }, A.token);
-  const assigned = await waitFor((m) => m.chat_id === '301' && /assigned you/.test(m.text), 'C assigned');
-  assert.match(assigned.text, /<b>Ann<\/b> assigned you to <b>Ship it<\/b>/);
-  assert.match(assigned.text, /Team · To Do/);
-
-  // mention (Bob) + comment on Cid's card
-  sent.length = 0;
   r = await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'hey @Bob Stone, look <here>' }, A.token);
   assert.equal(r.status, 200);
-  const mention = await waitFor((m) => m.chat_id === '201', 'B mentioned');
-  assert.match(mention.text, /mentioned you on <b>Ship it<\/b>/);
-  assert.match(mention.text, /<blockquote>hey @Bob Stone, look &lt;here&gt;<\/blockquote>/);
-  const comment = await waitFor((m) => m.chat_id === '301', 'C comment');
-  assert.match(comment.text, /<b>Ann<\/b> commented on <b>Ship it<\/b>/);
+  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'and @Bob Stone again' }, A.token);
+  await api('POST', `/api/boards/${bid}/cards/ref0000002/comments`, { body: '@Bob Stone this one too' }, A.token);
+  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: lane('In Progress') }] }, A.token);
+  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: lane('Done') }] }, A.token);
+  // Nothing goes out right away.
+  await new Promise((r2) => setTimeout(r2, 150));
+  assert.equal(sent.length, 0, 'summaries wait for the window');
+  await settle();
+  const toC = sent.filter((m) => m.chat_id === '301');
+  const toB = sent.filter((m) => m.chat_id === '201');
+  assert.equal(toC.length, 1, toC.map((m) => m.text).join('\n---\n'));
+  assert.equal(toB.length, 1, toB.map((m) => m.text).join('\n---\n'));
+  assert.match(toC[0].text, /^🔔 <b>2 comments · assigned to 1 card · 1 card moved<\/b>/);
+  assert.match(toC[0].text, /<b>Ship it<\/b>\n<i>Team · Done<\/i>\n💬 2 comments · 👤 assigned to you · ➡️ moved to <b>Done<\/b>\nby Ann/);
+  assert.match(toB[0].text, /^🔔 <b>mentioned on 2 cards<\/b>/);
+  assert.match(toB[0].text, /<b>Ship it<\/b>[^]*@ 2 mentions[^]*<b>Login API<\/b>[^]*@ 1 mention/);
+  for (const m of [...toB, ...toC]) assert.doesNotMatch(m.text, /look|again|this one/, 'no comment text');
 
   // Your own comment never notifies you; an edit that adds a mention does.
   sent.length = 0;
   const own = await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'note to self' }, C.token);
-  await new Promise((r2) => setTimeout(r2, 300));
-  assert.equal(sent.filter((m) => m.chat_id === '301').length, 0);
   await api('PATCH', `/api/boards/${bid}/comments/${own.json.comment.id}`, { body: 'note to self, cc @bob stone' }, C.token);
-  await waitFor((m) => m.chat_id === '201' && /<b>Cid<\/b> mentioned you/.test(m.text), 'B mentioned by edit');
-
-  // moved: dragged through two lists quickly -> one message with where it ended up
-  sent.length = 0;
-  const inprog = board.lanes.find((l) => l.title === 'In Progress');
-  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: inprog.id }] }, A.token);
-  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: done.id }] }, A.token);
-  await waitFor((m) => m.chat_id === '301' && /moved/.test(m.text), 'C moved');
-  await new Promise((r2) => setTimeout(r2, 300));
-  const moves = sent.filter((m) => m.chat_id === '301' && /moved/.test(m.text));
-  assert.equal(moves.length, 1);
-  assert.match(moves[0].text, /moved <b>Ship it<\/b> to <b>Done<\/b>/);
-
-  // Parking a card in the Backlog sends nothing.
-  sent.length = 0;
-  const backlog = board.lanes.find((l) => l.title === 'Backlog');
-  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: backlog.id }] }, A.token);
-  await new Promise((r2) => setTimeout(r2, 400));
+  await settle();
   assert.equal(sent.filter((m) => m.chat_id === '301').length, 0);
-  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: done.id }] }, A.token);
-  await waitFor((m) => m.chat_id === '301' && /to <b>Done<\/b>/.test(m.text), 'C moved out of Backlog');
+  const byEdit = sent.filter((m) => m.chat_id === '201');
+  assert.equal(byEdit.length, 1);
+  assert.match(byEdit[0].text, /@ 1 mention\nby Cid/);
+
+  // Parked in the Backlog: nothing to say.
+  sent.length = 0;
+  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'card000001', laneId: lane('Backlog') }] }, A.token);
+  await settle();
+  assert.equal(sent.filter((m) => m.chat_id === '301').length, 0);
 
   // People for the @ picker
   const people = await api('GET', `/api/boards/${bid}/cards/card000001/people`, null, B.token);
   assert.deepEqual(people.json.users.map((u) => u.name).sort(), ['Ann', 'Bob Stone', 'Cid']);
 
-  // Replies tell the author of the comment being answered, once.
+  // Replies tell the author of the comment being answered; a mention+reply counts once.
   const q = (await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'is this done?' }, B.token)).json.comment;
-  await new Promise((r2) => setTimeout(r2, 400));
+  await settle();
   sent.length = 0;
   r = await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'yes, shipped', replyTo: q.id }, A.token);
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  const reply = await waitFor((m) => m.chat_id === '201', 'B reply');
-  assert.match(reply.text, /↩️ <b>Ann<\/b> replied to your comment on <b>Ship it<\/b>/);
-  assert.match(reply.text, /yes, shipped/);
-  await waitFor((m) => m.chat_id === '301' && /commented on/.test(m.text), 'C (assignee) comment');
-  sent.length = 0;
   await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: '@Bob Stone see above', replyTo: q.id }, A.token);
-  await waitFor((m) => m.chat_id === '201', 'B mention-reply');
-  await new Promise((r2) => setTimeout(r2, 300));
-  const toB = sent.filter((m) => m.chat_id === '201');
-  assert.equal(toB.length, 1);
-  assert.match(toB[0].text, /mentioned you/);
-  // Replying to your own comment doesn't message you.
-  sent.length = 0;
-  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'also this', replyTo: q.id }, B.token);
-  await new Promise((r2) => setTimeout(r2, 400));
-  assert.equal(sent.filter((m) => m.chat_id === '201').length, 0);
+  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'also this', replyTo: q.id }, B.token); // own: nothing
+  await settle();
+  const replyB = sent.filter((m) => m.chat_id === '201');
+  assert.equal(replyB.length, 1);
+  assert.match(replyB[0].text, /^🔔 <b>mentioned on 1 card · 1 reply<\/b>/);
+  assert.match(replyB[0].text, /@ 1 mention · ↩️ 1 reply/);
+  assert.doesNotMatch(replyB[0].text, /shipped/);
+  const replyC = sent.filter((m) => m.chat_id === '301');
+  assert.equal(replyC.length, 1);
+  assert.match(replyC[0].text, /💬 3 comments\nby Ann, Bob Stone/);
 
-  // @cardId in a comment reads as the card's title; private cards stay hidden from others.
-  r = await api('POST', `/api/boards/${bid}/ops`, {
-    ops: [
-      { type: 'card.create', id: 'ref0000002', laneId: todo.id, content: 'Login API [priority:: 0]' },
-      { type: 'card.create', id: 'sec0000003', laneId: todo.id, content: 'Secret plan', projectId: `me:${A.id}` },
-    ],
-  }, A.token);
-  assert.equal(r.json.ok, true, JSON.stringify(r.json));
-  await new Promise((r2) => setTimeout(r2, 300));
+  // A card that's gone by summary time is left out.
   sent.length = 0;
-  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: '@Bob Stone waits on @ref0000002 and @sec0000003, not @zz99zz99zz' }, A.token);
-  const refMsg = await waitFor((m) => m.chat_id === '201', 'B mention with card refs');
-  assert.match(refMsg.text, /waits on «Login API» and @sec0000003, not @zz99zz99zz/);
+  await api('POST', `/api/boards/${bid}/cards/ref0000002/comments`, { body: '@Bob Stone ping' }, A.token);
+  await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.delete', id: 'ref0000002' }] }, A.token);
+  await settle();
+  assert.equal(sent.filter((m) => m.chat_id === '201').length, 0);
 
   // The host sees who has Telegram connected.
   const dir = (await api('GET', '/api/team', null, A.token)).json;
@@ -259,14 +246,15 @@ test('telegram: connect, the four notifications, /stop', async () => {
   assert.equal(tgOf('Bob Stone').telegramName, 'Bob');
   assert.equal(tgOf('Cid').linked, true);
 
-  // /stop turns it off
+  // /stop turns it off, and drops anything still waiting.
+  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'anyone?' }, A.token);
   tgMessage(301, '/stop');
   await waitFor((m) => m.chat_id === '301' && /off/.test(m.text), 'C stopped');
   st = await api('GET', '/api/me/telegram', null, C.token);
   assert.equal(st.json.linked, false);
   sent.length = 0;
-  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'anyone?' }, A.token);
-  await new Promise((r2) => setTimeout(r2, 300));
+  await api('POST', `/api/boards/${bid}/cards/card000001/comments`, { body: 'anyone there?' }, A.token);
+  await settle();
   assert.equal(sent.filter((m) => m.chat_id === '301').length, 0);
 
   // Disconnect from Obsidian
