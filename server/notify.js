@@ -21,7 +21,6 @@ const LINK_TTL_MS = 15 * 60 * 1000;
 // Everything a person would be told is collected and sent as one summary at most this
 // often (counted from the first event). Saved in the db, so a restart loses nothing.
 const BATCH_MS = Number(process.env.TELEGRAM_BATCH_MS || 5 * 60 * 1000);
-const MAX_CARDS = 15;
 
 const hash = (s) => createHash('sha256').update(s).digest('hex');
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -335,66 +334,51 @@ export function createNotifier(db, { log = console } = {}) {
     ).run(userId, boardId, cardId, kind, actor?.name || '', Date.now());
   }
 
-  const short = (s, max = 60) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
-
   /**
-   * One summary for a person from their pending events, grouped by what happened
-   * (mentions, replies, comments, assigned, moved), one short line per card. No comment
-   * text. Null when nothing is left to say (cards deleted, no longer visible, parked in
-   * Backlog...).
+   * One summary for a person: per project, how many of each thing happened
+   * ("OneCatalog: 2 mentions · 1 reply"). No card titles, no comment text. Null when
+   * nothing is left to say (cards deleted, no longer visible, parked in Backlog...).
    */
   function summary(userId, rows) {
-    const cards = new Map();
+    const order = ['mention', 'reply', 'comment', 'assigned', 'moved'];
+    const words = {
+      mention: ['mention', 'mentions'],
+      reply: ['reply', 'replies'],
+      comment: ['comment', 'comments'],
+      assigned: ['new card for you', 'new cards for you'],
+      moved: ['card moved', 'cards moved'],
+    };
+    const projects = new Map(); // name -> { kind -> count }
+    const cache = new Map();
     for (const r of rows) {
       const key = `${r.board_id}/${r.card_id}`;
-      let c = cards.get(key);
-      if (!c) cards.set(key, (c = { boardId: r.board_id, cardId: r.card_id, kinds: {}, actors: {} }));
-      c.kinds[r.kind] = (c.kinds[r.kind] || 0) + 1;
-      if (r.actor) (c.actors[r.kind] ||= new Set()).add(r.actor);
+      if (!cache.has(key)) {
+        const card = cardInfo(r.board_id, r.card_id);
+        cache.set(key, card && canSee(userId, card) ? card : null);
+      }
+      const card = cache.get(key);
+      if (!card) continue;
+      if (r.kind === 'assigned' && !assigneesOf(card).includes(userId)) continue;
+      if (r.kind === 'moved' && (card.archived || laneKey(card.lane || '') === 'backlog')) continue;
+      const name = String(card.project_id || '').startsWith('me:') ? '🔒 Only me' : card.project || 'No project';
+      if (!projects.has(name)) projects.set(name, {});
+      const p = projects.get(name);
+      // Moves and assignments count cards, not events (a card dragged twice is one move).
+      if (r.kind === 'moved' || r.kind === 'assigned') (p[`${r.kind}:set`] ||= new Set()).add(key);
+      else p[r.kind] = (p[r.kind] || 0) + 1;
     }
-    const sections = { mention: [], reply: [], comment: [], assigned: [], moved: [] };
-    const seen = new Set();
-    for (const c of cards.values()) {
-      const card = cardInfo(c.boardId, c.cardId);
-      if (!card || !canSee(userId, card)) continue;
-      const title = esc(short(expandCardRefs(cardTitle(card.content), (id) => {
-        const rc = id === c.cardId ? card : cardInfo(c.boardId, id);
-        return rc && canSee(userId, rc) ? cardTitle(rc.content) : null;
-      })));
-      const who = (kind, n) => {
-        const bits = [];
-        if (n > 1) bits.push(`${n}×`);
-        if (c.actors[kind]?.size) bits.push(esc([...c.actors[kind]].join(', ')));
-        return bits.length ? ` <i>· ${bits.join(' · ')}</i>` : '';
-      };
-      const k = c.kinds;
-      const add = (kind, line) => {
-        sections[kind].push(line);
-        seen.add(c.cardId);
-      };
-      if (k.mention) add('mention', `• ${title}${who('mention', k.mention)}`);
-      if (k.reply) add('reply', `• ${title}${who('reply', k.reply)}`);
-      if (k.comment) add('comment', `• ${title}${who('comment', k.comment)}`);
-      if (k.assigned && assigneesOf(card).includes(userId)) add('assigned', `• ${title}${who('assigned', 1)}`);
-      const lane = card.lane || '';
-      if (k.moved && !card.archived && laneKey(lane) !== 'backlog') add('moved', `• ${title} → <b>${esc(lane || '?')}</b>${who('moved', 1)}`);
+    const lines = [];
+    for (const [name, p] of projects) {
+      const parts = [];
+      for (const kind of order) {
+        const n = p[`${kind}:set`]?.size ?? p[kind] ?? 0;
+        if (n) parts.push(`${n} ${words[kind][n === 1 ? 0 : 1]}`);
+      }
+      if (parts.length) lines.push({ name, text: `<b>${esc(name)}</b>: ${parts.join(' · ')}`, hot: !!(p.mention || p.reply) });
     }
-    if (!seen.size) return null;
-    const heads = {
-      mention: '📣 Mentioned you',
-      reply: '↩️ Replied to you',
-      comment: '💬 New comments on your cards',
-      assigned: '👤 Assigned to you',
-      moved: '➡️ Your cards moved',
-    };
-    const out = [`🔔 <b>Mad Kanban</b> · ${seen.size === 1 ? '1 card' : `${seen.size} cards`}`];
-    for (const [kind, lines] of Object.entries(sections)) {
-      if (!lines.length) continue;
-      const shown = lines.slice(0, MAX_CARDS);
-      if (lines.length > MAX_CARDS) shown.push(`<i>…and ${lines.length - MAX_CARDS} more</i>`);
-      out.push(`<b>${heads[kind]}</b>\n${shown.join('\n')}`);
-    }
-    return out.join('\n\n');
+    if (!lines.length) return null;
+    lines.sort((a, b) => b.hot - a.hot);
+    return `🔔 <b>Mad Kanban</b>\n\n${lines.map((l) => l.text).join('\n')}`;
   }
 
   /** Send everyone whose oldest pending event has waited a full batch window. */
@@ -439,8 +423,9 @@ export function createNotifier(db, { log = console } = {}) {
   function cardInfo(boardId, cardId) {
     return db
       .prepare(
-        `SELECT c.id, c.content, c.assignees, c.project_id, c.archived, l.title AS lane, b.name AS board
+        `SELECT c.id, c.content, c.assignees, c.project_id, c.archived, l.title AS lane, b.name AS board, p.name AS project
          FROM cards c JOIN boards b ON b.id = c.board_id LEFT JOIN lanes l ON l.id = c.lane_id
+         LEFT JOIN projects p ON p.id = c.project_id
          WHERE c.id = ? AND c.board_id = ?`
       )
       .get(cardId, boardId);

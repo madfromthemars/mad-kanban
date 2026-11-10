@@ -159,10 +159,12 @@ test('telegram: connect, batched summaries (no comment text), /stop', async () =
   for (const u of [B, C]) await api('POST', `/api/boards/${board.board.id}/join`, null, u.token);
   const lane = (t) => board.lanes.find((l) => l.title === t).id;
   const bid = board.board.id;
+  const web = (await api('POST', '/api/team/projects', { name: 'Web' }, A.token)).json.projects.find((p) => p.name === 'Web');
+  for (const u of [B, C]) await api('PUT', `/api/team/projects/${web.id}/members/${u.id}`, null, A.token);
   let r = await api('POST', `/api/boards/${bid}/ops`, {
     ops: [
       { type: 'card.create', id: 'card000001', laneId: lane('To Do'), content: 'Ship it [priority:: 1] #web' },
-      { type: 'card.create', id: 'ref0000002', laneId: lane('To Do'), content: 'Login API [priority:: 0]' },
+      { type: 'card.create', id: 'ref0000002', laneId: lane('To Do'), content: 'Login API [priority:: 0]', projectId: web.id },
       { type: 'card.create', id: 'sec0000003', laneId: lane('To Do'), content: 'Secret plan', projectId: `me:${A.id}` },
     ],
   }, A.token);
@@ -186,17 +188,8 @@ test('telegram: connect, batched summaries (no comment text), /stop', async () =
   const toB = sent.filter((m) => m.chat_id === '201');
   assert.equal(toC.length, 1, toC.map((m) => m.text).join('\n---\n'));
   assert.equal(toB.length, 1, toB.map((m) => m.text).join('\n---\n'));
-  assert.equal(
-    toC[0].text,
-    '🔔 <b>Mad Kanban</b> · 1 card\n\n' +
-      '<b>💬 New comments on your cards</b>\n• Ship it <i>· 2× · Ann</i>\n\n' +
-      '<b>👤 Assigned to you</b>\n• Ship it <i>· Ann</i>\n\n' +
-      '<b>➡️ Your cards moved</b>\n• Ship it → <b>Done</b> <i>· Ann</i>'
-  );
-  assert.equal(
-    toB[0].text,
-    '🔔 <b>Mad Kanban</b> · 2 cards\n\n<b>📣 Mentioned you</b>\n• Ship it <i>· 2× · Ann</i>\n• Login API <i>· Ann</i>'
-  );
+  assert.equal(toC[0].text, '🔔 <b>Mad Kanban</b>\n\n<b>General</b>: 2 comments · 1 new card for you · 1 card moved');
+  assert.equal(toB[0].text, '🔔 <b>Mad Kanban</b>\n\n<b>General</b>: 2 mentions\n<b>Web</b>: 1 mention');
   for (const m of [...toB, ...toC]) assert.doesNotMatch(m.text, /look|again|this one/, 'no comment text');
 
   // Your own comment never notifies you; an edit that adds a mention does.
@@ -207,7 +200,7 @@ test('telegram: connect, batched summaries (no comment text), /stop', async () =
   assert.equal(sent.filter((m) => m.chat_id === '301').length, 0);
   const byEdit = sent.filter((m) => m.chat_id === '201');
   assert.equal(byEdit.length, 1);
-  assert.match(byEdit[0].text, /📣 Mentioned you<\/b>\n• Ship it <i>· Cid<\/i>$/);
+  assert.match(byEdit[0].text, /: 1 mention$/);
 
   // Parked in the Backlog: nothing to say.
   sent.length = 0;
@@ -230,11 +223,11 @@ test('telegram: connect, batched summaries (no comment text), /stop', async () =
   await settle();
   const replyB = sent.filter((m) => m.chat_id === '201');
   assert.equal(replyB.length, 1);
-  assert.match(replyB[0].text, /📣 Mentioned you<\/b>\n• Ship it <i>· Ann<\/i>\n\n<b>↩️ Replied to you<\/b>\n• Ship it <i>· Ann<\/i>$/);
+  assert.match(replyB[0].text, /: 1 mention · 1 reply$/);
   assert.doesNotMatch(replyB[0].text, /shipped/);
   const replyC = sent.filter((m) => m.chat_id === '301');
   assert.equal(replyC.length, 1);
-  assert.match(replyC[0].text, /• Ship it <i>· 3× · Ann, Bob Stone<\/i>/);
+  assert.match(replyC[0].text, /: 3 comments$/);
 
   // A card that's gone by summary time is left out.
   sent.length = 0;
