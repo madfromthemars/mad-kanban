@@ -113,6 +113,30 @@ export function parseJoinString(raw: string): TeamConnection | null {
   return { url, token };
 }
 
+/** A shared note, canvas or attachment (server/notes.js). `path` is inside the project folder. */
+export interface TeamDoc {
+  id: string;
+  projectId: string;
+  path: string;
+  kind: 'md' | 'canvas' | 'file';
+  fileId: string | null;
+  version: number;
+  size: number;
+  createdBy: string | null;
+  createdAt: number;
+  updatedBy: string | null;
+  updatedAt: number;
+  deletedAt: number | null;
+  deletedBy: string | null;
+}
+
+export type DocOp =
+  | { type: 'doc.create'; id?: string; projectId: string; path: string; update?: string; fileId?: string; rename?: boolean }
+  | { type: 'doc.move'; id: string; path?: string; projectId?: string; version?: number }
+  | { type: 'doc.delete'; id: string }
+  | { type: 'doc.restore'; id: string }
+  | { type: 'doc.setFile'; id: string; fileId: string; version?: number };
+
 export class UploadCancelled extends Error {
   constructor() {
     super('Upload cancelled');
@@ -560,6 +584,71 @@ export class TeamClient {
     ).then((r) => r.devices);
   }
 
+  // ---------- shared notes (server/notes.js) ----------
+
+  docs() {
+    return this.request<{ docs: TeamDoc[]; projects: { id: string; name: string; color: string }[] }>('GET', '/api/docs');
+  }
+
+  docsTrash() {
+    return this.request<{ docs: TeamDoc[] }>('GET', '/api/docs/trash').then((r) => r.docs);
+  }
+
+  docOps(ops: DocOp[]) {
+    return this.request<{ ok: true; results: { ok: true; doc: TeamDoc }[] }>('POST', '/api/docs/ops', { ops });
+  }
+
+  docVersions(id: string) {
+    return this.request<{ versions: { id: number; at: number; by: string[] }[] }>(
+      'GET',
+      `/api/docs/${encodeURIComponent(id)}/versions`
+    ).then((r) => r.versions);
+  }
+
+  docVersion(id: string, versionId: number) {
+    return this.request<{ content: string }>('GET', `/api/docs/${encodeURIComponent(id)}/versions/${versionId}`).then(
+      (r) => r.content
+    );
+  }
+
+  async uploadDocFile(name: string, mime: string, data: ArrayBuffer): Promise<UploadedFile> {
+    if (!this.conn) throw new TeamApiError(0, 'Team server is not configured');
+    const res = await requestUrl({
+      url: `${this.conn.url}/api/docs/files`,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.conn.token}`,
+        'Content-Type': mime || 'application/octet-stream',
+        'X-Filename': encodeURIComponent(name || 'file'),
+      },
+      body: data,
+      throw: false,
+    });
+    if (res.status >= 400) throw new TeamApiError(res.status, res.json?.error || `Upload failed (${res.status})`);
+    return res.json as UploadedFile;
+  }
+
+  async downloadFile(fileId: string): Promise<ArrayBuffer> {
+    if (!this.conn) throw new TeamApiError(0, 'Team server is not configured');
+    const res = await requestUrl({ url: `${this.conn.url}/files/${encodeURIComponent(fileId)}`, throw: false });
+    if (res.status >= 400) throw new TeamApiError(res.status, `Download failed (${res.status})`);
+    return res.arrayBuffer;
+  }
+
+  get socketOpen() {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  sendBinary(data: Uint8Array) {
+    if (!this.socketOpen) return false;
+    try {
+      this.ws!.send(data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ---------- WebSocket ----------
 
   private setStatus(s: ConnectionStatus) {
@@ -595,6 +684,8 @@ export class TeamClient {
       return;
     }
     this.ws = ws;
+    // Shared notes (Yjs) come as binary frames.
+    ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
       if (this.ws !== ws) return;
@@ -610,6 +701,10 @@ export class TeamClient {
     };
     ws.onmessage = (m) => {
       if (this.ws !== ws) return;
+      if (typeof m.data !== 'string') {
+        this.emitter.emit('binary', new Uint8Array(m.data as ArrayBuffer));
+        return;
+      }
       try {
         const ev = JSON.parse(String(m.data)) as TeamServerEvent;
         this.emitter.emit('event', ev);

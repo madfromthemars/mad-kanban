@@ -14,7 +14,7 @@
     "rlnotes": "git log $(git describe --tags --abbrev=0)..HEAD --oneline > release-notes.md && git add release-notes.md",
     "bump": "node version-bump.mjs && git add package.json manifest.json versions.json && yarn rlnotes",
     "release": "git commit -m $npm_package_version && git tag $npm_package_version && git push && git push --tags",
-    "test:team": "esbuild test/boardDiff.test.ts --bundle --platform=node --format=esm --outfile=test/.out/boardDiff.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/boardDiff.mjs && esbuild test/cardIds.test.ts --bundle --platform=node --format=esm --outfile=test/.out/cardIds.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/cardIds.mjs && esbuild test/cardRefs.test.ts --bundle --platform=node --format=esm --outfile=test/.out/cardRefs.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/cardRefs.mjs"
+    "test:team": "esbuild test/boardDiff.test.ts --bundle --platform=node --format=esm --outfile=test/.out/boardDiff.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/boardDiff.mjs && esbuild test/cardIds.test.ts --bundle --platform=node --format=esm --outfile=test/.out/cardIds.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/cardIds.mjs && esbuild test/cardRefs.test.ts --bundle --platform=node --format=esm --outfile=test/.out/cardRefs.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/cardRefs.mjs && esbuild test/notesMerge.test.ts --bundle --platform=node --format=esm --outfile=test/.out/notesMerge.mjs --tsconfig=tsconfig.json --alias:obsidian=./test/obsidian-stub.js --log-level=error && node test/.out/notesMerge.mjs"
   },
   "keywords": [],
   "author": "",
@@ -46,17 +46,20 @@
   "dependencies": {
     "@tanstack/match-sorter-utils": "^8.15.1",
     "@tanstack/react-table": "^8.11.2",
+    "@types/diff-match-patch": "^1.0.36",
     "animated-scroll-to": "^2.2.0",
     "box-intersect": "^1.0.2",
     "classcat": "^5.0.3",
     "colord": "^2.9.3",
     "deepmerge": "^4.2.2",
+    "diff-match-patch": "^1.0.5",
     "eventemitter3": "^5.0.1",
     "fast-json-patch": "^3.1.0",
     "file-selector": "^0.2.4",
     "immutability-helper": "^3.1.1",
     "immutable-json-patch": "^1.1.2",
     "is-plain-object": "^5.0.0",
+    "lib0": "^0.2.120",
     "mdast": "^3.0.0",
     "mdast-util-from-markdown": "^1.0.2",
     "mdast-util-frontmatter": "^1.0.0",
@@ -73,7 +76,11 @@
     "react-dom": "npm:@preact/compat",
     "react-fast-compare": "^3.2.2",
     "rrule": "^2.8.1",
-    "unist-util-visit": "^4.1.0"
+    "unist-util-visit": "^4.1.0",
+    "y-codemirror.next": "^0.3.6",
+    "y-indexeddb": "^9.0.12",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
   },
   "importSort": {
     ".js, .ts, .tsx": {

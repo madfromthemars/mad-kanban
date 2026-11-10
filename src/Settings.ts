@@ -79,6 +79,9 @@ export interface KanbanSettings {
   'team-client-id'?: string;
   'team-mirror-lane'?: string;
   'team-auto-update'?: boolean;
+  /** Shared project notes (team/notes/NotesSync.ts); on unless set to false. */
+  'team-notes'?: boolean;
+  'team-notes-folder'?: string;
 }
 
 export interface KanbanViewSettings {
@@ -295,6 +298,17 @@ export class SettingsManager {
       )
       .addButton((btn) =>
         btn.setButtonText(t('Check now')).onClick(() => void this.plugin.updater?.check(true))
+      );
+
+    new Setting(contentEl)
+      .setName('Shared project notes')
+      .setDesc(
+        `Notes, canvases and files in "${this.plugin.settings['team-notes-folder'] || 'Team'}/<project>/" are shared live with everyone in that project. Turning this off stops syncing; your files stay.`
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings['team-notes'] !== false).onChange((v) => {
+          this.applySettingsUpdate({ 'team-notes': { $set: v } });
+        })
       );
 
     contentEl.createEl('h4', { text: t('Board defaults') });

@@ -1,6 +1,8 @@
 # Shared notes and canvases per project (design, not built yet)
 
-Status: step 0 (trial run) done 2026-11-10: **GO**. Results at the end.
+Status (2026-11-10): **built** — steps 0–7 done, server deployed, plugin waiting for release (2.1.59). Results and "as built" notes at the end.
+
+Step 0 (trial run): **GO**.
 
 Status before that: proposal for review. Decisions so far: notes before the password vault; live
 editing ("B") for notes, "almost live" for canvases.
@@ -204,3 +206,43 @@ Problems found → required in the real build:
    reopened old copy can't delete other people's boxes or text.
 5. Canvas drag can't be driven by synthetic mouse events in tests; use the canvas object
    (`select`, `isDragging`, `moveTo`) in E2E tests.
+
+## As built (steps 1–7)
+
+Code: `server/notes.js` (+ `server/test/notes.test.js`, 12 tests), plugin `src/team/notes/`
+(`NotesSync.ts` engine, `merge.ts` pure merge helpers + `test/notesMerge.test.ts`, `store.ts`
+IndexedDB, `ui.ts` status bar / Trash / version history).
+
+Differences from the plan above:
+- **Which docs a device loads:** it doesn't subscribe to every doc. The server sends
+  `docs.touched` (throttled, every 2 s per doc) to people who can see a doc but aren't
+  subscribed; the device then fetches that one doc, writes it to disk and lets it go after
+  30 s idle. Open notes/canvases stay subscribed.
+- **Version history:** before the first change after 10 quiet minutes the server keeps a
+  full copy (`doc_versions`, newest 60 per doc). Restoring is a normal edit everyone sees.
+- **Attachments:** any non-.md/.canvas file is an attachment (whole file, last change wins),
+  uploaded with `POST /api/docs/files`, swapped with `doc.setFile`.
+- **Existing "Team" folder:** on first run, if the vault already has a `Team` folder with
+  files, shared notes go to `Team (shared)` instead (setting `team-notes-folder`).
+- **Project folders can't be renamed in the vault** (the rename is undone with a notice);
+  they follow the project name from Manage team.
+
+Safety rules learned in end-to-end testing (two real Obsidian vaults, local server):
+1. Bind an editor only once Obsidian has loaded the file into it; only text the person
+   really typed before binding is merged. (An empty, not-yet-loaded editor was once read
+   as "delete everything".)
+2. A bound editor may not be replaced wholesale except by the live sync (a transaction
+   filter drops whole-document swaps such as Obsidian reloading the file from disk).
+3. "Our own write" is recognised per exact event (create / rename-to / delete of a path,
+   used once) and by content for modifies — never by a time window, which swallowed real
+   edits and deletes.
+4. File saves that repeat a text the doc already had (Obsidian saving a live editor a bit
+   late) are echoes and are never merged again (hash list of recent texts per doc).
+5. An open canvas syncs only through the canvas object; its file saves are never merged
+   back, and an empty canvas file never means "delete every box".
+6. A file moving out of project folders because its project folder is being renamed is
+   never unshared.
+7. A doc that isn't loaded on this device yet (offline, never fetched) is never merged into
+   or bound; its local edits are merged after the first sync, against `base`.
+
+E2E scripts (throwaway): `~/.hermes/cache/scratch/notes-e2e/t1–t6.mjs`, `reset.sh`.

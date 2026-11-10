@@ -27,6 +27,8 @@ import { basicFrontmatter, frontmatterKey } from './parsers/common';
 import { migrateBoardFolder, parentDirPath } from './kanbanFileHelpers';
 import { clearCardCaches } from './components/Item/ItemContent';
 import { TeamManager } from './team/TeamManager';
+import { NotesSync, notesEditorExtension } from './team/notes/NotesSync';
+import { NotesTrashModal, NotesVersionsModal, statusBar as notesStatusBar } from './team/notes/ui';
 import { TagColor } from './components/types';
 import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './tagColors';
 import { ErrorReporter } from './ErrorReporter';
@@ -223,6 +225,7 @@ export default class KanbanPlugin extends Plugin {
         this.settings = next;
         await this.saveSettings();
         void this.team.configureFromSettings();
+        void this.team.updateNotes();
 
         // Force a complete re-render when settings change
         this.stateManagers.forEach((stateManager) => {
@@ -246,6 +249,9 @@ export default class KanbanPlugin extends Plugin {
     });
 
     this.registerEditorSuggest(new CardRefSuggest(this));
+    // Shared project notes: live editing in notes under the team folder.
+    this.registerEditorExtension(notesEditorExtension(() => this.team?.notes ?? null));
+    this.setupNotesStatusBar();
     this.registerDomEvent(window, 'keydown', this.handleShift);
     this.registerDomEvent(window, 'keyup', this.handleShift);
 
@@ -256,6 +262,27 @@ export default class KanbanPlugin extends Plugin {
     this.addRibbonIcon(kanbanIcon, t('Open a team board'), () => {
       void this.team.joinTeamBoard();
     });
+  }
+
+  // ---------- shared project notes ----------
+
+  private setupNotesStatusBar() {
+    const el = this.addStatusBarItem();
+    el.hide();
+    let off: (() => void) | null = null;
+    const attach = (sync: NotesSync | null) => {
+      off?.();
+      off = null;
+      if (!sync) return el.hide();
+      el.show();
+      off = notesStatusBar(el, sync);
+    };
+    this.team.emitter.on('notes', attach);
+    this.register(() => {
+      off?.();
+      this.team?.emitter.off('notes', attach);
+    });
+    attach(this.team.notes);
   }
 
   // ---------- shared tag colors ----------
@@ -775,6 +802,40 @@ export default class KanbanPlugin extends Plugin {
   }
 
   registerCommands() {
+    this.addCommand({
+      id: 'team-notes-trash',
+      name: 'Team notes: Trash (restore deleted shared notes)',
+      checkCallback: (checking) => {
+        const sync = this.team?.notes;
+        if (!sync) return false;
+        if (!checking) new NotesTrashModal(this.app, this.team, sync).open();
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'team-notes-history',
+      name: 'Team notes: Version history of this note',
+      checkCallback: (checking) => {
+        const sync = this.team?.notes;
+        const file = this.app.workspace.getActiveFile();
+        if (!sync || !file || !sync.docIdForPath(file.path) || file.extension === 'md' === false && file.extension !== 'canvas') return false;
+        if (!checking) new NotesVersionsModal(this.app, this.team, sync, file).open();
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'team-notes-sync',
+      name: 'Team notes: Sync now',
+      checkCallback: (checking) => {
+        const sync = this.team?.notes;
+        if (!sync) return false;
+        if (!checking) void sync.fullSyncNow();
+        return true;
+      },
+    });
+
     this.addCommand({
       id: 'create-new-team-board',
       name: t('Create new team board'),

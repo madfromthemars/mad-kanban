@@ -7694,3 +7694,121 @@ button.kanban-plugin__upload-cancel {
     text-align: center;
   }
 }
+
+
+// ---------- shared project notes (team/notes/ui.ts) ----------
+
+.mk-notes-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  .mk-notes-status-icon {
+    display: inline-flex;
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+}
+
+.mk-notes-modal {
+  width: min(640px, 92vw);
+  .mk-notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mk-notes-hint,
+  .mk-notes-empty {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    padding: 4px 2px 8px;
+  }
+  .mk-notes-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-primary);
+    &.is-clickable {
+      cursor: pointer;
+    }
+    &.is-clickable:hover {
+      background: var(--background-modifier-hover);
+    }
+    &.is-selected {
+      border-color: var(--interactive-accent);
+      background: var(--background-modifier-hover);
+    }
+  }
+  .mk-notes-row-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .mk-notes-row-title {
+    font-weight: var(--font-semibold);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mk-notes-row-sub {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    overflow-wrap: anywhere;
+  }
+}
+
+.mk-notes-versions {
+  width: min(900px, 94vw);
+  .mk-notes-versions-wrap {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 14px;
+    min-height: 320px;
+    max-height: 70vh;
+  }
+  .mk-notes-list {
+    overflow-y: auto;
+  }
+  .mk-notes-preview {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 10px;
+  }
+  .mk-notes-preview-text {
+    flex: 1;
+    margin: 0;
+    padding: 12px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-text);
+    font-size: var(--font-text-size);
+    line-height: 1.5;
+    background: var(--background-secondary);
+    border-radius: var(--radius-m);
+  }
+  .mk-notes-preview-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+.is-phone .mk-notes-versions .mk-notes-versions-wrap {
+  grid-template-columns: 1fr;
+  max-height: none;
+  .mk-notes-list {
+    max-height: 30vh;
+  }
+}
+
+// Remote cursors' name labels: readable, in the person's colour.
+.cm-ySelectionInfo {
+  font-family: var(--font-interface);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}

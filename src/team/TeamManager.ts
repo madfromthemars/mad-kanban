@@ -17,6 +17,7 @@ import {
   parsePairingLink,
   redeemPairingCode,
 } from './TeamClient';
+import { NotesSync } from './notes/NotesSync';
 import { DeviceMarker, defaultDeviceName, devicePlatform, loadDeviceMarker, saveDeviceMarker } from './devices';
 import { relocationTarget } from './relocation';
 import { TeamMirror } from './TeamMirror';
@@ -69,6 +70,9 @@ export class TeamManager {
   mirrors = new Map<StateManager, TeamMirror>();
 
   private pollTimer: number | null = null;
+  /** Shared project notes (team/notes/NotesSync.ts), while connected and turned on. */
+  notes: NotesSync | null = null;
+  private notesKey = '';
   private destroyed = false;
 
   constructor(plugin: KanbanPlugin) {
@@ -120,6 +124,8 @@ export class TeamManager {
   destroy() {
     this.destroyed = true;
     if (this.pollTimer != null) activeWindow.clearInterval(this.pollTimer);
+    void this.notes?.destroy();
+    this.notes = null;
     this.syncs.forEach((s) => s.destroy());
     this.mirrors.forEach((m) => m.destroy());
     this.syncs.clear();
@@ -143,6 +149,7 @@ export class TeamManager {
     if (!conn) {
       this.emitter.emit('user', null);
       this.mirrors.forEach((m) => void m.refresh());
+      void this.updateNotes();
       return;
     }
     await this.refreshDirectory();
@@ -162,10 +169,41 @@ export class TeamManager {
       this.emitter.emit('users', users);
       // Servers from before device keys don't answer with `device` at all.
       if ('device' in who) void this.ensureOwnDeviceKey(who.device);
+      void this.updateNotes();
     } catch (e) {
       console.error('[Kanban team] cannot load user directory', e);
       this.emitter.emit('user', null);
     }
+  }
+
+  // ---------- shared notes ----------
+
+  /** Start, restart (other server/account/folder) or stop shared notes to match settings. */
+  async updateNotes() {
+    const s = this.plugin.settings;
+    const on = !this.destroyed && this.client.isConfigured && !!this.user && s['team-notes'] !== false;
+    const key = on ? `${this.client.conn?.url}|${this.user?.id}|${s['team-notes-folder'] || 'Team'}` : '';
+    if (key === this.notesKey) return;
+    this.notesKey = key;
+    const old = this.notes;
+    this.notes = null;
+    if (old) await old.destroy();
+    if (!on) {
+      this.emitter.emit('notes', null);
+      return;
+    }
+    // Wait for the vault to finish loading, or its startup "create" events look like new files.
+    await new Promise<void>((r) => this.plugin.app.workspace.onLayoutReady(() => r()));
+    if (this.notesKey !== key || this.destroyed) return;
+    const sync = new NotesSync(this.plugin, this);
+    this.notes = sync;
+    try {
+      await sync.start();
+    } catch (e) {
+      this.plugin.reportError('notes-start', e);
+      return;
+    }
+    if (this.notes === sync) this.emitter.emit('notes', sync);
   }
 
   // ---------- devices ----------
