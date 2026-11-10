@@ -62,6 +62,7 @@ import {
   addToGeneral,
 } from './db.js';
 import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
+import { NotesError, createNotes } from './notes.js';
 import { boardProgress, listTrash, logEvent, migrateProgress, migrateVia, purgeTrash, restoreCard, TRASH_DAYS, withVia } from './progress.js';
 import { migrateHistory, startDailyStats, teamHistory } from './history.js';
 import { createNotifier } from './notify.js';
@@ -192,6 +193,7 @@ function logOps(user, board, ops, result) {
 // ---------- websocket fan-out ----------
 
 const sockets = new Set(); // { ws, user }
+const notes = createNotes(db, { eachSocket: () => sockets });
 
 function broadcast(msg) {
   const data = JSON.stringify(msg);
@@ -418,6 +420,7 @@ route('GET', '/api/me/cards', (req) => {
 
 function teamChanged() {
   broadcast({ type: 'team.changed', ts: Date.now() });
+  notes.recheckAll();
   // Visibility may have changed: every client reloads its boards.
   for (const b of db.prepare('SELECT id, version FROM boards').all()) notifyBoardChanged(b);
 }
@@ -602,6 +605,16 @@ route('DELETE', '/api/team/projects/:id/members/:userId', (req, params) => {
   teamChanged();
   return teamView(me);
 });
+
+// shared notes and canvases (notes.js)
+route('GET', '/api/docs', (req) => ({ docs: notes.list(requireUser(req)) }));
+route('GET', '/api/docs/trash', (req) => ({ docs: notes.trash(requireUser(req)) }));
+route('POST', '/api/docs/ops', async (req) => {
+  const user = requireUser(req);
+  const body = await readJson(req);
+  return notes.applyOps(user, body.ops);
+});
+route('GET', '/api/docs/:id/content', (req, params) => ({ content: notes.contentOf(requireUser(req), params.id) }));
 
 // boards
 route('GET', '/api/boards', (req) => {
@@ -1042,6 +1055,8 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     if (e instanceof OpError) {
       send(res, e.status, { error: e.message, ...e.extra });
+    } else if (e instanceof NotesError) {
+      send(res, e.status, { error: e.message });
     } else {
       console.error(e);
       send(res, 500, { error: 'internal error' });
@@ -1072,9 +1087,20 @@ server.on('upgrade', (req, socket, head) => {
     const entry = { ws, user, alive: true };
     sockets.add(entry);
     ws.on('pong', () => (entry.alive = true));
-    ws.on('close', () => sockets.delete(entry));
-    ws.on('error', () => sockets.delete(entry));
-    ws.on('message', (raw) => {
+    ws.on('close', () => {
+      sockets.delete(entry);
+      notes.onClose(entry);
+    });
+    ws.on('error', () => {
+      sockets.delete(entry);
+      notes.onClose(entry);
+    });
+    ws.on('message', (raw, isBinary) => {
+      // Binary frames are shared-notes (Yjs) traffic; see notes.js.
+      if (isBinary) {
+        notes.onFrame(entry, raw);
+        return;
+      }
       // Clients may send {type:'ping'}; anything else is ignored.
       try {
         const msg = JSON.parse(String(raw));
@@ -1083,7 +1109,7 @@ server.on('upgrade', (req, socket, head) => {
         /* ignore */
       }
     });
-    ws.send(JSON.stringify({ type: 'hello', user, ts: Date.now() }));
+    ws.send(JSON.stringify({ type: 'hello', user, features: ['notes'], ts: Date.now() }));
   });
 });
 
