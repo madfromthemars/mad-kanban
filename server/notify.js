@@ -335,64 +335,66 @@ export function createNotifier(db, { log = console } = {}) {
     ).run(userId, boardId, cardId, kind, actor?.name || '', Date.now());
   }
 
-  const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const short = (s, max = 60) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
 
   /**
-   * One summary for a person from their pending events: a totals line, then one block per
-   * card (counts, who, where it is now). No comment text. Null when nothing is left to say
-   * (cards deleted, no longer visible, moved back to Backlog...).
+   * One summary for a person from their pending events, grouped by what happened
+   * (mentions, replies, comments, assigned, moved), one short line per card. No comment
+   * text. Null when nothing is left to say (cards deleted, no longer visible, parked in
+   * Backlog...).
    */
   function summary(userId, rows) {
     const cards = new Map();
     for (const r of rows) {
       const key = `${r.board_id}/${r.card_id}`;
       let c = cards.get(key);
-      if (!c) cards.set(key, (c = { boardId: r.board_id, cardId: r.card_id, kinds: {}, actors: new Set(), first: r.id }));
+      if (!c) cards.set(key, (c = { boardId: r.board_id, cardId: r.card_id, kinds: {}, actors: {} }));
       c.kinds[r.kind] = (c.kinds[r.kind] || 0) + 1;
-      if (r.actor) c.actors.add(r.actor);
+      if (r.actor) (c.actors[r.kind] ||= new Set()).add(r.actor);
     }
-    const blocks = [];
-    const totals = { mention: new Set(), reply: 0, comment: 0, assigned: 0, moved: 0 };
+    const sections = { mention: [], reply: [], comment: [], assigned: [], moved: [] };
+    const seen = new Set();
     for (const c of cards.values()) {
       const card = cardInfo(c.boardId, c.cardId);
       if (!card || !canSee(userId, card)) continue;
-      const k = c.kinds;
-      const parts = [];
-      if (k.mention) parts.push(`@ ${plural(k.mention, 'mention')}`);
-      if (k.reply) parts.push(`↩️ ${plural(k.reply, 'reply', 'replies')}`);
-      if (k.comment) parts.push(`💬 ${plural(k.comment, 'comment')}`);
-      if (k.assigned && assigneesOf(card).includes(userId)) parts.push('👤 assigned to you');
-      const lane = card.lane || '';
-      if (k.moved && !card.archived && laneKey(lane) !== 'backlog') parts.push(`➡️ moved to <b>${esc(lane || '?')}</b>`);
-      if (!parts.length) continue;
-      if (k.mention) totals.mention.add(c.cardId);
-      totals.reply += k.reply || 0;
-      totals.comment += k.comment || 0;
-      if (parts.some((p) => p.startsWith('👤'))) totals.assigned++;
-      if (parts.some((p) => p.startsWith('➡️'))) totals.moved++;
-      const title = esc(expandCardRefs(cardTitle(card.content), (id) => {
+      const title = esc(short(expandCardRefs(cardTitle(card.content), (id) => {
         const rc = id === c.cardId ? card : cardInfo(c.boardId, id);
         return rc && canSee(userId, rc) ? cardTitle(rc.content) : null;
-      }));
-      const by = c.actors.size ? `\nby ${esc([...c.actors].join(', '))}` : '';
-      blocks.push({
-        important: !!(k.mention || k.reply),
-        first: c.first,
-        text: `<b>${title}</b>\n<i>${esc(card.board)}${lane ? ` · ${esc(lane)}` : ''}</i>\n${parts.join(' · ')}${by}`,
-      });
+      })));
+      const who = (kind, n) => {
+        const bits = [];
+        if (n > 1) bits.push(`${n}×`);
+        if (c.actors[kind]?.size) bits.push(esc([...c.actors[kind]].join(', ')));
+        return bits.length ? ` <i>· ${bits.join(' · ')}</i>` : '';
+      };
+      const k = c.kinds;
+      const add = (kind, line) => {
+        sections[kind].push(line);
+        seen.add(c.cardId);
+      };
+      if (k.mention) add('mention', `• ${title}${who('mention', k.mention)}`);
+      if (k.reply) add('reply', `• ${title}${who('reply', k.reply)}`);
+      if (k.comment) add('comment', `• ${title}${who('comment', k.comment)}`);
+      if (k.assigned && assigneesOf(card).includes(userId)) add('assigned', `• ${title}${who('assigned', 1)}`);
+      const lane = card.lane || '';
+      if (k.moved && !card.archived && laneKey(lane) !== 'backlog') add('moved', `• ${title} → <b>${esc(lane || '?')}</b>${who('moved', 1)}`);
     }
-    if (!blocks.length) return null;
-    // Mentions and replies first, then in the order things happened.
-    blocks.sort((a, b) => b.important - a.important || a.first - b.first);
-    const head = [];
-    if (totals.mention.size) head.push(`mentioned on ${plural(totals.mention.size, 'card')}`);
-    if (totals.reply) head.push(plural(totals.reply, 'reply', 'replies'));
-    if (totals.comment) head.push(plural(totals.comment, 'comment'));
-    if (totals.assigned) head.push(`assigned to ${plural(totals.assigned, 'card')}`);
-    if (totals.moved) head.push(`${plural(totals.moved, 'card')} moved`);
-    const shown = blocks.slice(0, MAX_CARDS).map((b) => b.text);
-    const more = blocks.length > MAX_CARDS ? `\n\n…and ${plural(blocks.length - MAX_CARDS, 'more card')}` : '';
-    return `🔔 <b>${esc(head.join(' · '))}</b>\n\n${shown.join('\n\n')}${more}`;
+    if (!seen.size) return null;
+    const heads = {
+      mention: '📣 Mentioned you',
+      reply: '↩️ Replied to you',
+      comment: '💬 New comments on your cards',
+      assigned: '👤 Assigned to you',
+      moved: '➡️ Your cards moved',
+    };
+    const out = [`🔔 <b>Mad Kanban</b> · ${seen.size === 1 ? '1 card' : `${seen.size} cards`}`];
+    for (const [kind, lines] of Object.entries(sections)) {
+      if (!lines.length) continue;
+      const shown = lines.slice(0, MAX_CARDS);
+      if (lines.length > MAX_CARDS) shown.push(`<i>…and ${lines.length - MAX_CARDS} more</i>`);
+      out.push(`<b>${heads[kind]}</b>\n${shown.join('\n')}`);
+    }
+    return out.join('\n\n');
   }
 
   /** Send everyone whose oldest pending event has waited a full batch window. */
