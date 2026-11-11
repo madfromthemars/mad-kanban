@@ -16,7 +16,7 @@ import { laneKey } from './lanes.js';
 // some requests time out. IPv4 first.
 dns.setDefaultResultOrder('ipv4first');
 
-const API = (process.env.TELEGRAM_API || 'https://api.telegram.org').replace(/\/+$/, '');
+const apiBase = () => (process.env.TELEGRAM_API || 'https://api.telegram.org').replace(/\/+$/, '');
 const LINK_TTL_MS = 15 * 60 * 1000;
 // Everything a person would be told is collected and sent as one summary at most this
 // often (counted from the first event). Saved in the db, so a restart loses nothing.
@@ -107,6 +107,8 @@ export function notesToHtml(md) {
     .join('');
 }
 
+import { buildDigest, localDay } from './digest.js';
+
 export function createNotifier(db, { log = console } = {}) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS telegram_links (
@@ -144,7 +146,7 @@ export function createNotifier(db, { log = console } = {}) {
   let flushTimer = null;
 
   async function call(method, body) {
-    const res = await fetch(`${API}/bot${token}/${method}`, {
+    const res = await fetch(`${apiBase()}/bot${token}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
@@ -255,6 +257,17 @@ export function createNotifier(db, { log = console } = {}) {
       );
       return;
     }
+    if (/^\/digest(?:@\w+)?$/i.test(text)) {
+      const row = db
+        .prepare("SELECT u.id FROM telegram_links t JOIN users u ON u.id = t.user_id WHERE t.chat_id = ? AND u.role = 'owner' AND u.disabled = 0")
+        .get(chatId);
+      if (!row) {
+        await send(chatId, 'The daily digest is for the team owner.');
+        return;
+      }
+      await send(chatId, buildDigest(db, { offsetH: DIGEST_TZ }) || 'Nothing on the boards yet.');
+      return;
+    }
     if (/^\/stop\b/i.test(text)) {
       const row = db.prepare('SELECT user_id FROM telegram_links WHERE chat_id = ?').get(chatId);
       db.prepare('DELETE FROM telegram_links WHERE chat_id = ?').run(chatId);
@@ -306,6 +319,7 @@ export function createNotifier(db, { log = console } = {}) {
         log.log(`telegram: notifications on via @${botUsername}`);
         void poll();
         startFlushing();
+        startDigest();
         return;
       } catch (e) {
         if (e.code === 401 || e.code === 404) {
@@ -321,6 +335,8 @@ export function createNotifier(db, { log = console } = {}) {
   function stop() {
     stopped = true;
     clearInterval(flushTimer);
+    if (digestTimer) clearInterval(digestTimer);
+    digestTimer = null;
   }
 
   // ---------- sending ----------
@@ -413,6 +429,52 @@ export function createNotifier(db, { log = console } = {}) {
         if (e.code === 403) db.prepare('DELETE FROM telegram_links WHERE user_id = ?').run(userId);
       });
     }
+  }
+
+  // ---------- owner digest (digest.js) ----------
+  // Once a day, Mon–Sat at DIGEST_HOUR local time (UTC+DIGEST_TZ), to every owner on Telegram.
+  // OWNER_DIGEST=off turns it off. Remembered per day in meta, so restarts don't resend.
+  const DIGEST_HOUR = Number(process.env.DIGEST_HOUR ?? 9);
+  const DIGEST_TZ = Number(process.env.DIGEST_TZ ?? 5);
+  const DIGEST_ON = String(process.env.OWNER_DIGEST || 'on').toLowerCase() !== 'off';
+  let digestTimer = null;
+
+  async function digestTick(now = Date.now()) {
+    if (!DIGEST_ON || !botUsername) return 0;
+    const day = localDay(now, DIGEST_TZ);
+    // Sundays off; only in the first 3 hours after the set time (a server down all morning
+    // doesn't send the digest in the evening).
+    if (day.weekday === 0 || day.hour < DIGEST_HOUR || day.hour >= DIGEST_HOUR + 3) return 0;
+    const key = `digest:${day.ymd}`;
+    if (db.prepare('SELECT 1 FROM meta WHERE key = ?').get(key)) return 0;
+    db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run(key, String(now));
+    const owners = db
+      .prepare("SELECT t.chat_id, u.id FROM telegram_links t JOIN users u ON u.id = t.user_id WHERE u.role = 'owner' AND u.disabled = 0")
+      .all();
+    if (!owners.length) return 0;
+    const text = buildDigest(db, { now, offsetH: DIGEST_TZ });
+    if (!text) return 0;
+    let n = 0;
+    for (const o of owners) {
+      await send(o.chat_id, text).then(
+        () => n++,
+        (e) => log.warn(`telegram: digest not sent (${e.message})`)
+      );
+    }
+    log.log(`${new Date().toISOString()} telegram: owner digest sent to ${n}`);
+    return n;
+  }
+
+  function startDigest() {
+    if (digestTimer) return;
+    let busy = false;
+    digestTimer = setInterval(async () => {
+      if (busy || stopped) return;
+      busy = true;
+      await digestTick().catch((e) => log.warn(`telegram: digest failed (${e.message})`));
+      busy = false;
+    }, Number(process.env.DIGEST_CHECK_MS || 60000));
+    digestTimer.unref?.();
   }
 
   function startFlushing() {
@@ -551,5 +613,5 @@ export function createNotifier(db, { log = console } = {}) {
     return n;
   }
 
-  return { start, stop, status, overview, linkUrl, unlink, onComment, onOps, peopleForCard, announce };
+  return { start, stop, status, overview, linkUrl, unlink, onComment, onOps, peopleForCard, announce, digestTick };
 }
