@@ -169,7 +169,11 @@ export function createVault(db, { eachSocket, isMember, log = console } = {}) {
   // ---------- people ----------
 
   function me(user) {
-    return { person: personOut(q.person.get(user.id)) };
+    // Projects where this person can keep secrets: real membership only (owner not special).
+    const projects = db
+      .prepare('SELECT p.id, p.name, p.color FROM projects p JOIN project_members m ON m.project_id = p.id AND m.user_id = ? ORDER BY p.name COLLATE NOCASE')
+      .all(user.id);
+    return { person: personOut(q.person.get(user.id)), projects };
   }
 
   /**

@@ -74,8 +74,8 @@ function toggle(parent: HTMLElement, label: string, on: boolean, onChange: (v: b
   return row;
 }
 
-function projectsOf(team: TeamManager) {
-  return team.projects.filter((p) => !p.isPrivate && p.memberIds.includes(team.user?.id || ''));
+function projectsOf(vault: VaultSync) {
+  return vault.projects;
 }
 
 // ---------- the main window ----------
@@ -118,7 +118,7 @@ export class VaultModal extends Modal {
     if (v.state === 'new') return this.renderSetup(el);
     if (v.state === 'needs-key') return this.renderNeedsKey(el);
 
-    const projects = projectsOf(this.team);
+    const projects = projectsOf(this.vault);
     if (!projects.length) return void el.createDiv({ cls: 'mk-vault-empty', text: 'You are not in any team project yet.' });
     if (this.projectId && !projects.some((p) => p.id === this.projectId)) this.projectId = null;
 
@@ -185,7 +185,7 @@ export class VaultModal extends Modal {
       const text = row.createDiv({ cls: 'mk-vault-row-text' });
       text.createDiv({ cls: 'mk-vault-row-title', text: it.content?.title || 'Can not open this secret' });
       const user = it.content?.fields.find((f) => !f.hidden && f.value)?.value;
-      const proj = this.team.projects.find((p) => p.id === it.projectId)?.name;
+      const proj = this.vault.projects.find((p) => p.id === it.projectId)?.name;
       text.createDiv({ cls: 'mk-vault-row-sub', text: it.problem || [user, !this.projectId ? proj : null, `${it.access.length} ${it.access.length === 1 ? 'person' : 'people'}`].filter(Boolean).join(' · ') });
       const pw = it.content?.fields.find((f) => f.hidden && f.value);
       if (pw) iconButton(row, 'copy', `Copy ${pw.label}`, () => void copySecret(pw.value, `${pw.label} copied`).then((ok) => ok && this.vault.report(it, 'copied', pw.label)));
@@ -372,7 +372,7 @@ export class SecretModal extends Modal {
     }
     const c = it.content;
     this.titleEl.setText(c?.title || 'Can not open this secret');
-    const project = this.team.projects.find((p) => p.id === it.projectId);
+    const project = this.vault.projects.find((p) => p.id === it.projectId);
     const meta = el.createDiv({ cls: 'mk-vault-meta' });
     if (project) {
       meta.createSpan({ cls: 'mk-vault-dot' }).style.background = project.color;
@@ -392,6 +392,7 @@ export class SecretModal extends Modal {
       const val = row.createDiv({ cls: 'mk-vault-field-value' });
       const a = val.createEl('a', { text: c.url, href: /^https?:\/\//i.test(c.url) ? c.url : `https://${c.url}` });
       a.target = '_blank';
+      row.createSpan({ cls: 'mk-vault-icon-spacer' });
       iconButton(row, 'copy', 'Copy website', () => void copySecret(c.url!, 'Website copied'));
     }
     if (c.note) {
@@ -430,6 +431,7 @@ export class SecretModal extends Modal {
     row.createDiv({ cls: 'mk-vault-field-label', text: f.label });
     const hidden = f.hidden && !this.shown.has(i);
     row.createDiv({ cls: `mk-vault-field-value${hidden ? ' is-hidden' : ' is-mono'}`, text: hidden ? '•'.repeat(Math.min(16, Math.max(8, f.value.length))) : f.value });
+    if (!f.hidden) row.createSpan({ cls: 'mk-vault-icon-spacer' });
     if (f.hidden)
       iconButton(row, this.shown.has(i) ? 'eye-off' : 'eye', this.shown.has(i) ? 'Hide' : 'Show for 20 seconds', () => {
         if (this.shown.has(i)) this.shown.delete(i);
@@ -529,7 +531,7 @@ export class EditSecretModal extends Modal {
 
   async onOpen() {
     this.modalEl.addClass('mk-vault-modal');
-    this.titleEl.setText(this.item ? 'Edit password' : `New password in ${this.team.projects.find((p) => p.id === this.projectId)?.name ?? 'project'}`);
+    this.titleEl.setText(this.item ? 'Edit password' : `New password in ${this.vault.projects.find((p) => p.id === this.projectId)?.name ?? 'project'}`);
     if (!this.item) this.people = await this.vault.people(this.projectId).catch((): VaultPerson[] => []);
     this.render();
   }
@@ -733,7 +735,7 @@ export class VaultTrashModal extends Modal {
       const row = list.createDiv({ cls: 'mk-vault-row' });
       const t = row.createDiv({ cls: 'mk-vault-row-text' });
       t.createDiv({ cls: 'mk-vault-row-title', text: it.content?.title ?? 'Can not open this secret' });
-      t.createDiv({ cls: 'mk-vault-row-sub', text: `${this.team.projects.find((p) => p.id === it.projectId)?.name ?? ''} · deleted ${when(it.deletedAt!)}` });
+      t.createDiv({ cls: 'mk-vault-row-sub', text: `${this.vault.projects.find((p) => p.id === it.projectId)?.name ?? ''} · deleted ${when(it.deletedAt!)}` });
       const b = row.createEl('button', { text: 'Restore' });
       b.onclick = async (e) => {
         e.stopPropagation();

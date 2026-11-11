@@ -8081,6 +8081,13 @@ button.kanban-plugin__upload-cancel {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    > button.mk-vault-link {
+      align-self: flex-start;
+      margin-left: 120px;
+    }
+  }
+  .mk-vault-icon-spacer {
+    width: 32px;
   }
   .mk-vault-seg {
     display: inline-flex;
@@ -8121,6 +8128,8 @@ button.kanban-plugin__upload-cancel {
     input.mk-vault-field-name {
       height: 30px;
       padding: 0 6px;
+      margin-left: -7px;
+      width: calc(100% + 7px);
       border-color: transparent;
       background: transparent;
       color: var(--text-muted);
@@ -8221,6 +8230,9 @@ button.kanban-plugin__upload-cancel {
 }
 
 .is-phone .mk-vault-modal {
+  .mk-vault-form > button.mk-vault-link {
+    margin-left: 0;
+  }
   .mk-vault-field,
   .mk-vault-input-row {
     grid-template-columns: 84px minmax(0, 1fr) auto auto;

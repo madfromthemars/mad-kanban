@@ -106,6 +106,8 @@ type Listener = () => void;
 
 export class VaultSync {
   state: VaultState = 'loading';
+  /** Projects I'm a member of (from the server; not the board's cached list). */
+  projects: { id: string; name: string; color: string }[] = [];
   stateText = '';
   items = new Map<string, VaultItem>();
   /** Item keys of items we can open (memory only). */
@@ -188,6 +190,7 @@ export class VaultSync {
       return;
     }
     this.recoverySaved = !!server.person?.hasRecovery;
+    this.projects = (server as any).projects ?? [];
     let local: PersonKeys | null = null;
     try {
       const raw = await this.store.loadKeys();
@@ -401,7 +404,8 @@ export class VaultSync {
     if (this.refreshing) return this.refreshing;
     this.refreshing = (async () => {
       try {
-        const [{ items }, { items: trashed }] = await Promise.all([this.api('GET', '/items'), this.api('GET', '/trash')]);
+        const [{ items }, { items: trashed }, me] = await Promise.all([this.api('GET', '/items'), this.api('GET', '/trash'), this.api('GET', '/me')]);
+        this.projects = me.projects ?? this.projects;
         const all: ServerItem[] = [...items, ...trashed];
         const signers = [...new Set(all.reduce<string[]>((acc, i) => acc.concat([i.updatedBy, i.mine.byUser]), []))];
         const { keys } = await this.api('POST', '/keys', { userIds: signers });
