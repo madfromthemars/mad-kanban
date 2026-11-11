@@ -3,6 +3,7 @@
 import { App, Modal, Notice, Platform, setIcon } from 'obsidian';
 
 import type { TeamManager } from '../TeamManager';
+import { hueFor, initials } from '../ui/TeamBadges';
 import type { SecretContent, SecretField } from './crypto';
 import type { AllowRequest, VaultItem, VaultPerson, VaultSync } from './VaultSync';
 
@@ -49,6 +50,19 @@ export function generatePassword(len = 20) {
     const out = Array.from({ length: len }, () => pick(all)).join('');
     if (sets.every((s) => [...out].some((ch) => s.includes(ch)))) return out;
   }
+}
+
+/** Who has a secret, as small round initials (you first), "+N" after four. */
+function avatars(parent: HTMLElement, access: { userId: string; name: string }[], me?: string) {
+  const list = [...access].sort((a, b) => (a.userId === me ? -1 : b.userId === me ? 1 : a.name.localeCompare(b.name)));
+  const box = parent.createDiv({ cls: 'mk-vault-avatars' });
+  box.setAttr('aria-label', `Who has it: ${list.map((a) => (a.userId === me ? `${a.name} (you)` : a.name)).join(', ')}`);
+  for (const a of list.slice(0, 4)) {
+    const av = box.createSpan({ cls: 'kanban-plugin__assignee', text: initials(a.name || '?') });
+    av.style.setProperty('--assignee-hue', String(hueFor(a.userId)));
+  }
+  if (list.length > 4) box.createSpan({ cls: 'kanban-plugin__assignee mk-vault-more', text: `+${list.length - 4}` });
+  return box;
 }
 
 function iconButton(parent: HTMLElement, icon: string, label: string, onClick: () => void, cls = '') {
@@ -191,7 +205,8 @@ export class VaultPanel {
       text.createDiv({ cls: 'mk-vault-row-title', text: it.content?.title || 'Can not open this secret' });
       const user = it.content?.fields.find((f) => !f.hidden && f.value)?.value;
       const proj = this.vault.projects.find((p) => p.id === it.projectId)?.name;
-      text.createDiv({ cls: 'mk-vault-row-sub', text: it.problem || [user, !this.projectId ? proj : null, `${it.access.length} ${it.access.length === 1 ? 'person' : 'people'}`].filter(Boolean).join(' · ') });
+      text.createDiv({ cls: 'mk-vault-row-sub', text: it.problem || [user, !this.projectId ? proj : null].filter(Boolean).join(' · ') || (it.content?.kind === 'login' ? 'Login' : 'Secret') });
+      avatars(row, it.access, this.team.user?.id);
       const pw = it.content?.fields.find((f) => f.hidden && f.value);
       if (pw) iconButton(row, 'copy', `Copy ${pw.label}`, () => void copySecret(pw.value, `${pw.label} copied`).then((ok) => ok && this.vault.report(it, 'copied', pw.label)));
       row.onclick = () => new SecretModal(this.app, this.team, this.vault, it.id).open();
@@ -426,8 +441,11 @@ export class SecretModal extends Modal {
     const addBtn = head.createEl('button', { cls: 'mk-vault-link', text: '+ Add person' });
     addBtn.onclick = () => void this.addPerson(it);
     const chips = ps.createDiv({ cls: 'mk-vault-people' });
-    for (const a of it.access) {
+    const me = this.team.user?.id;
+    for (const a of [...it.access].sort((x, y) => (x.userId === me ? -1 : y.userId === me ? 1 : x.name.localeCompare(y.name)))) {
       const ch = chips.createDiv({ cls: 'mk-vault-person' });
+      const av = ch.createSpan({ cls: 'kanban-plugin__assignee', text: initials(a.name || '?') });
+      av.style.setProperty('--assignee-hue', String(hueFor(a.userId)));
       ch.createSpan({ text: a.userId === this.team.user?.id ? `${a.name} (you)` : a.name });
       iconButton(ch, 'x', `Remove ${a.name}`, () => this.removePerson(it, a.userId, a.name), 'is-small');
     }
