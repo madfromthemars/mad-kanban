@@ -30,6 +30,7 @@ import { TeamManager } from './team/TeamManager';
 import { NotesSync, notesEditorExtension } from './team/notes/NotesSync';
 import { NotesTrashModal, NotesVersionsModal, statusBar as notesStatusBar } from './team/notes/ui';
 import { VaultModal } from './team/vault/ui';
+import { FileIcons } from './fileIcons';
 import { PASSWORDS_EXT, PASSWORDS_VIEW, PasswordsView } from './team/vault/files';
 import { TagColor } from './components/types';
 import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './tagColors';
@@ -201,6 +202,7 @@ export default class KanbanPlugin extends Plugin {
     this.registerExtensions([PASSWORDS_EXT], PASSWORDS_VIEW);
     this.team = new TeamManager(this);
     void this.team.load();
+    new FileIcons(this).start();
     // "Open in Obsidian" on a pairing page (from another device's Add-a-device QR code).
     this.registerObsidianProtocolHandler('mad-kanban', (params) => this.team.handleProtocol(params));
     this.updater = new PluginUpdater(this);
