@@ -574,7 +574,7 @@ export class NotesSync {
   private async removeIfEmpty(path: string) {
     const f = this.app.vault.getAbstractFileByPath(path);
     if (!(f instanceof TFolder)) return;
-    if (this.descendants(f).some((c) => c instanceof TFile)) {
+    if (this.descendants(f).some((c) => c instanceof TFile && c.extension !== 'mkpass')) {
       this.noticeOnce(`left:${path}`, `Mad Kanban: you're no longer in this project. "${path}" still has files that were never shared, so it was left in place.`);
       return;
     }

@@ -80,30 +80,32 @@ function projectsOf(vault: VaultSync) {
 
 // ---------- the main window ----------
 
-export class VaultModal extends Modal {
-  private projectId: string | null;
+/**
+ * The passwords list (setup, "bring your key", list per project). Lives in the Passwords
+ * popup (command) and in the Passwords file of each project folder (a normal tab).
+ */
+export class VaultPanel {
   private query = '';
   private off: (() => void) | null = null;
+  private signal = { cancelled: false };
 
   constructor(
-    app: App,
+    private app: App,
     private team: TeamManager,
     private vault: VaultSync,
-    projectId?: string | null
+    private contentEl: HTMLElement,
+    private projectId: string | null = null,
+    /** Inside a project's Passwords file: that project only, no project chips. */
+    private fixed = false
   ) {
-    super(app);
-    this.projectId = projectId ?? null;
-  }
-
-  onOpen() {
-    this.modalEl.addClass('mk-vault-modal');
-    this.titleEl.setText('Passwords');
+    contentEl.addClass('mk-vault-panel');
     this.off = this.vault.onChange(() => this.render());
     if (this.vault.state === 'ready') void this.vault.refresh().catch(() => {});
     this.render();
   }
 
-  onClose() {
+  destroy() {
+    this.signal.cancelled = true;
     this.off?.();
     this.contentEl.empty();
   }
@@ -120,9 +122,12 @@ export class VaultModal extends Modal {
 
     const projects = projectsOf(this.vault);
     if (!projects.length) return void el.createDiv({ cls: 'mk-vault-empty', text: 'You are not in any team project yet.' });
+    if (this.fixed && !projects.some((p) => p.id === this.projectId))
+      return void el.createDiv({ cls: 'mk-vault-empty', text: 'You are not a member of this project, so it has no passwords for you.' });
     if (this.projectId && !projects.some((p) => p.id === this.projectId)) this.projectId = null;
 
     const chips = el.createDiv({ cls: 'mk-vault-chips' });
+    if (this.fixed) chips.hide();
     const chip = (id: string | null, name: string, color?: string) => {
       const n = v.list(id ?? undefined).length;
       const b = chips.createEl('button', { cls: `mk-vault-chip${this.projectId === id ? ' is-on' : ''}` });
@@ -224,11 +229,7 @@ export class VaultModal extends Modal {
     a.createDiv({ cls: 'mk-vault-option-title', text: 'From your other device' });
     const aText = a.createDiv({ cls: 'mk-vault-option-sub', text: 'Open Obsidian on a device that already has your passwords. It will ask you to allow this one.' });
     const ask = a.createEl('button', { cls: 'mod-cta', text: 'Ask my other device' });
-    const signal = { cancelled: false };
-    this.scope.register([], 'Escape', () => {
-      signal.cancelled = true;
-      this.close();
-    });
+    const signal = this.signal;
     ask.onclick = async () => {
       ask.disabled = true;
       try {
@@ -249,11 +250,6 @@ export class VaultModal extends Modal {
         aText.setText(errText(e));
         ask.disabled = false;
       }
-    };
-    const oldClose = this.onClose.bind(this);
-    this.onClose = () => {
-      signal.cancelled = true;
-      oldClose();
     };
 
     if (this.vault.hasRecovery) {
@@ -286,6 +282,28 @@ export class VaultModal extends Modal {
         const code = await this.vault.startOver(true);
         if (code) new RecoveryCodeModal(this.app, code).open();
       });
+  }
+}
+
+export class VaultModal extends Modal {
+  private panel: VaultPanel | null = null;
+  constructor(
+    app: App,
+    private team: TeamManager,
+    private vault: VaultSync,
+    private projectId?: string | null
+  ) {
+    super(app);
+  }
+
+  onOpen() {
+    this.modalEl.addClass('mk-vault-modal');
+    this.titleEl.setText('Passwords');
+    this.panel = new VaultPanel(this.app, this.team, this.vault, this.contentEl, this.projectId ?? null);
+  }
+
+  onClose() {
+    this.panel?.destroy();
   }
 }
 

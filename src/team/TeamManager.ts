@@ -19,6 +19,7 @@ import {
 } from './TeamClient';
 import { NotesSync } from './notes/NotesSync';
 import { VaultSync } from './vault/VaultSync';
+import { PasswordFiles } from './vault/files';
 import { DeviceMarker, defaultDeviceName, devicePlatform, loadDeviceMarker, saveDeviceMarker } from './devices';
 import { relocationTarget } from './relocation';
 import { TeamMirror } from './TeamMirror';
@@ -76,6 +77,8 @@ export class TeamManager {
   /** Password vault (team/vault/VaultSync.ts), while connected. */
   vault: VaultSync | null = null;
   private vaultKey = '';
+  /** The Passwords file in each project folder. */
+  passwordFiles: PasswordFiles | null = null;
   private notesKey = '';
   private destroyed = false;
 
@@ -132,6 +135,8 @@ export class TeamManager {
     this.notes = null;
     void this.vault?.destroy();
     this.vault = null;
+    this.passwordFiles?.destroy();
+    this.passwordFiles = null;
     this.syncs.forEach((s) => s.destroy());
     this.mirrors.forEach((m) => m.destroy());
     this.syncs.clear();
@@ -228,6 +233,10 @@ export class TeamManager {
     if (!on) {
       this.emitter.emit('vault', null);
       return;
+    }
+    if (!this.passwordFiles) {
+      this.passwordFiles = new PasswordFiles(this);
+      this.passwordFiles.start();
     }
     const v = new VaultSync(this);
     this.vault = v;

@@ -148,5 +148,6 @@ export function splitTeamPath(root: string, path: string): { folder: string; rel
 
 /** Files people shouldn't share: hidden ones and OS junk. */
 export function ignoredPath(rel: string) {
-  return rel.split('/').some((s) => s.startsWith('.') || s === 'Thumbs.db' || s === 'desktop.ini');
+  // *.mkpass: the per-project Passwords file (team/vault/files.ts), local only, never shared.
+  return rel.split('/').some((s) => s.startsWith('.') || s === 'Thumbs.db' || s === 'desktop.ini') || rel.endsWith('.mkpass');
 }

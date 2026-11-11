@@ -30,6 +30,7 @@ import { TeamManager } from './team/TeamManager';
 import { NotesSync, notesEditorExtension } from './team/notes/NotesSync';
 import { NotesTrashModal, NotesVersionsModal, statusBar as notesStatusBar } from './team/notes/ui';
 import { VaultModal } from './team/vault/ui';
+import { PASSWORDS_EXT, PASSWORDS_VIEW, PasswordsView } from './team/vault/files';
 import { TagColor } from './components/types';
 import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './tagColors';
 import { ErrorReporter } from './ErrorReporter';
@@ -195,6 +196,9 @@ export default class KanbanPlugin extends Plugin {
     await this.errors.start();
 
     this.MarkdownEditor = getEditorClass(this.app);
+    // Team/<project>/Passwords.mkpass opens that project's passwords (team/vault/files.ts).
+    this.registerView(PASSWORDS_VIEW, (leaf) => new PasswordsView(leaf, this.team));
+    this.registerExtensions([PASSWORDS_EXT], PASSWORDS_VIEW);
     this.team = new TeamManager(this);
     void this.team.load();
     // "Open in Obsidian" on a pairing page (from another device's Add-a-device QR code).
