@@ -29,7 +29,7 @@ export class PasswordFiles {
   private busy = false;
   private again = false;
   private cleanups: (() => void)[] = [];
-  /** Paths we are changing ourselves (don't react to our own events). */
+  /** Events we cause ourselves, "delete:<path>" / "rename:<new path>", each ignored once. */
   private own = new Set<string>();
 
   constructor(private team: TeamManager) {}
@@ -110,7 +110,7 @@ export class PasswordFiles {
       if (want.has(path)) continue;
       this.managed.delete(path);
       const f = app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) await this.quiet(path, () => app.vault.delete(f));
+      if (f instanceof TFile) await this.quiet(`delete:${path}`, () => app.vault.delete(f));
     }
     for (const [path, p] of want) {
       this.managed.set(path, p.id);
@@ -118,22 +118,22 @@ export class PasswordFiles {
       const parent = path.slice(0, path.lastIndexOf('/'));
       if (!(app.vault.getAbstractFileByPath(parent) instanceof TFolder)) continue;
       const text = fileText(p.id, p.name);
-      if (!f) await this.quiet(path, () => app.vault.create(path, text)).catch(() => {});
-      else if (f instanceof TFile && (await app.vault.read(f)) !== text) await this.quiet(path, () => app.vault.modify(f, text));
+      if (!f) await app.vault.create(path, text).catch(() => {});
+      else if (f instanceof TFile && (await app.vault.read(f)) !== text) await app.vault.modify(f, text);
     }
   }
 
-  private async quiet<T>(path: string, fn: () => Promise<T>) {
-    this.own.add(path);
+  private async quiet<T>(key: string, fn: () => Promise<T>) {
+    this.own.add(key);
     try {
       return await fn();
     } finally {
-      window.setTimeout(() => this.own.delete(path), 500);
+      window.setTimeout(() => this.own.delete(key), 2000);
     }
   }
 
   private onDelete(path: string) {
-    if (this.own.has(path) || !this.managed.has(path)) return;
+    if (this.own.delete(`delete:${path}`) || !this.managed.has(path)) return;
     const parent = path.slice(0, path.lastIndexOf('/'));
     if (!(this.team.plugin.app.vault.getAbstractFileByPath(parent) instanceof TFolder)) return; // whole folder went
     new Notice("Mad Kanban: the Passwords file opens this project's passwords, so it can't be deleted.", 6000);
@@ -141,7 +141,7 @@ export class PasswordFiles {
   }
 
   private onRename(path: string, old: string) {
-    if (this.own.has(path) || this.own.has(old) || !this.managed.has(old)) return;
+    if (this.own.delete(`rename:${path}`) || !this.managed.has(old)) return;
     const app = this.team.plugin.app;
     // Its folder was renamed (project renamed): fine, the next sync picks up the new path.
     if (path.endsWith(`/${PASSWORDS_FILE}`) && path.slice(0, path.lastIndexOf('/')) !== old.slice(0, old.lastIndexOf('/'))) {
@@ -156,8 +156,8 @@ export class PasswordFiles {
     window.setTimeout(async (): Promise<void> => {
       const f = app.vault.getAbstractFileByPath(path);
       if (!(f instanceof TFile)) return void this.sync();
-      if (app.vault.getAbstractFileByPath(old)) await this.quiet(path, () => app.vault.delete(f));
-      else await this.quiet(old, () => app.fileManager.renameFile(f, old));
+      if (app.vault.getAbstractFileByPath(old)) await this.quiet(`delete:${path}`, () => app.vault.delete(f));
+      else await this.quiet(`rename:${old}`, () => app.fileManager.renameFile(f, old));
       void this.sync();
     }, 300);
   }
