@@ -1,6 +1,6 @@
 # Password vault per project (design, not built yet)
 
-Status: proposal for review. Decisions so far (from the user):
+Status: approved 2026-11-10, being built. Decisions so far (from the user):
 - Built into Mad Kanban (not Vaultwarden).
 - Every secret has its own list of people who can open it. Being in the project is required
   but not enough.
@@ -119,14 +119,10 @@ Status: proposal for review. Decisions so far (from the user):
 
 ---
 
-## Open questions
+## Decided
 
-1. Should people **without** access see that a secret exists (its name), or not at all?
-   (Recommended: not at all — names like "prod DB root" are information too.)
-2. Who can share / remove people: anyone who has the secret, or only its creator and hosts?
-   (Recommended: anyone who has it can **add** people from the project; only the creator and
-   hosts can **remove** people.)
-3. Recovery code: optional "save this code" at setup, to get your key back if you lose every
-   device? (Recommended: yes, optional — it's the one safety net without an owner copy.)
-4. Kinds of secrets: logins + free-form secrets first; 2FA (TOTP) codes later?
-   (Recommended: yes, TOTP later.)
+1. People without access don't see that a secret exists (names are inside the encrypted box).
+2. **Anyone** who has a secret can add people from the project **and remove** people.
+3. Optional recovery code at setup: yes.
+4. Logins + free-form secrets first; 2FA (TOTP) later.
+5. No separate trial run: the crypto library is pure JS; unit tests + the two-vault E2E cover it.

@@ -7812,3 +7812,427 @@ button.kanban-plugin__upload-cancel {
   padding: 1px 4px;
   border-radius: 3px;
 }
+
+
+// ---------- password vault (src/team/vault/ui.ts) ----------
+.mk-vault-modal {
+  width: min(620px, 94vw);
+  &.mk-vault-small {
+    width: min(460px, 94vw);
+  }
+  .mk-vault-empty,
+  .mk-vault-hint {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    padding: 4px 2px 8px;
+  }
+  .mk-vault-empty {
+    padding: 18px 4px;
+    text-align: center;
+  }
+  .mk-vault-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  button.mk-vault-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 15px;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-normal);
+    font-size: var(--font-ui-small);
+    &.is-on {
+      border-color: var(--interactive-accent);
+      background: hsla(var(--interactive-accent-hsl), 0.12);
+    }
+  }
+  .mk-vault-chip-count {
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .mk-vault-dot {
+    display: inline-block;
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .mk-vault-bar,
+  .mk-vault-inline {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    input {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+  .mk-vault-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 55vh;
+    overflow-y: auto;
+  }
+  .mk-vault-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 54px;
+    padding: 8px 10px 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-primary);
+    cursor: pointer;
+    &:hover {
+      background: var(--background-modifier-hover);
+    }
+    &.is-disabled {
+      cursor: default;
+      opacity: 0.65;
+      &:hover {
+        background: var(--background-primary);
+      }
+    }
+    &.has-problem .mk-vault-row-icon {
+      color: var(--text-error);
+    }
+  }
+  .mk-vault-row-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+  .mk-vault-row-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .mk-vault-row-title {
+    font-weight: var(--font-semibold);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mk-vault-row-sub {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  button.mk-vault-icon-btn {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    &.is-small {
+      width: 20px;
+      height: 20px;
+      svg {
+        width: 12px;
+        height: 12px;
+      }
+    }
+  }
+  .mk-vault-foot {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+  }
+  button.mk-vault-link {
+    height: auto;
+    padding: 4px 2px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-accent);
+    font-size: var(--font-ui-small);
+  }
+  .mk-vault-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    margin: -6px 0 14px;
+  }
+  .mk-vault-problem {
+    padding: 12px;
+    border-radius: var(--radius-m);
+    background: rgba(var(--background-modifier-error-rgb), 0.15);
+    color: var(--text-normal);
+  }
+  .mk-vault-fields {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+  }
+  .mk-vault-field {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 6px 8px 6px 12px;
+    & + .mk-vault-field {
+      border-top: 1px solid var(--background-modifier-border);
+    }
+    &.is-note {
+      grid-template-columns: 110px minmax(0, 1fr);
+      align-items: start;
+      padding: 12px;
+    }
+  }
+  .mk-vault-field-label {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+  }
+  .mk-vault-field-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 15px;
+    user-select: text;
+    &.is-mono {
+      font-family: var(--font-monospace);
+    }
+    &.is-hidden {
+      letter-spacing: 2px;
+      color: var(--text-muted);
+      user-select: none;
+    }
+    &.is-note {
+      white-space: pre-wrap;
+      font-size: var(--font-ui-medium);
+    }
+  }
+  .mk-vault-section {
+    margin-top: 18px;
+  }
+  .mk-vault-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mk-vault-section-title {
+    font-size: var(--font-ui-smaller);
+    font-weight: var(--font-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .mk-vault-people {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mk-vault-person {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 30px;
+    padding: 0 6px 0 12px;
+    border-radius: 15px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    font-size: var(--font-ui-small);
+  }
+  button.mk-vault-person {
+    padding: 0 12px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-normal);
+    &.is-disabled {
+      opacity: 0.5;
+    }
+  }
+  .mk-vault-person.is-on {
+    border-color: var(--interactive-accent);
+    background: hsla(var(--interactive-accent-hsl), 0.14);
+  }
+  .mk-vault-person.is-fixed {
+    padding: 0 12px;
+  }
+  .mk-vault-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .mk-vault-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .mk-vault-seg {
+    display: inline-flex;
+    align-self: flex-start;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--button-radius);
+    overflow: hidden;
+    button {
+      height: 30px;
+      padding: 0 14px;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text-muted);
+      &.is-on {
+        background: var(--interactive-accent);
+        color: var(--text-on-accent);
+      }
+    }
+  }
+  .mk-vault-input-row {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    label {
+      color: var(--text-muted);
+      font-size: var(--font-ui-small);
+    }
+    input,
+    textarea {
+      width: 100%;
+      font-size: 15px;
+    }
+    textarea {
+      resize: vertical;
+    }
+    input.mk-vault-field-name {
+      height: 30px;
+      padding: 0 6px;
+      border-color: transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: var(--font-ui-small);
+      &:hover,
+      &:focus {
+        border-color: var(--background-modifier-border);
+      }
+    }
+  }
+  .mk-vault-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    input {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+  .is-mono {
+    font-family: var(--font-monospace);
+  }
+  .mk-vault-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 12px 0 16px;
+  }
+  .mk-vault-setup {
+    h3 {
+      margin-top: 0;
+    }
+    ul {
+      padding-left: 20px;
+      color: var(--text-muted);
+      li + li {
+        margin-top: 6px;
+      }
+    }
+  }
+  .mk-vault-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 12px 14px;
+    margin-top: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    .mk-vault-inline {
+      align-self: stretch;
+      margin: 0;
+    }
+  }
+  .mk-vault-option-title {
+    font-weight: var(--font-semibold);
+  }
+  .mk-vault-option-sub {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+  }
+  .mk-vault-code {
+    font-family: var(--font-monospace);
+    font-size: 16px;
+    letter-spacing: 1px;
+    color: var(--text-normal);
+  }
+  .mk-vault-recovery {
+    margin: 12px 0;
+    padding: 14px;
+    border-radius: var(--radius-m);
+    background: var(--background-secondary);
+    font-family: var(--font-monospace);
+    font-size: 17px;
+    letter-spacing: 1px;
+    text-align: center;
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
+  .mk-vault-history {
+    display: flex;
+    flex-direction: column;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .mk-vault-history-row {
+    display: flex;
+    gap: 12px;
+    padding: 8px 2px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    font-size: var(--font-ui-small);
+  }
+  .mk-vault-history-when {
+    flex: 0 0 130px;
+    color: var(--text-muted);
+  }
+}
+
+.is-phone .mk-vault-modal {
+  .mk-vault-field,
+  .mk-vault-input-row {
+    grid-template-columns: 84px minmax(0, 1fr) auto auto;
+  }
+  .mk-vault-input-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .mk-vault-list {
+    max-height: none;
+  }
+  .mk-vault-history-when {
+    flex-basis: 96px;
+  }
+}

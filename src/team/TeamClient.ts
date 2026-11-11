@@ -79,18 +79,20 @@ export interface TelegramStatus {
 export interface PairingLink {
   url: string;
   code: string;
+  /** One-time key that opens this person's password key (only in the link's #fragment). */
+  vaultKey?: string;
 }
 
-/** Parse "https://host/pair#CODE" (what an Add-a-device QR code holds). */
+/** Parse "https://host/pair#CODE" or "#CODE.VAULTKEY" (what an Add-a-device QR code holds). */
 export function parsePairingLink(raw: string): PairingLink | null {
-  const m = /^\s*(https?:\/\/[^\s#]+?)\/pair\/?#([a-z0-9]{16,64})\s*$/i.exec(raw || '');
+  const m = /^\s*(https?:\/\/[^\s#]+?)\/pair\/?#([a-z0-9]{16,64})(?:\.([A-Z2-9]{32}))?\s*$/i.exec(raw || '');
   if (!m) return null;
   try {
     new URL(m[1]);
   } catch {
     return null;
   }
-  return { url: m[1].replace(/\/+$/, ''), code: m[2] };
+  return { url: m[1].replace(/\/+$/, ''), code: m[2], ...(m[3] ? { vaultKey: m[3].toUpperCase() } : {}) };
 }
 
 /** Parse "https://host:port/#TOKEN" (or "host:port#TOKEN") into url + token. */
@@ -582,6 +584,12 @@ export class TeamClient {
       'DELETE',
       `/api/team/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}`
     ).then((r) => r.devices);
+  }
+
+  // ---------- password vault (server/vault.js); only public keys and encrypted boxes ----------
+
+  vaultApi<T = any>(method: string, path: string, body?: unknown) {
+    return this.request<T>(method, `/api/vault${path}`, body);
   }
 
   // ---------- shared notes (server/notes.js) ----------

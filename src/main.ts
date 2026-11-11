@@ -29,6 +29,7 @@ import { clearCardCaches } from './components/Item/ItemContent';
 import { TeamManager } from './team/TeamManager';
 import { NotesSync, notesEditorExtension } from './team/notes/NotesSync';
 import { NotesTrashModal, NotesVersionsModal, statusBar as notesStatusBar } from './team/notes/ui';
+import { VaultModal } from './team/vault/ui';
 import { TagColor } from './components/types';
 import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './tagColors';
 import { ErrorReporter } from './ErrorReporter';
@@ -802,6 +803,16 @@ export default class KanbanPlugin extends Plugin {
   }
 
   registerCommands() {
+    this.addCommand({
+      id: 'team-passwords',
+      name: 'Passwords (team password vault)',
+      checkCallback: (checking) => {
+        const v = this.team?.vault;
+        if (!v) return false;
+        if (!checking) new VaultModal(this.app, this.team, v).open();
+        return true;
+      },
+    });
     this.addCommand({
       id: 'team-notes-trash',
       name: 'Team notes: Trash (restore deleted shared notes)',

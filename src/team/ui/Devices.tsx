@@ -106,7 +106,12 @@ export class AddDeviceModal extends Modal {
     if (this.closed) return;
     // The server's public (https) address when it gives one; ours otherwise.
     const base = this.team.plugin.settings['team-server-url'];
-    const link = code.link && parsePairingLink(code.link) ? code.link : `${base}/pair#${code.code}`;
+    let link = code.link && parsePairingLink(code.link) ? code.link : `${base}/pair#${code.code}`;
+    // Passwords set up here: the QR also carries a one-time key that opens your key on the
+    // new device (in the #fragment, so it never reaches the server).
+    const vk = await this.team.vault?.attachToPairing(code.code).catch((): null => null);
+    if (this.closed) return;
+    if (vk) link = `${link}.${vk}`;
 
     el.empty();
     el.createEl('p', {

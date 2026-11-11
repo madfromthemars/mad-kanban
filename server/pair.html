@@ -51,7 +51,10 @@
 </main>
 <script>
   (function () {
-    var code = (location.hash || '').replace(/^#/, '').trim();
+    // "#CODE" or "#CODE.KEY": KEY opens the person's password key and never reaches a server.
+    var parts = (location.hash || '').replace(/^#/, '').trim().split('.');
+    var code = parts[0];
+    var vk = /^[A-Z2-9]{32}$/i.test(parts[1] || '') ? parts[1] : '';
     if (!/^[a-z0-9]{16,64}$/.test(code)) {
       document.getElementById('ok').classList.add('hidden');
       document.getElementById('bad').classList.remove('hidden');
@@ -59,8 +62,9 @@
     }
     var server = location.origin;
     document.getElementById('open').href =
-      'obsidian://mad-kanban?server=' + encodeURIComponent(server) + '&pair=' + encodeURIComponent(code);
-    var link = server + '/pair#' + code;
+      'obsidian://mad-kanban?server=' + encodeURIComponent(server) + '&pair=' + encodeURIComponent(code) +
+      (vk ? '&vk=' + encodeURIComponent(vk) : '');
+    var link = server + '/pair#' + code + (vk ? '.' + vk : '');
     document.getElementById('copy').addEventListener('click', function () {
       var b = this;
       var done = function () { b.textContent = 'Copied'; };

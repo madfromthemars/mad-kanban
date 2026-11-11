@@ -63,6 +63,7 @@ import {
 } from './db.js';
 import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
 import { NotesError, createNotes } from './notes.js';
+import { VaultError, createVault } from './vault.js';
 import { boardProgress, listTrash, logEvent, migrateProgress, migrateVia, purgeTrash, restoreCard, TRASH_DAYS, withVia } from './progress.js';
 import { migrateHistory, startDailyStats, teamHistory } from './history.js';
 import { createNotifier } from './notify.js';
@@ -194,6 +195,11 @@ function logOps(user, board, ops, result) {
 
 const sockets = new Set(); // { ws, user }
 const notes = createNotes(db, { eachSocket: () => sockets });
+// Password vault: strict project membership (the owner is not special there).
+const vault = createVault(db, {
+  eachSocket: () => sockets,
+  isMember: (userId, projectId) => !!db.prepare('SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ?').get(projectId, userId),
+});
 
 function broadcast(msg) {
   const data = JSON.stringify(msg);
@@ -421,6 +427,7 @@ route('GET', '/api/me/cards', (req) => {
 function teamChanged() {
   broadcast({ type: 'team.changed', ts: Date.now() });
   notes.recheckAll();
+  vault.recheckAll();
   // Visibility may have changed: every client reloads its boards.
   for (const b of db.prepare('SELECT id, version FROM boards').all()) notifyBoardChanged(b);
 }
@@ -605,6 +612,33 @@ route('DELETE', '/api/team/projects/:id/members/:userId', (req, params) => {
   teamChanged();
   return teamView(me);
 });
+
+// password vault (vault.js): the server only ever sees public keys and encrypted boxes
+route('GET', '/api/vault/me', (req) => vault.me(requireUser(req)));
+route('PUT', '/api/vault/me', async (req) => vault.setKeys(requireUser(req), await readJson(req)));
+route('PUT', '/api/vault/me/recovery', async (req) => vault.setRecovery(requireUser(req), await readJson(req)));
+route('GET', '/api/vault/me/recovery', (req) => vault.getRecovery(requireUser(req)));
+route('GET', '/api/vault/projects/:id/people', (req, params) => ({ people: vault.people(requireUser(req), params.id) }));
+route('POST', '/api/vault/keys', async (req) => vault.keysOf(requireUser(req), (await readJson(req)).userIds || []));
+route('GET', '/api/vault/items', (req) => {
+  const user = requireUser(req);
+  const pid = new URL(req.url, 'http://x').searchParams.get('projectId');
+  return vault.list(user, pid || null);
+});
+route('GET', '/api/vault/trash', (req) => vault.trash(requireUser(req)));
+route('POST', '/api/vault/items', async (req) => vault.create(requireUser(req), await readJson(req)));
+route('PUT', '/api/vault/items/:id', async (req, params) => vault.update(requireUser(req), params.id, await readJson(req)));
+route('POST', '/api/vault/items/:id/share', async (req, params) => vault.share(requireUser(req), params.id, await readJson(req)));
+route('DELETE', '/api/vault/items/:id', (req, params) => vault.remove(requireUser(req), params.id));
+route('POST', '/api/vault/items/:id/restore', (req, params) => vault.restore(requireUser(req), params.id));
+route('POST', '/api/vault/items/:id/events', async (req, params) => vault.report(requireUser(req), params.id, await readJson(req)));
+route('GET', '/api/vault/items/:id/history', (req, params) => vault.history(requireUser(req), params.id));
+route('POST', '/api/vault/transfers/qr', async (req) => vault.putQrTransfer(requireUser(req), await readJson(req)));
+route('POST', '/api/vault/transfers/qr/take', async (req) => vault.takeQrTransfer(requireUser(req), (await readJson(req)).pairCode));
+route('POST', '/api/vault/requests', async (req) => vault.request(requireUser(req), await readJson(req)));
+route('GET', '/api/vault/requests', (req) => vault.pending(requireUser(req)));
+route('POST', '/api/vault/requests/:id/answer', async (req, params) => vault.answer(requireUser(req), params.id, await readJson(req)));
+route('GET', '/api/vault/requests/:id', (req, params) => vault.takeAnswer(requireUser(req), params.id));
 
 // shared notes and canvases (notes.js)
 route('GET', '/api/docs', (req) => {
@@ -1068,7 +1102,7 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     if (e instanceof OpError) {
       send(res, e.status, { error: e.message, ...e.extra });
-    } else if (e instanceof NotesError) {
+    } else if (e instanceof NotesError || e instanceof VaultError) {
       send(res, e.status, { error: e.message });
     } else {
       console.error(e);

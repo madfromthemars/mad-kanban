@@ -18,6 +18,7 @@ import {
   redeemPairingCode,
 } from './TeamClient';
 import { NotesSync } from './notes/NotesSync';
+import { VaultSync } from './vault/VaultSync';
 import { DeviceMarker, defaultDeviceName, devicePlatform, loadDeviceMarker, saveDeviceMarker } from './devices';
 import { relocationTarget } from './relocation';
 import { TeamMirror } from './TeamMirror';
@@ -72,6 +73,9 @@ export class TeamManager {
   private pollTimer: number | null = null;
   /** Shared project notes (team/notes/NotesSync.ts), while connected and turned on. */
   notes: NotesSync | null = null;
+  /** Password vault (team/vault/VaultSync.ts), while connected. */
+  vault: VaultSync | null = null;
+  private vaultKey = '';
   private notesKey = '';
   private destroyed = false;
 
@@ -126,6 +130,8 @@ export class TeamManager {
     if (this.pollTimer != null) activeWindow.clearInterval(this.pollTimer);
     void this.notes?.destroy();
     this.notes = null;
+    void this.vault?.destroy();
+    this.vault = null;
     this.syncs.forEach((s) => s.destroy());
     this.mirrors.forEach((m) => m.destroy());
     this.syncs.clear();
@@ -150,6 +156,7 @@ export class TeamManager {
       this.emitter.emit('user', null);
       this.mirrors.forEach((m) => void m.refresh());
       void this.updateNotes();
+      void this.updateVault();
       return;
     }
     await this.refreshDirectory();
@@ -170,6 +177,7 @@ export class TeamManager {
       // Servers from before device keys don't answer with `device` at all.
       if ('device' in who) void this.ensureOwnDeviceKey(who.device);
       void this.updateNotes();
+      void this.updateVault();
     } catch (e) {
       console.error('[Kanban team] cannot load user directory', e);
       this.emitter.emit('user', null);
@@ -204,6 +212,31 @@ export class TeamManager {
       return;
     }
     if (this.notes === sync) this.emitter.emit('notes', sync);
+  }
+
+  // ---------- password vault ----------
+
+  /** Start, restart (other server/account) or stop the vault to match the connection. */
+  async updateVault() {
+    const on = !this.destroyed && this.client.isConfigured && !!this.user;
+    const key = on ? `${this.client.conn?.url}|${this.user?.id}` : '';
+    if (key === this.vaultKey) return;
+    this.vaultKey = key;
+    const old = this.vault;
+    this.vault = null;
+    if (old) await old.destroy();
+    if (!on) {
+      this.emitter.emit('vault', null);
+      return;
+    }
+    const v = new VaultSync(this);
+    this.vault = v;
+    try {
+      await v.start();
+    } catch (e) {
+      this.plugin.reportError('vault-start', e);
+    }
+    if (this.vault === v) this.emitter.emit('vault', v);
   }
 
   // ---------- devices ----------
@@ -263,6 +296,7 @@ export class TeamManager {
   /** Sign this install in with a code from another device's "Add a device" QR code. */
   async signInWithPairingLink(link: PairingLink): Promise<TeamUser> {
     const out = await redeemPairingCode(link, defaultDeviceName(this.plugin.app), devicePlatform());
+    VaultSync.pendingTransfer = link.vaultKey ? { url: link.url, code: link.code, key: link.vaultKey } : null;
     this.marker = { clientId: this.client.clientId, deviceId: out.device.id };
     saveDeviceMarker(this.plugin.app, this.marker);
     await this.setConnection({ url: link.url, token: out.token });
@@ -272,7 +306,7 @@ export class TeamManager {
 
   /** obsidian://mad-kanban?server=…&pair=… (the "Open in Obsidian" button of a pairing page). */
   handleProtocol(params: Record<string, string>) {
-    const link = parsePairingLink(`${params.server || ''}/pair#${params.pair || ''}`);
+    const link = parsePairingLink(`${params.server || ''}/pair#${params.pair || ''}${params.vk ? `.${params.vk}` : ''}`);
     if (!link) {
       new Notice('Mad Kanban: this sign-in link is incomplete. Scan the QR code again.');
       return;
