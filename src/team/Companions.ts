@@ -72,7 +72,11 @@ export class Companions {
   }
 
   private remind(c: Companion) {
-    if (this.notices.has(c.id)) return;
+    // A notice can land in a popout window that's gone (seen right after the "Trust
+    // author" dialog); only a notice that's still on screen counts.
+    const old = this.notices.get(c.id) as any;
+    if (old?.noticeEl?.isConnected && old.noticeEl.ownerDocument === document) return;
+    old?.hide();
     const st = this.state(c);
     const frag = document.createDocumentFragment();
     frag.createDiv({ text: `Mad Kanban: your team needs the ${c.name} plugin (${c.why}).` });
