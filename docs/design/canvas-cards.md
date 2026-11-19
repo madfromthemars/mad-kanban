@@ -1,4 +1,4 @@
-# Cards on canvases (design, not built yet)
+# Cards on canvases (steps 1–3 built, 2026-11-19)
 
 Goal: put real board cards on any canvas (your own or a shared `Team/<project>/` one).
 A card box always shows the card as it is now, and opening it opens the card window.
@@ -44,10 +44,20 @@ Decided with the owner (2026-11-19):
 | 5 | `@` picker inside canvas text boxes | Picking a card makes it a card box |
 | 6 | Two-vault E2E on a shared canvas | Both people see the same live card |
 
-## Questions for the owner
+## Owner's answers and as built
 
-1. Box contents: **full** (title, list, people, due, checklist, priority) or **short**
-   (title + list + people only)?
-2. Card box size: fixed width you can resize, or the box grows to fit the card?
-3. Should the box take the project's color as its border, or stay neutral (your canvas
-   colors only)?
+1. **Short box** (owner): title on top, list dot + name and people avatars on the bottom row
+   (bottom row pinned, so it lines up across boxes). Done/archived cards are faded.
+2. Size (my call): new boxes are 260×100 and resize like any box.
+3. Border (my call): neutral; canvas colors still work.
+
+- Code: `src/team/canvasCards.ts`, CSS at the end of `src/styles.less`.
+- **Click the title** opens the card window (the board opens in a split beside the canvas,
+  joining it into the vault root if needed). Clicking elsewhere selects/drags as usual;
+  double-click edits the `@id` text.
+- **Add:** a new button at the end of the canvas bottom toolbar ("Add a team card") and the
+  command "Add a team card to this canvas": a search picker; the box lands mid-screen.
+- **Live without the board open:** the card index only holds cards of open boards and your
+  own; the canvas fetches the other joined boards, and refetches a board on its
+  `board.changed` server event (TeamManager now re-emits it).
+- Not built yet: steps 4 (drag from board) and 5 (`@` picker inside canvas text).

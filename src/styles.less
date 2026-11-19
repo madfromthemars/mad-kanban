@@ -8447,3 +8447,77 @@ button.kanban-plugin__upload-cancel {
 .is-phone .kanban-plugin__board[data-ignore-swipe] {
   touch-action: pan-y;
 }
+
+// ---------- team cards on canvases (src/team/canvasCards.ts) ----------
+.mk-canvas-card-node:not(.is-editing) .canvas-node-content > :not(.mk-canvas-card) {
+  display: none;
+}
+.mk-canvas-card-node.is-editing .mk-canvas-card {
+  display: none;
+}
+.mk-canvas-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  height: 100%;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.mk-canvas-card-title {
+  font-weight: 600;
+  font-size: 1em;
+  line-height: 1.3;
+  color: var(--text-normal);
+  cursor: pointer;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  &:hover {
+    color: var(--interactive-accent);
+    text-decoration: underline;
+  }
+}
+.mk-canvas-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.mk-canvas-card-lane {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mk-canvas-card-people {
+  display: inline-flex;
+  flex: none;
+  .kanban-plugin__assignee + .kanban-plugin__assignee {
+    margin-left: -6px;
+  }
+}
+.mk-canvas-card-more {
+  margin-left: 4px;
+  font-size: 0.85em;
+}
+.mk-canvas-card.is-done,
+.mk-canvas-card.is-archive {
+  opacity: 0.6;
+  .mk-canvas-card-title {
+    text-decoration: line-through;
+  }
+}
+.mk-canvas-card.is-missing .mk-canvas-card-title {
+  color: var(--text-faint);
+  cursor: default;
+  text-decoration: none;
+}

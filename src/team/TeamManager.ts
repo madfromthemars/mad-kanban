@@ -476,6 +476,7 @@ export class TeamManager {
     this.syncs.forEach((s) => s.onServerEvent(ev));
     this.mirrors.forEach((m) => m.onServerEvent(ev));
     if (ev.type === 'boards.changed') this.emitter.emit('boards');
+    if (ev.type === 'board.changed') this.emitter.emit('board.changed', ev.boardId);
     if (ev.type === 'comments.changed') this.emitter.emit('comments', ev.boardId, ev.cardId);
     // Roles, people or project membership changed; boards reload through their own board.changed.
     if (ev.type === 'team.changed') {
@@ -784,7 +785,7 @@ export class TeamManager {
     return lines.join('\n');
   }
 
-  private async writeBoardFile(snapshot: TeamBoardSnapshot, folder?: TFolder): Promise<TFile> {
+  async writeBoardFile(snapshot: TeamBoardSnapshot, folder?: TFolder): Promise<TFile> {
     const app = this.plugin.app;
     const targetFolder =
       folder || app.fileManager.getNewFileParent(app.workspace.getActiveFile()?.path || '');

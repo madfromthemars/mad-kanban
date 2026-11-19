@@ -38,6 +38,7 @@ import { ErrorReporter } from './ErrorReporter';
 import { teamBoardIdKey } from './team/types';
 import { PluginUpdater } from './team/PluginUpdater';
 import { Companions } from './team/Companions';
+import { CanvasCards } from './team/canvasCards';
 import { bindCardRefClicks } from './cardRefOpen';
 import { bindPhoneKeyboard } from './phoneKeyboard';
 import { CardRefSuggest } from './components/Editor/CardRefSuggest';
@@ -132,6 +133,7 @@ export default class KanbanPlugin extends Plugin {
   team: TeamManager;
   updater: PluginUpdater;
   companions: Companions;
+  canvasCards: CanvasCards;
 
   // leafid => view mode
   kanbanFileModes: Record<string, string> = {};
@@ -167,6 +169,7 @@ export default class KanbanPlugin extends Plugin {
     this.team?.destroy();
     this.updater?.destroy();
     this.companions?.destroy();
+    this.canvasCards?.destroy();
     this.windowRegistry.forEach((reg, win) => {
       reg.viewStateReceivers.forEach((fn) => fn([]));
       this.unmount(win);
@@ -212,6 +215,8 @@ export default class KanbanPlugin extends Plugin {
     this.updater.start();
     this.companions = new Companions(this);
     this.companions.start();
+    this.canvasCards = new CanvasCards(this);
+    this.canvasCards.start();
 
     this.registerEvent(
       this.app.workspace.on('window-open', (_: unknown, win: Window) => {
