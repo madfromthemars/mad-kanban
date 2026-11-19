@@ -1,4 +1,4 @@
-# Cards on canvases (steps 1–3 built, 2026-11-19)
+# Cards on canvases (built 2026-11-19; steps 4–5 not yet clicked through in Obsidian)
 
 Goal: put real board cards on any canvas (your own or a shared `Team/<project>/` one).
 A card box always shows the card as it is now, and opening it opens the card window.
@@ -60,4 +60,9 @@ Decided with the owner (2026-11-19):
 - **Live without the board open:** the card index only holds cards of open boards and your
   own; the canvas fetches the other joined boards, and refetches a board on its
   `board.changed` server event (TeamManager now re-emits it).
-- Not built yet: steps 4 (drag from board) and 5 (`@` picker inside canvas text).
+- **Drag from board (step 4):** `DragManager.dragEnd` asks `src/dnd/externalDrop.ts` handlers
+  before sorting; CanvasCards hit-tests open canvases in the same window by geometry
+  (`canvas.wrapperEl`), adds the box at `canvas.posFromEvt(e)`, and the card snaps back on
+  the board (it's a copy, not a move). Personal-board cards get a notice (team cards only).
+- **`@` in canvas text (step 5):** `CanvasCardSuggest` (EditorSuggest, only when the editor
+  sits inside `.canvas-node`), team cards ranked with `rankCards`; inserts `@id`.
