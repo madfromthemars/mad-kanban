@@ -1,8 +1,21 @@
-import { FuzzySuggestModal, Notice, setIcon } from 'obsidian';
+import {
+  Editor,
+  EditorPosition,
+  EditorSuggest,
+  EditorSuggestContext,
+  EditorSuggestTriggerInfo,
+  FuzzySuggestModal,
+  Notice,
+  TFile,
+  setIcon,
+} from 'obsidian';
 
 import type KanbanPlugin from 'src/main';
 import { kanbanViewType } from 'src/KanbanView';
-import { cardRefTitle } from 'src/cardRefs';
+import { CardRefInfo, CardRefStatus, cardRefTitle, rankCards } from 'src/cardRefs';
+import { renderCardOption } from 'src/components/Editor/CardRefSuggest';
+import { addExternalDropHandler } from 'src/dnd/externalDrop';
+import { parseTeamItemId } from './ids';
 import { openCardRef } from 'src/cardRefOpen';
 import { laneKey } from './laneKey';
 import type { CardInfo } from './TeamManager';
@@ -51,6 +64,9 @@ export class CanvasCards {
     this.plugin.registerEvent(
       this.plugin.app.vault.on('modify', (f) => f.path.endsWith('.canvas') && window.setTimeout(() => this.scan(), 50))
     );
+    // Drag a card from a board and drop it on an open canvas.
+    this.plugin.register(addExternalDropHandler((win, e, data) => this.dropTarget(win, e, data)));
+    this.plugin.registerEditorSuggest(new CanvasCardSuggest(this));
     this.plugin.addCommand({
       id: 'canvas-add-team-card',
       name: 'Add a team card to this canvas',
@@ -267,12 +283,90 @@ export class CanvasCards {
     new CardPicker(this.plugin, items, (id) => this.addBox(canvas, id)).open();
   }
 
-  addBox(canvas: any, cardId: string) {
-    const c = typeof canvas.posCenter === 'function' ? canvas.posCenter() : { x: canvas.x || 0, y: canvas.y || 0 };
+  /** The canvas under the pointer (same window), with an action that adds the dragged card. */
+  private dropTarget(win: Window, e: PointerEvent, data: any): (() => void) | null {
+    for (const leaf of this.plugin.app.workspace.getLeavesOfType('canvas')) {
+      const view = leaf.view as any;
+      const canvas = view?.canvas;
+      const el: HTMLElement | undefined = canvas?.wrapperEl || view?.contentEl;
+      if (!canvas || !el || el.ownerDocument !== win.document) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) continue;
+      const pos = this.canvasPos(canvas, e);
+      return () => {
+        const ref = parseTeamItemId(data?.id || '');
+        if (!ref) return void new Notice('Only team board cards can go on a canvas.');
+        this.addBox(canvas, ref.cardId, pos);
+      };
+    }
+    return null;
+  }
+
+  private canvasPos(canvas: any, e: PointerEvent) {
+    if (typeof canvas.posFromEvt === 'function') return canvas.posFromEvt(e);
+    if (typeof canvas.posFromClient === 'function') return canvas.posFromClient({ x: e.clientX, y: e.clientY });
+    return null;
+  }
+
+  /** Cards known to this device in the shape the `@` pickers use. */
+  cardIndex(): Map<string, CardRefInfo> {
+    const out = new Map<string, CardRefInfo>();
+    for (const [id, info] of this.team.cards) {
+      const key = info.card.archived ? 'archive' : laneKey(info.laneTitle || '');
+      const status = (info.card.archived ? 'archive' : STATUSES.has(key) ? key : 'other') as CardRefStatus;
+      out.set(id, {
+        id,
+        title: cardRefTitle(info.card.content),
+        laneTitle: info.card.archived ? 'Archive' : info.laneTitle || '',
+        status,
+        archived: info.card.archived,
+        itemId: id,
+      });
+    }
+    return out;
+  }
+
+  addBox(canvas: any, cardId: string, at?: { x: number; y: number } | null) {
+    const c = at || (typeof canvas.posCenter === 'function' ? canvas.posCenter() : { x: canvas.x || 0, y: canvas.y || 0 });
     const pos = { x: c.x - BOX.width / 2, y: c.y - BOX.height / 2 };
     canvas.createTextNode({ pos, size: { ...BOX }, text: `@${cardId}`, focus: false, save: true });
     canvas.requestSave?.();
     this.scan(true);
+  }
+}
+
+/** `@` while typing in a canvas text box: team cards; picking one makes the box a card. */
+class CanvasCardSuggest extends EditorSuggest<CardRefInfo> {
+  constructor(private cards: CanvasCards) {
+    super((cards as any).plugin.app);
+    this.limit = 8;
+  }
+
+  onTrigger(cursor: EditorPosition, editor: Editor, _file: TFile | null): EditorSuggestTriggerInfo | null {
+    const dom: HTMLElement | undefined = (editor as any).cm?.dom;
+    if (!dom?.closest?.('.canvas-node')) return null; // only canvas text boxes
+    const line = editor.getLine(cursor.line).slice(0, cursor.ch);
+    const m = /(?:^|[\s([{"'«])@([^\s@{}[\]]{0,30})$/.exec(line);
+    if (!m) return null;
+    void this.cards.loadBoards(false);
+    return { start: { line: cursor.line, ch: cursor.ch - m[1].length - 1 }, end: cursor, query: m[1] };
+  }
+
+  getSuggestions(ctx: EditorSuggestContext): CardRefInfo[] {
+    return rankCards(this.cards.cardIndex(), ctx.query, null, 8);
+  }
+
+  renderSuggestion(card: CardRefInfo, el: HTMLElement) {
+    renderCardOption(el, card);
+  }
+
+  selectSuggestion(card: CardRefInfo) {
+    const ctx = this.context;
+    if (!ctx) return;
+    const text = `@${card.id}`;
+    ctx.editor.replaceRange(text, ctx.start, ctx.end);
+    ctx.editor.setCursor({ line: ctx.start.line, ch: ctx.start.ch + text.length });
+    this.close();
   }
 }
 

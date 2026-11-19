@@ -1,4 +1,5 @@
 import boxIntersect from 'box-intersect';
+import { findExternalDrop } from '../externalDrop';
 import EventEmitter from 'eventemitter3';
 import { Platform } from 'obsidian';
 import { RefObject, useCallback, useContext, useRef } from 'preact/compat';
@@ -139,10 +140,14 @@ export class DragManager {
     // Dropping a card on the board's Archive / Delete zone is decided by what's under the
     // pointer (those zones sit outside the list sorting), so the card isn't sorted anywhere.
     const zone = this.dragEntity ? findDropZone(this.win, e, this.dragEntity) : null;
-    if (zone) this.primaryIntersection = undefined;
+    // Released outside the board over something that takes cards (an open canvas).
+    const data = this.dragEntity?.scopeId !== 'htmldnd' ? this.dragEntity?.getData?.() : null;
+    const external = !zone && data?.type === 'item' ? findExternalDrop(this.win, e, data) : null;
+    if (zone || external) this.primaryIntersection = undefined;
     const dragEntity = this.dragEntity;
     this.emitter.emit('dragEnd', this.getDragEventData());
     if (zone && dragEntity) this.emitter.emit('zoneDrop', { dragEntity, zone });
+    external?.();
     this.dragEntityMargin = undefined;
     this.dragEntity = undefined;
     this.dragEntityId = undefined;
