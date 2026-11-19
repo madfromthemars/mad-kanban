@@ -343,8 +343,10 @@ class CanvasCardSuggest extends EditorSuggest<CardRefInfo> {
   }
 
   onTrigger(cursor: EditorPosition, editor: Editor, _file: TFile | null): EditorSuggestTriggerInfo | null {
+    // Only canvas text boxes. Obsidian edits them inside an iframe, so look past it too.
     const dom: HTMLElement | undefined = (editor as any).cm?.dom;
-    if (!dom?.closest?.('.canvas-node')) return null; // only canvas text boxes
+    const frame = dom?.ownerDocument?.defaultView?.frameElement as HTMLElement | null | undefined;
+    if (!dom?.closest?.('.canvas-node') && !frame?.closest?.('.canvas-node')) return null;
     const line = editor.getLine(cursor.line).slice(0, cursor.ch);
     const m = /(?:^|[\s([{"'«])@([^\s@{}[\]]{0,30})$/.exec(line);
     if (!m) return null;

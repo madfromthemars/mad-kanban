@@ -1,4 +1,4 @@
-# Cards on canvases (built 2026-11-19; steps 4–5 not yet clicked through in Obsidian)
+# Cards on canvases (built and E2E-tested 2026-11-19)
 
 Goal: put real board cards on any canvas (your own or a shared `Team/<project>/` one).
 A card box always shows the card as it is now, and opening it opens the card window.
