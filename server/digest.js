@@ -4,6 +4,7 @@
 
 import { laneKey } from './lanes.js';
 import { parseCard } from './mcp.js';
+import { estimateOf, workMsOf } from './progress.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 export const STUCK_DAYS = 5;
@@ -44,7 +45,7 @@ export function buildDigest(db, { now = Date.now(), offsetH = 5, weekly = null }
 
   const cards = db
     .prepare(
-      `SELECT c.id, c.content, c.assignees, c.archived, c.project_id, c.last_moved, c.created_at, c.done_at, c.done_by, c.done_estimated,
+      `SELECT c.id, c.content, c.assignees, c.archived, c.project_id, c.last_moved, c.created_at, c.done_at, c.done_by, c.done_estimated, c.work_ms, c.work_since,
               l.title AS lane, l.mark_complete
        FROM cards c LEFT JOIN lanes l ON l.id = c.lane_id`
     )
@@ -61,6 +62,8 @@ export function buildDigest(db, { now = Date.now(), offsetH = 5, weekly = null }
   const overdueWhere = new Map();
   const stuck = new Map();
   const stuckWhere = new Map();
+  const overEst = new Map();
+  const overEstWhere = new Map();
   const unassigned = new Map();
   const weekDone = new Map();
   let weekDoneTotal = 0;
@@ -100,6 +103,14 @@ export function buildDigest(db, { now = Date.now(), offsetH = 5, weekly = null }
         count(overdue, who);
         if (!overdueWhere.has(who)) overdueWhere.set(who, new Map());
         count(overdueWhere.get(who), projectName(c.project_id));
+      }
+    }
+    const est = estimateOf(c.content);
+    if (est && workMsOf(c, now) > est) {
+      for (const who of assignees.length ? assignees.map(name) : ['No one']) {
+        count(overEst, who);
+        if (!overEstWhere.has(who)) overEstWhere.set(who, new Map());
+        count(overEstWhere.get(who), projectName(c.project_id));
       }
     }
     if (inProgress && c.last_moved < now - STUCK_DAYS * DAY) {
@@ -144,6 +155,10 @@ export function buildDigest(db, { now = Date.now(), offsetH = 5, weekly = null }
   if (stuck.size) {
     out.push('', `🧊 <b>In progress, not moved for ${STUCK_DAYS}+ days</b>`);
     for (const [who, n] of sorted(stuck)) out.push(`• ${esc(who)} ${n}${where(stuckWhere.get(who))}`);
+  }
+  if (overEst.size) {
+    out.push('', `⏱ <b>Over estimate</b> <i>(open, took longer than planned)</i>`);
+    for (const [who, n] of sorted(overEst)) out.push(`• ${esc(who)} ${n}${where(overEstWhere.get(who))}`);
   }
   if (unassigned.size) {
     out.push('', `📭 <b>Nobody assigned (${total(unassigned)})</b>`);

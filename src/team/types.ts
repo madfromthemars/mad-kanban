@@ -91,6 +91,10 @@ export interface TeamCard {
   unreadComments?: number;
   /** Comments by others edited since the current user last read them */
   editedComments?: number;
+  /** Time spent in In Progress / Review (closed stretches), ms. */
+  workMs?: number;
+  /** Start of the current In Progress / Review stretch, or null. */
+  workSince?: number | null;
 }
 
 export interface TeamComment {

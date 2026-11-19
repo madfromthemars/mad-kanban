@@ -209,7 +209,7 @@ export async function findCardFilePathInListFolder(
   return null;
 }
 
-const priorityFieldRegex = /\s*\[priority::\s*[^\]]*\]/g;
+const priorityFieldRegex = /\s*\[(?:priority|estimate)::\s*[^\]]*\]/gi;
 
 export function extractCardTitle(titleRaw: string) {
   const first = titleRaw.split(/\r?\n/)[0]?.trim() ?? '';

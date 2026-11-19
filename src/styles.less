@@ -3818,6 +3818,99 @@ div.kanban-plugin__lane-title-count {
   }
 }
 
+/* Time estimate chip on cards: spent / estimate; calm yellow when over */
+.kanban-plugin__estimate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+  font-variant-numeric: tabular-nums;
+
+  svg {
+    flex: none;
+    opacity: 0.85;
+  }
+
+  &.is-running svg {
+    color: var(--interactive-accent);
+    opacity: 1;
+  }
+
+  &.is-over {
+    color: var(--kb-due-soon);
+    background: rgba(var(--color-yellow-rgb, 212, 167, 44), 0.15);
+  }
+}
+
+/* Estimate field in the card window */
+.kanban-plugin__estimate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kanban-plugin__estimate-input {
+  width: 100%;
+  max-width: 180px;
+
+  &.is-invalid {
+    border-color: var(--text-error);
+  }
+}
+
+.kanban-plugin__estimate-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+
+  button {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 12px;
+    border-radius: 6px;
+    box-shadow: none;
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+
+    &.is-active {
+      background: var(--interactive-accent);
+      color: var(--text-on-accent);
+    }
+  }
+
+  .kanban-plugin__estimate-clear {
+    background: transparent;
+    color: var(--text-muted);
+  }
+}
+
+.kanban-plugin__estimate-hint {
+  font-size: 12px;
+  color: var(--text-error);
+}
+
+.kanban-plugin__estimate-spent {
+  font-size: 12px;
+  color: var(--text-muted);
+
+  &.is-over {
+    color: var(--kb-due-soon);
+  }
+}
+
+.is-phone .kanban-plugin__estimate-input {
+  max-width: none;
+  font-size: 16px;
+}
+
 /* Due date picker in the card window */
 .kanban-plugin__due-picker {
   display: flex;
@@ -6702,7 +6795,8 @@ button.kanban-plugin__upload-cancel {
   .kanban-plugin__item .kanban-plugin__comment-count {
     flex: none;
   }
-  .kanban-plugin__item .kanban-plugin__due-chip {
+  .kanban-plugin__item .kanban-plugin__due-chip,
+  .kanban-plugin__item .kanban-plugin__estimate-chip {
     flex: none;
     font-size: 12px;
   }

@@ -20,6 +20,8 @@ import { isTeamItem } from 'src/team/ids';
 import { CreatedBy, TeamCardExtras, ProjectSelect } from 'src/team/ui/TeamBadges';
 import { moveEntity } from 'src/dnd/util/data';
 import { setPriorityInTitle } from 'src/kanbanFileHelpers';
+import { formatDuration, getEstimate, setEstimateInTitle } from 'src/estimate';
+import { EstimateField } from './Estimate';
 import {
   joinCardBody,
   normalizeTag,
@@ -307,6 +309,18 @@ const CardDetailContent = memo(function CardDetailContent({
       const value = iso || null;
       const newItem = stateManager.updateItemContent(latest, setDueInTitle(latest.data.titleRaw, value, trigger));
       boardModifiers.updateItem(resolvePath(), newItem);
+      setCurrentItem(newItem);
+      onItemUpdate?.(newItem);
+    },
+    [currentItem, stateManager, boardModifiers, resolvePath, onItemUpdate]
+  );
+
+  const setEstimate = useCallback(
+    (value: string | null) => {
+      const p = resolvePath();
+      const latest = stateManager.state?.children?.[p[0]]?.children?.[p[1]] || currentItem;
+      const newItem = stateManager.updateItemContent(latest, setEstimateInTitle(latest.data.titleRaw, value));
+      boardModifiers.updateItem(p, newItem);
       setCurrentItem(newItem);
       onItemUpdate?.(newItem);
     },
@@ -921,6 +935,17 @@ const CardDetailContent = memo(function CardDetailContent({
           </Field>
           )}
 
+          <Field
+            label="Estimate"
+            expand
+            summary={(() => {
+              const e = getEstimate(currentItem.data.titleRaw);
+              return e ? formatDuration(e.ms) : <span className={c('cd-row-empty')}>None</span>;
+            })()}
+          >
+            <EstimateField item={currentItem} onChange={setEstimate} />
+          </Field>
+
           {isTeam && !isPhone && (
             <Field label="Assignees">
               <TeamCardExtras item={currentItem} detail={true} />
@@ -961,8 +986,8 @@ const CardDetailContent = memo(function CardDetailContent({
             <TagEditor tags={allTags} suggestions={tagSuggestions} onAdd={addTags} onRemove={removeTag} />
           </Field>
 
-          {currentItem.data.metadata.inlineMetadata?.length > 0 && (
-            <Field label="Details" expand summary={`${currentItem.data.metadata.inlineMetadata.length}`}>
+          {currentItem.data.metadata.inlineMetadata?.filter((m) => m.key !== 'estimate').length > 0 && (
+            <Field label="Details" expand summary={`${currentItem.data.metadata.inlineMetadata.filter((m) => m.key !== 'estimate').length}`}>
               <div className={c('card-detail-metadata')}>
                 <InlineMetadata item={currentItem} stateManager={stateManager} />
               </div>

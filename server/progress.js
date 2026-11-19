@@ -62,6 +62,98 @@ export function migrateProgress(db) {
   }
 }
 
+/** Lists whose time counts as work on the card (the estimate's "real time"). */
+export function isWorkLane(lane) {
+  if (!lane) return false;
+  const key = laneKey(lane.title);
+  return key === 'inprogress' || key === 'review';
+}
+
+/**
+ * Time spent in In Progress / Review: work_ms (closed stretches) plus the open one since
+ * work_since. Keep the duration format in sync with src/estimate.ts.
+ */
+export function migrateWork(db) {
+  const cols = db.prepare('PRAGMA table_info(cards)').all().map((c) => c.name);
+  if (!cols.includes('work_ms')) db.exec('ALTER TABLE cards ADD COLUMN work_ms INTEGER NOT NULL DEFAULT 0');
+  if (!cols.includes('work_since')) db.exec('ALTER TABLE cards ADD COLUMN work_since INTEGER');
+  if (db.prepare("SELECT 1 FROM meta WHERE key = 'work-time'").get()) return;
+  transaction(db, () => {
+    // Replay the history log: every stretch a card spent in a work list.
+    const work = (t) => (t ? isWorkLane({ title: t }) : false);
+    const evs = db.prepare("SELECT board_id, card_id, type, to_lane, ts FROM card_events WHERE type IN ('created', 'moved', 'archived', 'restored') ORDER BY id").all();
+    const acc = new Map();
+    for (const e of evs) {
+      const k = e.board_id + '\u0000' + e.card_id;
+      const a = acc.get(k) || { ms: 0, since: null };
+      const inWork = e.type !== 'archived' && work(e.to_lane);
+      if (inWork && a.since == null) a.since = e.ts;
+      else if (!inWork && a.since != null) {
+        a.ms += e.ts - a.since;
+        a.since = null;
+      }
+      acc.set(k, a);
+    }
+    const cards = db.prepare('SELECT c.id, c.board_id, c.archived, c.last_moved, l.title FROM cards c LEFT JOIN lanes l ON l.id = c.lane_id').all();
+    const set = db.prepare('UPDATE cards SET work_ms = ?, work_since = ? WHERE id = ? AND board_id = ?');
+    for (const c of cards) {
+      const a = acc.get(c.board_id + '\u0000' + c.id) || { ms: 0, since: null };
+      const nowInWork = !c.archived && isWorkLane(c.title != null ? c : null);
+      const since = nowInWork ? a.since ?? c.last_moved : null;
+      if (a.ms || since != null) set.run(a.ms, since, c.id, c.board_id);
+    }
+    db.prepare("INSERT INTO meta (key, value) VALUES ('work-time', ?)").run(String(Date.now()));
+  });
+}
+
+/** After a card's list changed: start or stop its work clock. */
+export function syncWork(db, boardId, cardId, now = Date.now()) {
+  const c = db
+    .prepare('SELECT c.archived, c.work_since, l.title FROM cards c LEFT JOIN lanes l ON l.id = c.lane_id WHERE c.id = ? AND c.board_id = ?')
+    .get(cardId, boardId);
+  if (!c) return;
+  const inWork = !c.archived && isWorkLane(c.title != null ? c : null);
+  if (inWork && c.work_since == null) {
+    db.prepare('UPDATE cards SET work_since = ? WHERE id = ? AND board_id = ?').run(now, cardId, boardId);
+  } else if (!inWork && c.work_since != null) {
+    db.prepare('UPDATE cards SET work_ms = work_ms + ?, work_since = NULL WHERE id = ? AND board_id = ?').run(Math.max(0, now - c.work_since), cardId, boardId);
+  }
+}
+
+const DURATION_UNITS = { m: 60e3, h: 3600e3, d: 24 * 3600e3, w: 7 * 24 * 3600e3 };
+/** "2h", "1d 4h", "90m", "1.5h" -> ms (null if not a duration). Same rules as src/estimate.ts. */
+export function parseDuration(s) {
+  const str = String(s || '').trim().toLowerCase();
+  if (!str) return null;
+  let total = 0;
+  let rest = str;
+  const re = /^(\d+(?:[.,]\d+)?)\s*(m|min|h|hr|d|w)\s*/;
+  while (rest) {
+    const m = re.exec(rest);
+    if (!m) return null;
+    total += parseFloat(m[1].replace(',', '.')) * DURATION_UNITS[m[2][0]];
+    rest = rest.slice(m[0].length);
+  }
+  return total > 0 ? Math.round(total) : null;
+}
+/** `[estimate:: 2h]` on the card -> ms, or null. */
+export function estimateOf(content) {
+  const m = /\[estimate::\s*([^\]]*)\]/i.exec(String(content || ''));
+  return m ? parseDuration(m[1]) : null;
+}
+/** ms -> "45m", "3h 20m", "2d 4h" (same as src/estimate.ts formatDuration). */
+export function fmtDuration(ms) {
+  const min = Math.round((ms || 0) / 60e3);
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return min % 60 ? `${h}h ${min % 60}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
+}
+export function workMsOf(card, now = Date.now()) {
+  return (card.work_ms || 0) + (card.work_since != null ? Math.max(0, now - card.work_since) : 0);
+}
+
 export function isFinishedLane(lane) {
   if (!lane) return false;
   const key = laneKey(lane.title);
@@ -134,6 +226,7 @@ function trashedRow(db, boardId, cardId) {
  * (cards of a deleted list) keep whatever they had.
  */
 export function syncDone(db, boardId, cardId, userId, now = Date.now()) {
+  syncWork(db, boardId, cardId, now);
   const c = db
     .prepare('SELECT c.done_at, c.archived, l.title, l.mark_complete FROM cards c LEFT JOIN lanes l ON l.id = c.lane_id WHERE c.id = ? AND c.board_id = ?')
     .get(cardId, boardId);

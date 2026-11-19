@@ -24,6 +24,7 @@ import { ItemContent, Tags, getCardCacheKey, cardBodyCache } from './ItemContent
 import { extractCardLinkPath, extractCardTitle, findCardFileInVault } from 'src/kanbanFileHelpers';
 import { Platform, TFile } from 'obsidian';
 import { isTeamItem } from 'src/team/ids';
+import { EstimateChip, useEstimate } from './Estimate';
 import { TeamCardExtras } from 'src/team/ui/TeamBadges';
 import { useItemMenu } from './ItemMenu';
 import { ItemMenuButton } from './ItemMenuButton';
@@ -158,8 +159,10 @@ const CardFooter = memo(function CardFooter({ item }: { item: Item }) {
   const hasTags = allTags.length > 0;
   const due = item.data.metadata.date;
   const hasDue = !!due?.isValid?.();
+  const time = useEstimate(item);
+  const hasTime = !!time.est || time.spent >= 60e3;
 
-  if (!hasProgress && !hasTags && !hasDue) return null;
+  if (!hasProgress && !hasTags && !hasDue && !hasTime) return null;
 
   const percent = hasProgress ? Math.round((counts.checked / counts.total) * 100) : 0;
 
@@ -188,6 +191,7 @@ const CardFooter = memo(function CardFooter({ item }: { item: Item }) {
   return (
     <div className={c('item-footer')} data-ignore-drag={Platform.isPhone ? undefined : true}>
       {hasDue && <DueChip date={due} done={!!item.data.checked} />}
+      {hasTime && <EstimateChip est={time.est} spent={time.spent} running={time.running} />}
       {hasTags && <Tags tags={allTags} alwaysShow={true} />}
       {hasProgress && (
         <div

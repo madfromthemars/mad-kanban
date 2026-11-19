@@ -64,7 +64,7 @@ import {
 import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
 import { NotesError, createNotes } from './notes.js';
 import { VaultError, createVault } from './vault.js';
-import { boardProgress, cleanDone, DONE_CLEAN_DAYS, listTrash, logEvent, migrateProgress, migrateVia, purgeTrash, restoreCard, TRASH_DAYS, withVia } from './progress.js';
+import { boardProgress, cleanDone, DONE_CLEAN_DAYS, listTrash, logEvent, migrateProgress, migrateVia, migrateWork, purgeTrash, restoreCard, TRASH_DAYS, withVia } from './progress.js';
 import { migrateHistory, startDailyStats, teamHistory } from './history.js';
 import { createNotifier } from './notify.js';
 import { createMcp } from './mcp.js';
@@ -80,6 +80,7 @@ const MOVED_TO = (process.env.MOVED_TO || '').replace(/\/+$/, '');
 
 const db = openDb(DATA_DIR);
 migrateProgress(db);
+migrateWork(db);
 migrateHistory(db);
 migrateVia(db);
 startDailyStats(db);

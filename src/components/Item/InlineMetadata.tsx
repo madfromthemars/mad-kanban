@@ -35,6 +35,8 @@ export function InlineMetadata({ item, stateManager }: InlineMetadataProps) {
         const data = parseMetadataWithOptions(m, metaKeys);
         const { metadataKey: key, value, label: explicitLabel } = data;
         const isTaskMetadata = taskFields.has(key);
+        // Shown as its own chip / card-window field.
+        if (key === 'estimate') return null;
 
         if (!showTaskMetadata && isTaskMetadata) return null;
         if (!showInlineMetadata && !isTaskMetadata) return null;

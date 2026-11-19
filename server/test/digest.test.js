@@ -18,7 +18,8 @@ function makeDb() {
     CREATE TABLE project_members (project_id TEXT, user_id TEXT);
     CREATE TABLE lanes (id TEXT PRIMARY KEY, board_id TEXT, title TEXT, mark_complete INTEGER DEFAULT 0);
     CREATE TABLE cards (id TEXT PRIMARY KEY, board_id TEXT, lane_id TEXT, content TEXT, assignees TEXT DEFAULT '[]', archived INTEGER DEFAULT 0,
-      project_id TEXT, last_moved INTEGER, created_at INTEGER, done_at INTEGER, done_by TEXT, done_estimated INTEGER DEFAULT 0);
+      project_id TEXT, last_moved INTEGER, created_at INTEGER, done_at INTEGER, done_by TEXT, done_estimated INTEGER DEFAULT 0,
+      work_ms INTEGER DEFAULT 0, work_since INTEGER);
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE telegram_links (user_id TEXT PRIMARY KEY, chat_id TEXT, tg_name TEXT DEFAULT '', linked_at INTEGER, updates INTEGER DEFAULT 1);
   `);

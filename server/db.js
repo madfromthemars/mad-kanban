@@ -698,6 +698,9 @@ export function rowToCard(r) {
     lastMoved: r.last_moved,
     projectId: r.project_id || null,
     commentCount: r.comment_count || 0,
+    // Time spent in In Progress / Review (estimate vs real time).
+    workMs: r.work_ms || 0,
+    workSince: r.work_since ?? null,
     ...(r.created_by_name !== undefined ? { createdByName: r.created_by_name || null } : {}),
     ...(r.unread_comments !== undefined ? { unreadComments: r.unread_comments || 0 } : {}),
     ...(r.edited_comments !== undefined ? { editedComments: r.edited_comments || 0 } : {}),

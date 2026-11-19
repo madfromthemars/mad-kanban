@@ -27,6 +27,7 @@ import { dayOf, teamHistory } from './history.js';
 import { laneKey } from './lanes.js';
 import { cardTitle } from './notify.js';
 import { OpError } from './ops.js';
+import { estimateOf, fmtDuration, parseDuration, workMsOf } from './progress.js';
 
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const SERVER_INFO = { name: 'mad-kanban', title: 'Mad Kanban', version: '1.0.0' };
@@ -167,6 +168,9 @@ export function createMcp(deps) {
     const meta = [`List: ${lane}`, `Project: ${projectName(ctx, c)}`];
     if (p.priority != null) meta.push(`Priority: P${p.priority} (0 = most urgent)`);
     if (p.due) meta.push(`Due: ${p.due}`);
+    const est = estimateOf(c.content);
+    const spent = workMsOf({ work_ms: c.workMs, work_since: c.workSince });
+    if (est || spent) meta.push(`Time: ${spent ? fmtDuration(spent) : '0m'} spent in progress${est ? ` / estimate ${fmtDuration(est)}${spent > est ? ' OVER' : ''}` : ''}`);
     meta.push(`Assigned: ${c.assignees.length ? c.assignees.map((a) => personName(ctx, a)).join(', ') : 'nobody'}`);
     meta.push(`Created by ${c.createdByName || personName(ctx, c.createdBy)} on ${dayOf(c.createdAt)}`);
     meta.push(`version ${c.version}`);
@@ -232,8 +236,12 @@ export function createMcp(deps) {
     throw new ToolError('The card keeps changing; try again in a moment.');
   }
 
-  function setFirstLineMeta(first, { due, priority }) {
+  function setFirstLineMeta(first, { due, priority, estimate }) {
     let l = first;
+    if (estimate !== undefined) {
+      l = l.replace(/\s*\[estimate::[^\]]*\]/i, '');
+      if (estimate) l = insertBeforeTail(l, ` [estimate:: ${estimate}]`);
+    }
     if (due !== undefined) {
       l = l.replace(/\s*@\{\d{4}-\d{2}-\d{2}\}/, '');
       if (due) l = insertBeforeTail(l, ` @{${due}}`);
@@ -248,6 +256,13 @@ export function createMcp(deps) {
   function insertBeforeTail(line, piece) {
     const m = /(\s\^[a-z0-9-]+)\s*$/i.exec(line);
     return m ? line.slice(0, m.index) + piece + m[1] : line.replace(/\s+$/, '') + piece;
+  }
+
+  function checkEstimate(v) {
+    if (v == null || v === '') return v === undefined ? undefined : '';
+    const s = String(v).trim().toLowerCase();
+    if (!parseDuration(s)) throw new ToolError('estimate looks like "2h", "1d 4h", "30m" (m/h/d/w; 1d = 24h), or "" to remove');
+    return s;
   }
 
   function checkDue(due) {
@@ -410,6 +425,7 @@ export function createMcp(deps) {
           assignees: strs('Teammate names or "me". They must be in the card\'s project.'),
           due: str('YYYY-MM-DD'),
           priority: { type: 'integer', minimum: 0, maximum: 4, description: '0 = most urgent.' },
+          estimate: str('Time estimate like "2h", "1d 4h", "30m" (m/h/d/w; 1d = 24h).'),
           tags: strs('Tags like "vidora" (no #).'),
           blocked_by: str('What it waits on; use @cardId when it is another card.'),
         },
@@ -428,7 +444,7 @@ export function createMcp(deps) {
           if (out.length) throw new ToolError(`${out.map((u) => u.name).join(', ')} can't see that project, so they can't be assigned.`);
         }
         let first = title;
-        first = setFirstLineMeta(first, { due: checkDue(a.due) || undefined, priority: checkPriority(a.priority) ?? undefined });
+        first = setFirstLineMeta(first, { due: checkDue(a.due) || undefined, priority: checkPriority(a.priority) ?? undefined, estimate: checkEstimate(a.estimate) || undefined });
         const lines = [first];
         if (a.blocked_by) lines.push(`Blocked by: ${String(a.blocked_by).trim()}`);
         if (a.description) lines.push(String(a.description).trim());
@@ -459,6 +475,7 @@ export function createMcp(deps) {
           title: str('New title (keeps due/priority).'),
           due: str('YYYY-MM-DD, or "" to remove.'),
           priority: { type: ['integer', 'null'], description: '0-4, or null to remove.' },
+          estimate: str('Time estimate like "2h", "1d 4h" (m/h/d/w), or "" to remove.'),
           blocked_by: str('Set the "Blocked by:" line; "" removes it.'),
           append: str('Text to add (before the checklist).'),
           replace: {
@@ -477,6 +494,7 @@ export function createMcp(deps) {
         const board = pickBoard(user, a.board);
         const due = a.due !== undefined ? checkDue(a.due) : undefined;
         const priority = a.priority !== undefined ? checkPriority(a.priority) : undefined;
+        const estimate = a.estimate !== undefined ? checkEstimate(a.estimate) : undefined;
         let res = editContent(user, board, a.id, (lines, p) => {
           if (a.content != null) return String(a.content).split(/\r?\n/);
           if (a.title != null) {
@@ -485,7 +503,7 @@ export function createMcp(deps) {
             const keep = (lines[0].match(/\s@\{[^}]*\}|\s\[[\w-]+::[^\]]*\]|\s#[^\s#]+|\s\^[a-z0-9-]+\s*$/gi) || []).join('');
             lines[0] = t + keep;
           }
-          if (due !== undefined || priority !== undefined) lines[0] = setFirstLineMeta(lines[0], { due, priority });
+          if (due !== undefined || priority !== undefined || estimate !== undefined) lines[0] = setFirstLineMeta(lines[0], { due, priority, estimate });
           if (a.replace) {
             const text = lines.join('\n');
             if (!text.includes(a.replace.find)) throw new ToolError('replace: text not found (it must match exactly)');
