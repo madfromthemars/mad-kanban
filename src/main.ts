@@ -867,7 +867,7 @@ export default class KanbanPlugin extends Plugin {
 
     this.addCommand({
       id: 'team-progress',
-      name: 'Team progress (finished cards, people, Trash)',
+      name: 'Team progress (owner) / Trash',
       checkCallback: (checking) => {
         if (!this.team?.user) return false;
         if (!checking) this.team.openProgress();

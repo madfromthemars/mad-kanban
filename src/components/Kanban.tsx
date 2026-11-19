@@ -329,9 +329,9 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                   <button
                     className={c('toolbar-button')}
                     onClick={() => team.openProgress(stateManager.teamSync?.boardId ?? null)}
-                    title="Progress: finished cards, who's on what, and the Trash"
+                    title={team.isOwner ? "Progress: finished cards, who's on what, and the Trash" : 'Trash: deleted cards (30 days)'}
                   >
-                    <Icon name="lucide-bar-chart-3" />
+                    <Icon name={team.isOwner ? 'lucide-bar-chart-3' : 'lucide-trash-2'} />
                   </button>
                 )}
                 {isHost && (

@@ -339,7 +339,8 @@ function Trash({ team, boardId, onChanged }: { team: TeamManager; boardId: strin
 function Progress({ team, initialBoardId, initialTab }: { team: TeamManager; initialBoardId: string | null; initialTab: 'overview' | 'trash' }) {
   const [boards, setBoards] = useState<TeamBoardMeta[] | null>(null);
   const [boardId, setBoardId] = useState<string | null>(initialBoardId);
-  const [tab, setTab] = useState(initialTab);
+  const owner = team.isOwner;
+  const [tab, setTab] = useState<'overview' | 'trash'>(owner ? initialTab : 'trash');
   const [period, setPeriod] = useState<Period>('week');
   const [data, setData] = useState<BoardProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -355,7 +356,7 @@ function Progress({ team, initialBoardId, initialTab }: { team: TeamManager; ini
   }, [team]);
 
   const load = useCallback(() => {
-    if (!boardId) return;
+    if (!boardId || !owner) return;
     team.client
       .boardProgress(boardId)
       .then((d) => {
@@ -367,6 +368,28 @@ function Progress({ team, initialBoardId, initialTab }: { team: TeamManager; ini
   useEffect(load, [load]);
 
   if (error) return <div className={c('mt-error')}>Could not load progress: {error}</div>;
+  if (!owner) {
+    // Not the owner: the Trash only, no dashboard.
+    if (!boardId) return <div className={c('pg-muted')}>Loading…</div>;
+    return (
+      <div className={c('progress')}>
+        {boards && boards.length > 1 && (
+          <div className={c('pg-top')}>
+            <div className={c('pg-controls')}>
+              <select className="dropdown" value={boardId} onChange={(e) => setBoardId((e.target as HTMLSelectElement).value)}>
+                {boards.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+        <Trash team={team} boardId={boardId} onChanged={load} />
+      </div>
+    );
+  }
   if (!boardId || !data) return <div className={c('pg-muted')}>Loading…</div>;
 
   return (
@@ -422,7 +445,7 @@ export class ProgressModal extends Modal {
 
   onOpen() {
     this.modalEl.addClass('kanban-plugin__progress-modal');
-    this.titleEl.setText('Team progress');
+    this.titleEl.setText(this.team.isOwner ? 'Team progress' : 'Trash');
     render(<Progress team={this.team} initialBoardId={this.boardId} initialTab={this.tab} />, this.contentEl);
   }
 

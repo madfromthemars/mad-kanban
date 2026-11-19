@@ -10,6 +10,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const ADMIN = 'test-admin';
 let proc;
 let dataDir;
+let ownerToken;
 
 async function api(method, p, body, token) {
   const res = await fetch(BASE + p, {
@@ -47,6 +48,10 @@ test('finish dates, archive keeps counting, trash and restore', async () => {
   const ops = (o, tok = A.token) => api('POST', `/api/boards/${bid}/ops`, { ops: o }, tok);
   const prog = async (tok = A.token) => (await api('GET', `/api/boards/${bid}/progress`, null, tok)).json;
   const card = (p, id) => p.cards.find((c) => c.id === id);
+  ownerToken = A.token;
+  // The dashboard is the owner's; others only get the Trash.
+  assert.equal((await api('GET', `/api/boards/${bid}/progress`, null, B.token)).status, 403);
+  assert.equal((await api('GET', `/api/boards/${bid}/trash`, null, B.token)).status, 200);
 
   let r = await ops([
     { type: 'card.create', id: 'cardaaaaa1', laneId: lane('To Do'), content: 'One @{2020-01-01}', assignees: [B.id] },
@@ -118,18 +123,19 @@ test('backlog: its own list, last; pulling a card out counts as planned', async 
   const board = (await api('POST', '/api/boards', { name: 'B2' }, A.token)).json.board;
   assert.deepEqual(board.lanes.map((l) => l.title), ['To Do', 'In Progress', 'Done', 'Archive', 'Backlog']);
   const bid = board.board.id;
+  await api('POST', `/api/boards/${bid}/join`, null, ownerToken);
   // laneTitle "Backlog" goes to Backlog, not To Do.
   let r = await api('POST', `/api/boards/${bid}/ops`, {
     ops: [{ type: 'card.create', id: 'backlog001', laneTitle: 'Backlog', content: 'Someday' }],
   }, A.token);
   assert.equal(r.json.ok, true, JSON.stringify(r.json));
-  let p = (await api('GET', `/api/boards/${bid}/progress`, null, A.token)).json;
+  let p = (await api('GET', `/api/boards/${bid}/progress`, null, ownerToken)).json;
   const c = p.cards.find((x) => x.id === 'backlog001');
   assert.equal(c.laneKey, 'backlog');
   assert.equal(c.finished, false);
   assert.deepEqual(p.pulled, []);
   await api('POST', `/api/boards/${bid}/ops`, { ops: [{ type: 'card.move', id: 'backlog001', laneTitle: 'To Do' }] }, A.token);
-  p = (await api('GET', `/api/boards/${bid}/progress`, null, A.token)).json;
+  p = (await api('GET', `/api/boards/${bid}/progress`, null, ownerToken)).json;
   assert.equal(p.pulled.length, 1);
   assert.equal(p.pulled[0].cardId, 'backlog001');
 });

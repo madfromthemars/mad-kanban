@@ -759,6 +759,8 @@ route('POST', '/api/boards/:id/ops', async (req, params) => {
 
 route('GET', '/api/boards/:id/progress', (req, params) => {
   const user = requireUser(req);
+  // The Progress dashboard is the owner's (user's choice). Trash stays open to everyone.
+  if (user.role !== 'owner') throw new OpError(403, 'only the owner can see team progress');
   requireBoard(user, params.id);
   return boardProgress(db, user, params.id);
 });

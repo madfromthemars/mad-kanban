@@ -86,9 +86,9 @@ test('private (Only me) cards: only the creator sees them, owner included', asyn
   // Progress, Trash and reports: Bob's own only.
   await ops([{ type: 'card.move', id: 'privbob001', laneId: done }], B.token);
   const progA = (await api('GET', `/api/boards/${bid}/progress`, null, A.token)).json;
-  const progB = (await api('GET', `/api/boards/${bid}/progress`, null, B.token)).json;
   assert.ok(!progA.cards.some((c) => c.id === 'privbob001'));
-  assert.ok(progB.cards.some((c) => c.id === 'privbob001'));
+  // Progress is owner-only now.
+  assert.equal((await api('GET', `/api/boards/${bid}/progress`, null, B.token)).status, 403);
   const histA = (await api('GET', '/api/history', null, A.token)).json;
   assert.ok(!histA.cards.some((c) => c.id === 'privbob001'));
   assert.ok(!histA.events.some((e) => e.cardId === 'privbob001'));

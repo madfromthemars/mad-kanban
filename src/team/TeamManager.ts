@@ -566,6 +566,11 @@ export class TeamManager {
     this.emitter.emit('cards');
   }
 
+  /** Only the owner sees the Progress dashboard; everyone else gets the Trash alone. */
+  get isOwner() {
+    return this.user?.role === 'owner';
+  }
+
   get isHost() {
     return this.user?.role === 'owner' || this.user?.role === 'host';
   }
