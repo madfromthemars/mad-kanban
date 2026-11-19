@@ -45,6 +45,8 @@ import {
   TeamComments,
   UploadProgress,
   filesOf,
+  clipboardImages,
+  pasteHasText,
   saveFilesToVault,
   uploadFiles,
   uploadTarget,
@@ -586,14 +588,29 @@ const CardDetailContent = memo(function CardDetailContent({
 
   const onEditorPaste = (e: ClipboardEvent | DragEvent, cm: EditorView) => {
     // instanceof is unreliable across Obsidian's popout windows.
-    const drop = 'dataTransfer' in e ? e : null;
-    const files = filesOf(drop ? drop.dataTransfer : (e as ClipboardEvent).clipboardData);
-    if (!files.length) return;
+    const drop = 'dataTransfer' in e && 'clientX' in e ? (e as DragEvent) : null;
+    const data = 'clipboardData' in e ? (e as ClipboardEvent).clipboardData : (e as any).dataTransfer ?? null;
+    const files = filesOf(data);
+    if (!files.length) {
+      // Phones: a copied image may only be on the system clipboard (no files, no text).
+      if (!drop && Platform.isMobile && !pasteHasText(data)) {
+        e.preventDefault();
+        e.stopPropagation();
+        void clipboardImages(data, (msg, meta) => stateManager.plugin?.reportWarning?.('paste.description', msg, meta)).then(
+          (fs) => fs.length && insertFiles(fs, cm)
+        );
+      }
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     // A drop goes where the file was let go; a paste goes at the cursor.
     const dropAt = drop ? cm.posAtCoords({ x: drop.clientX, y: drop.clientY }) : null;
     if (dropAt != null) cm.dispatch({ selection: { anchor: dropAt } });
+    insertFiles(files, cm);
+  };
+
+  const insertFiles = (files: File[], cm: EditorView) => {
     const work = storeFiles(files);
     void work.then((md) => {
       if (!md.length) return;

@@ -176,6 +176,18 @@ export function MarkdownEditor({
             Prec.high(
               EditorView.domEventHandlers({
                 ...(onPaste ? { paste: onPaste } : {}),
+                // Android keyboards (Gboard clipboard, image keyboards) insert images as
+                // beforeinput with a dataTransfer instead of a paste event.
+                ...(onPaste
+                  ? {
+                      beforeinput: (e: InputEvent, cm: EditorView) => {
+                        const dt = e.dataTransfer;
+                        if (!dt || !(dt.files?.length || Array.from(dt.items || []).some((i) => i.kind === 'file'))) return false;
+                        onPaste(e as any, cm);
+                        return e.defaultPrevented;
+                      },
+                    }
+                  : {}),
                 ...(onDrop ? { drop: onDrop } : {}),
               })
             )

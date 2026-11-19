@@ -26,9 +26,63 @@ export function fileMarkdown(f: UploadedFile) {
   return INLINE_IMAGE.test(f.mime) ? `![${name}](${url})` : `[📎 ${name}](${url})`;
 }
 
-/** Files in a paste or drop, if any. */
+/**
+ * Files in a paste or drop, if any. Phone web views often leave `files` empty and only
+ * put the image in `items`, so read those too.
+ */
 export function filesOf(data: DataTransfer | null): File[] {
-  return Array.from(data?.files || []);
+  if (!data) return [];
+  const files = Array.from(data.files || []);
+  if (files.length) return files;
+  const out: File[] = [];
+  for (const it of Array.from(data.items || [])) {
+    if (it.kind !== 'file') continue;
+    const f = it.getAsFile();
+    if (f) out.push(namedFile(f, it.type));
+  }
+  return out;
+}
+
+function namedFile(f: Blob & { name?: string }, type: string): File {
+  if (f instanceof File && f.name) return f;
+  const ext = (type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '');
+  return new File([f], `pasted-${Date.now()}.${ext}`, { type: type || f.type || 'image/png' });
+}
+
+/** True when the paste carries text, which the editor should insert as usual. */
+export function pasteHasText(data: DataTransfer | null) {
+  const types = Array.from(data?.types || []);
+  return types.some((t) => t === 'text/plain' || t === 'text/html' || t === 'text/uri-list');
+}
+
+/**
+ * Last resort on phones: a paste with neither files nor text (Android puts a copied image
+ * only on the system clipboard), so ask the async Clipboard API for images.
+ * Reports what it saw when nothing turns up, so the next fix is based on facts.
+ */
+export async function clipboardImages(data: DataTransfer | null, report?: (msg: string, meta: Record<string, unknown>) => void): Promise<File[]> {
+  const seen: Record<string, unknown> = {
+    types: Array.from(data?.types || []),
+    items: Array.from(data?.items || []).map((i) => `${i.kind}:${i.type}`),
+    hasRead: !!(navigator as any).clipboard?.read,
+  };
+  try {
+    const read = (navigator as any).clipboard?.read;
+    if (read) {
+      const items: any[] = await (navigator as any).clipboard.read();
+      const out: File[] = [];
+      seen.clipboard = items.map((i) => (i.types || []).join(','));
+      for (const it of items) {
+        const t = (it.types || []).find((x: string) => x.startsWith('image/'));
+        if (t) out.push(namedFile(await it.getType(t), t));
+      }
+      if (out.length) return out;
+    }
+  } catch (e: any) {
+    seen.error = e?.name ? `${e.name}: ${e.message}` : String(e);
+  }
+  report?.('paste had no image', seen);
+  return [];
 }
 
 interface ActiveUpload {
@@ -641,12 +695,19 @@ export const TeamComments = memo(function TeamComments({ boardId, cardId }: { bo
           onClick={mention.onCaret}
           onBlur={mention.close}
           onPaste={(e) => {
-            const files = filesOf((e as ClipboardEvent).clipboardData);
-            if (!files.length) return;
-            e.preventDefault();
-            void uploadFiles(team, boardId, files, commentTarget).then((md) => {
-              if (md.length) setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md.join('\n')}` : md.join('\n')));
-            });
+            const data = (e as ClipboardEvent).clipboardData;
+            const add = (files: File[]): void =>
+              void uploadFiles(team, boardId, files, commentTarget).then((md) => {
+                if (md.length) setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${md.join('\n')}` : md.join('\n')));
+              });
+            const files = filesOf(data);
+            if (files.length) {
+              e.preventDefault();
+              add(files);
+            } else if (Platform.isMobile && !pasteHasText(data)) {
+              e.preventDefault();
+              void clipboardImages(data, (msg, meta) => team.plugin?.reportWarning?.('paste.comment', msg, meta)).then((fs) => fs.length && add(fs));
+            }
           }}
           onDrop={(e) => {
             const files = filesOf((e as DragEvent).dataTransfer);
