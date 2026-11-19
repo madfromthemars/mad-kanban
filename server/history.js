@@ -140,7 +140,8 @@ export function takeDailyStats(db, now = Date.now()) {
   transaction(db, () => {
     for (const { id: boardId } of db.prepare('SELECT id FROM boards').all()) {
       const lanes = new Map(db.prepare('SELECT * FROM lanes WHERE board_id = ?').all(boardId).map((l) => [l.id, l]));
-      const cards = db.prepare('SELECT * FROM cards WHERE board_id = ? AND archived = 0').all(boardId);
+      // Finished cards in the hidden archive (Done cleaner) still count as finished.
+      const cards = db.prepare('SELECT * FROM cards WHERE board_id = ? AND (archived = 0 OR done_at IS NOT NULL)').all(boardId);
       if (!cards.length) continue;
       db.prepare('DELETE FROM daily_stats WHERE day = ? AND board_id = ?').run(day, boardId);
       const acc = new Map();
@@ -152,7 +153,7 @@ export function takeDailyStats(db, now = Date.now()) {
         if (overdue) r.overdue++;
       };
       for (const c of cards) {
-        const bucket = bucketOf(lanes.get(c.lane_id));
+        const bucket = c.archived ? 'finished' : bucketOf(lanes.get(c.lane_id));
         if (!bucket) continue;
         const due = dueOf(c.content);
         const overdue = due != null && due < day && bucket !== 'finished' && bucket !== 'backlog';

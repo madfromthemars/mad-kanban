@@ -10,6 +10,8 @@ import { canSeeProject, rowToCard, transaction, visibleProjectIds } from './db.j
 import { laneKey } from './lanes.js';
 
 export const TRASH_DAYS = 30;
+/** Cards sitting in a Done list longer than this go to the board's hidden archive (0 = off). */
+export const DONE_CLEAN_DAYS = Number(process.env.DONE_CLEAN_DAYS ?? 7);
 const DAY = 24 * 60 * 60 * 1000;
 
 export function migrateProgress(db) {
@@ -212,6 +214,49 @@ export function restoreCard(db, user, boardId, cardId) {
   return rowToCard(db.prepare('SELECT * FROM cards WHERE id = ? AND board_id = ?').get(cardId, boardId));
 }
 
+/**
+ * Done-list cleaner: cards that have been in a "Done" list for DONE_CLEAN_DAYS move to the
+ * board's hidden archive (archived = 1; lane_id and done_at are kept, so they still count as
+ * finished in Progress, history and the digest, and "Open board archive" can bring them back).
+ * Only lanes whose key is 'done': the Archive list is where people keep cards on purpose.
+ * Returns [{ boardId, cardIds, users }] for the boards that changed.
+ */
+export function cleanDone(db, now = Date.now(), days = DONE_CLEAN_DAYS) {
+  if (!(days > 0)) return [];
+  const cutoff = now - days * DAY;
+  const doneLanes = db
+    .prepare('SELECT id, board_id, title FROM lanes')
+    .all()
+    .filter((l) => laneKey(l.title) === 'done');
+  const changed = [];
+  transaction(db, () => {
+    for (const lane of doneLanes) {
+      const old = db
+        .prepare('SELECT * FROM cards WHERE board_id = ? AND lane_id = ? AND archived = 0 AND COALESCE(done_at, 0) < ? AND COALESCE(last_moved, 0) < ?')
+        .all(lane.board_id, lane.id, cutoff, cutoff);
+      if (!old.length) continue;
+      let pos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM cards WHERE board_id = ? AND archived = 1').get(lane.board_id).p;
+      const arch = db.prepare('UPDATE cards SET archived = 1, position = ?, version = version + 1, updated_at = ? WHERE id = ? AND board_id = ?');
+      const users = new Set();
+      for (const c of old) {
+        arch.run(++pos, now, c.id, lane.board_id);
+        for (const u of safeArr(c.assignees)) users.add(u);
+        logEvent(db, { boardId: lane.board_id, cardId: c.id, userId: null, type: 'archived', fromLane: lane.title, toLane: null, ts: now, detail: { auto: true } });
+      }
+      const left = db.prepare('SELECT id FROM cards WHERE board_id = ? AND lane_id = ? AND archived = 0 ORDER BY position').all(lane.board_id, lane.id);
+      const setPos = db.prepare('UPDATE cards SET position = ? WHERE id = ? AND board_id = ?');
+      left.forEach((c, i) => setPos.run(i, c.id, lane.board_id));
+      db.prepare('UPDATE boards SET version = version + 1 WHERE id = ?').run(lane.board_id);
+      const prev = changed.find((x) => x.boardId === lane.board_id);
+      if (prev) {
+        prev.cardIds.push(...old.map((c) => c.id));
+        for (const u of users) prev.users.push(u);
+      } else changed.push({ boardId: lane.board_id, cardIds: old.map((c) => c.id), users: [...users] });
+    }
+  });
+  return changed;
+}
+
 /** Forget trashed cards older than TRASH_DAYS, with their comments. */
 export function purgeTrash(db, now = Date.now()) {
   const old = db.prepare('SELECT board_id, card_id FROM trash WHERE deleted_at < ?').all(now - TRASH_DAYS * DAY);
@@ -235,7 +280,8 @@ export function boardProgress(db, user, boardId) {
   const lanes = db.prepare('SELECT id, title, position, mark_complete FROM lanes WHERE board_id = ? ORDER BY position').all(boardId);
   const laneById = new Map(lanes.map((l) => [l.id, l]));
   const cards = db
-    .prepare('SELECT * FROM cards WHERE board_id = ? AND archived = 0')
+    // Hidden-archived cards that were finished still count (the Done cleaner puts them there).
+    .prepare('SELECT * FROM cards WHERE board_id = ? AND (archived = 0 OR done_at IS NOT NULL)')
     .all(boardId)
     .filter((c) => vis === null || vis.has(c.project_id))
     .map((c) => {
@@ -245,7 +291,7 @@ export function boardProgress(db, user, boardId) {
         title: cardTitle(c.content),
         laneId: c.lane_id,
         laneKey: lane ? laneKey(lane.title) || null : null,
-        finished: isFinishedLane(lane),
+        finished: !!c.archived || isFinishedLane(lane),
         assignees: safeArr(c.assignees),
         projectId: c.project_id || null,
         createdAt: c.created_at,

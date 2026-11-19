@@ -64,7 +64,7 @@ import {
 import { OpError, applyOps, detectReupload, orderOps } from './ops.js';
 import { NotesError, createNotes } from './notes.js';
 import { VaultError, createVault } from './vault.js';
-import { boardProgress, listTrash, logEvent, migrateProgress, migrateVia, purgeTrash, restoreCard, TRASH_DAYS, withVia } from './progress.js';
+import { boardProgress, cleanDone, DONE_CLEAN_DAYS, listTrash, logEvent, migrateProgress, migrateVia, purgeTrash, restoreCard, TRASH_DAYS, withVia } from './progress.js';
 import { migrateHistory, startDailyStats, teamHistory } from './history.js';
 import { createNotifier } from './notify.js';
 import { createMcp } from './mcp.js';
@@ -251,6 +251,24 @@ function notifyBoardChanged(board, extra = {}) {
     ts: Date.now(),
     ...extra,
   });
+}
+
+/** Done cleaner (progress.js cleanDone): hourly; boards that changed reload on every client. */
+function runDoneCleaner() {
+  try {
+    for (const ch of cleanDone(db)) {
+      const meta = getBoardMeta(db, ch.boardId);
+      if (!meta) continue;
+      console.log(`${new Date().toISOString()} [${meta.name}] done cleaner: ${ch.cardIds.length} card(s) to the hidden archive`);
+      notifyBoardChanged(meta, { origin: null, users: ch.users, cards: ch.cardIds });
+    }
+  } catch (e) {
+    console.error('done cleaner failed', e);
+  }
+}
+if (DONE_CLEAN_DAYS > 0) {
+  setTimeout(runDoneCleaner, 5000).unref();
+  setInterval(runDoneCleaner, 60 * 60 * 1000).unref();
 }
 
 // ---------- routes ----------

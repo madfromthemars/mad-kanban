@@ -405,6 +405,8 @@ export function applyOps(db, board, user, ops) {
           touch(card);
           placeCard(card, lane.id, op.index);
           if (fromLane !== lane.id || card.archived) {
+            // Back from the hidden archive: its clock restarts, or the Done cleaner takes it again.
+            if (card.archived) db.prepare('UPDATE cards SET last_moved = ? WHERE id = ? AND board_id = ?').run(now, card.id, board.id);
             if (fromLane !== lane.id) events.push({ type: 'moved', cardId: card.id, fromLaneId: fromLane, toLaneId: lane.id });
             const from = fromLane ? q.lane.get(fromLane, board.id) : null;
             logEvent(db, { boardId: board.id, cardId: card.id, userId: user.id, type: 'moved', fromLane: from?.title ?? null, toLane: lane.title, ts: now });
