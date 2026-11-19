@@ -22,6 +22,7 @@ import { FIXED_LANES, createListArtifacts } from './Lane/LaneForm';
 import { TrashZone } from './BoardZones';
 import { QuickFilters } from './QuickFilters/QuickFilters';
 import { PhoneLaneTabs, readPhoneLane, resolvePhoneLane, savePhoneLane } from './PhoneLaneTabs';
+import { usePhoneSwipe } from './phoneSwipe';
 import { TeamSyncStatus } from 'src/team/ui/TeamBadges';
 import { TableView } from './Table/Table';
 import { FilterContext, KanbanContext, SearchContext } from './context';
@@ -277,6 +278,21 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
   }, [filtersKey]);
 
   const phoneLane = phoneTabs ? resolvePhoneLane(boardData.children, phoneLaneStored) : null;
+  const selectPhoneLane = (i: number) => {
+    const lane = boardData.children[i];
+    if (!lane) return;
+    savePhoneLane(filePath, lane);
+    setPhoneLaneStored(readPhoneLane(filePath));
+    rootRef.current?.querySelector<HTMLElement>(`.${c('lane-items')}`)?.scrollTo({ top: 0 });
+  };
+  // Swipe between lists; at the first/last list the swipe opens the side panel.
+  usePhoneSwipe(rootRef, {
+    enabled: phoneTabs && boardData.children.length > 0,
+    count: boardData.children.length,
+    active: phoneLane ?? 0,
+    onSelect: selectPhoneLane,
+    app: stateManager.app,
+  });
   const phoneCounts = phoneTabs
     ? boardData.children.map(
         (lane) =>
@@ -384,15 +400,7 @@ export const Kanban = ({ view, stateManager }: KanbanProps) => {
                 active={phoneLane}
                 counts={phoneCounts}
                 filePath={filePath}
-                onSelect={(i) => {
-                  const lane = boardData.children[i];
-                  if (!lane) return;
-                  savePhoneLane(filePath, lane);
-                  setPhoneLaneStored(readPhoneLane(filePath));
-                  rootRef.current
-                    ?.querySelector<HTMLElement>(`.${c('lane-items')}`)
-                    ?.scrollTo({ top: 0 });
-                }}
+                onSelect={selectPhoneLane}
                 onAdd={() => {
                   // The list's own "+ Add a card" button is hidden on phones; the tab row has this one.
                   rootRef.current?.querySelector<HTMLElement>(`.${c('new-item-button')}`)?.click();

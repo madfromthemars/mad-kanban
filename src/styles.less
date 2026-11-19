@@ -8441,3 +8441,9 @@ button.kanban-plugin__upload-cancel {
     flex-basis: 96px;
   }
 }
+
+/* Phone board: sideways swipes switch lists (src/components/phoneSwipe.ts), so the
+   browser must not turn them into a native pan. */
+.is-phone .kanban-plugin__board[data-ignore-swipe] {
+  touch-action: pan-y;
+}
