@@ -1420,6 +1420,8 @@ export class NotesSync {
     const sync = this;
     const d = this.hold(id, 'canvas', 'canvas');
     const h: CanvasHook = { canvas, id, unhook: () => {}, shown: canvas.getData(), timer: null };
+    // Shared canvases rely on Advanced Canvas; ask again if it's still missing.
+    this.plugin.companions?.check();
     const unhook = around(canvas, {
       requestSave(orig: any) {
         return function (this: any, ...args: any[]) {
@@ -1492,6 +1494,14 @@ export class NotesSync {
         if (v.text !== undefined && v.text !== cur.text) n.setText(v.text);
         if (v.label !== cur.label) n.setLabel?.(v.label);
         if (v.color !== cur.color) n.setColor?.(v.color);
+        // Anything else (Advanced Canvas shapes/styles, folded groups…): set the whole box.
+        if (JSON.stringify(n.getData()) !== JSON.stringify(v)) {
+          if (typeof n.setData === 'function') n.setData(v);
+          else {
+            c.removeNode(n);
+            add.push(v);
+          }
+        }
       }
       const edges = new Map(want.edges.map((v: any) => [v.id, v]));
       for (const [eid, edge] of [...c.edges]) {

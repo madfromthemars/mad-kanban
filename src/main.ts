@@ -37,6 +37,7 @@ import { addMissingTagColors, byTag, readSettingsBlock, sameTagColor } from './t
 import { ErrorReporter } from './ErrorReporter';
 import { teamBoardIdKey } from './team/types';
 import { PluginUpdater } from './team/PluginUpdater';
+import { Companions } from './team/Companions';
 import { bindCardRefClicks } from './cardRefOpen';
 import { bindPhoneKeyboard } from './phoneKeyboard';
 import { CardRefSuggest } from './components/Editor/CardRefSuggest';
@@ -130,6 +131,7 @@ export default class KanbanPlugin extends Plugin {
   settings: KanbanSettings = {};
   team: TeamManager;
   updater: PluginUpdater;
+  companions: Companions;
 
   // leafid => view mode
   kanbanFileModes: Record<string, string> = {};
@@ -164,6 +166,7 @@ export default class KanbanPlugin extends Plugin {
     this.MarkdownEditor = null;
     this.team?.destroy();
     this.updater?.destroy();
+    this.companions?.destroy();
     this.windowRegistry.forEach((reg, win) => {
       reg.viewStateReceivers.forEach((fn) => fn([]));
       this.unmount(win);
@@ -207,6 +210,8 @@ export default class KanbanPlugin extends Plugin {
     this.registerObsidianProtocolHandler('mad-kanban', (params) => this.team.handleProtocol(params));
     this.updater = new PluginUpdater(this);
     this.updater.start();
+    this.companions = new Companions(this);
+    this.companions.start();
 
     this.registerEvent(
       this.app.workspace.on('window-open', (_: unknown, win: Window) => {
