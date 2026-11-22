@@ -1,7 +1,7 @@
 // Telegram notifications for Mad Kanban.
 //
 // The bot lives inside this server: it long-polls Telegram for /start and /stop, and sends
-// people a short summary (at most every 5 minutes) of mentions, replies, comments on their
+// people a short summary (at most once an hour) of mentions, replies, comments on their
 // cards, assignments and moves: counts and card titles only, never comment text. Obsidian can't push notifications to phones
 // (plugins only run while the app is open), so Telegram does that part.
 //
@@ -20,7 +20,7 @@ const apiBase = () => (process.env.TELEGRAM_API || 'https://api.telegram.org').r
 const LINK_TTL_MS = 15 * 60 * 1000;
 // Everything a person would be told is collected and sent as one summary at most this
 // often (counted from the first event). Saved in the db, so a restart loses nothing.
-const BATCH_MS = Number(process.env.TELEGRAM_BATCH_MS || 5 * 60 * 1000);
+const BATCH_MS = Number(process.env.TELEGRAM_BATCH_MS || 60 * 60 * 1000);
 
 const hash = (s) => createHash('sha256').update(s).digest('hex');
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -236,7 +236,7 @@ export function createNotifier(db, { log = console } = {}) {
       log.log(`${new Date().toISOString()} telegram: ${row.name} connected`);
       await send(
         chatId,
-        `✅ Connected as <b>${esc(row.name)}</b>.\n\nAt most every 5 minutes you'll get one short summary: @mentions, replies, comments on your cards, new assignments and moved cards. Plus a short note when Mad Kanban gets something new.\n\n/updates off: no release notes\n/stop: turn everything off`
+        `✅ Connected as <b>${esc(row.name)}</b>.\n\nAt most once an hour you'll get one short summary: @mentions, replies, comments on your cards, new assignments and moved cards. Plus a short note when Mad Kanban gets something new.\n\n/updates off: no release notes\n/stop: turn everything off`
       );
       return;
     }

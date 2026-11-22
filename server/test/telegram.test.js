@@ -56,7 +56,7 @@ const waitFor = async (pred, what) => {
 
 // ---------- the kanban server ----------
 
-const BATCH = 700; // summary window for the test (5 min in real life)
+const BATCH = 700; // summary window for the test (1 h in real life)
 const settle = () => new Promise((r) => setTimeout(r, BATCH + 500));
 const PORT = 18990 + Math.floor(Math.random() * 100);
 const BASE = `http://127.0.0.1:${PORT}`;
