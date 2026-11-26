@@ -34,8 +34,6 @@ interface NewCard {
   assignees: string[];
 }
 
-const lastProjectKey = (boardId: string) => `mad-kanban:last-project:${boardId}`;
-
 class NewCardModal extends Modal {
   defaultValue: string;
   onSubmit: (value: NewCard | null) => void;
@@ -48,6 +46,8 @@ class NewCardModal extends Modal {
   meId: string | null;
   assignees = new Set<string>();
   drawPeople: () => void = () => {};
+  projectsEl: HTMLElement | null = null;
+  errorEl: HTMLElement | null = null;
 
   constructor(
     app: App,
@@ -65,20 +65,18 @@ class NewCardModal extends Modal {
     this.onSubmit = onSubmit;
     this.projects = projects;
     this.boardId = boardId;
-    let last: string | null = null;
-    try {
-      last = boardId ? activeWindow.localStorage.getItem(lastProjectKey(boardId)) : null;
-    } catch {
-      /* storage unavailable */
-    }
-    this.projectId = (projects.find((p) => p.id === last) || projects[0])?.id;
+    // No project is picked up front: the user must choose one every time.
+    this.projectId = undefined;
   }
 
   renderProjects(parent: HTMLElement) {
     if (!this.projects.length) return;
     const field = parent.createDiv({ cls: 'kanban-plugin__new-card-projects' });
+    this.projectsEl = field;
     field.createDiv({ cls: 'kanban-plugin__new-card-label', text: 'Project' });
     const pills = field.createDiv({ cls: 'kanban-plugin__project-pills' });
+    this.errorEl = field.createDiv({ cls: 'kanban-plugin__new-card-error', text: 'Pick a project first.' });
+    this.errorEl.hide();
     const draw = () => {
       pills.empty();
       for (const p of this.projects) {
@@ -91,6 +89,8 @@ class NewCardModal extends Modal {
         pill.createSpan({ text: p.name });
         pill.addEventListener('click', () => {
           this.projectId = p.id;
+          this.projectsEl?.removeClass('has-error');
+          this.errorEl?.hide();
           draw();
           this.drawPeople();
           this.inputEl.focus();
@@ -118,6 +118,10 @@ class NewCardModal extends Modal {
       if (this.projects.find((p) => p.id === this.projectId)?.isPrivate && this.meId) {
         this.assignees = new Set([this.meId]);
         pills.createSpan({ cls: 'kanban-plugin__new-card-empty', text: 'Only you will see this card. It stays assigned to you.' });
+        return;
+      }
+      if (this.projects.length && !this.projectId) {
+        pills.createSpan({ cls: 'kanban-plugin__new-card-empty', text: 'Pick a project to see who can be assigned.' });
         return;
       }
       const people = this.assignable();
@@ -183,14 +187,13 @@ class NewCardModal extends Modal {
 
   submit() {
     if (this.submitted) return;
-    this.submitted = true;
-    if (this.boardId && this.projectId) {
-      try {
-        activeWindow.localStorage.setItem(lastProjectKey(this.boardId), this.projectId);
-      } catch {
-        /* storage unavailable */
-      }
+    // A team card must belong to a project.
+    if (this.projects.length && !this.projects.some((p) => p.id === this.projectId)) {
+      this.projectsEl?.addClass('has-error');
+      this.errorEl?.show();
+      return;
     }
+    this.submitted = true;
     this.onSubmit({ name: this.inputEl.value, projectId: this.projectId, assignees: [...this.assignees] });
     this.close();
   }
