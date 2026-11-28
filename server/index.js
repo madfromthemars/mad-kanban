@@ -34,6 +34,7 @@ import {
   myCards,
   openDb,
   userByToken,
+  touchDevice,
   createDevice,
   createPairingCode,
   getDevice,
@@ -327,8 +328,21 @@ function closeSockets(match) {
 }
 
 /** Devices of userId, with `current` marking the one making the request. */
+/** Devices with a live connection right now (their Obsidian is open). */
+function onlineDeviceIds() {
+  const ids = new Set();
+  for (const s of sockets) if (s.user.deviceId) ids.add(s.user.deviceId);
+  return ids;
+}
+
 function deviceList(userId, me) {
-  return listDevices(db, userId).map((d) => ({ ...d, current: d.id === me.deviceId }));
+  const online = onlineDeviceIds();
+  const now = Date.now();
+  return listDevices(db, userId).map((d) => ({
+    ...d,
+    ...(online.has(d.id) ? { lastSeen: now, online: true } : {}),
+    current: d.id === me.deviceId,
+  }));
 }
 
 route('GET', '/api/me/devices', (req) => {
@@ -1156,6 +1170,7 @@ server.on('upgrade', (req, socket, head) => {
     sockets.add(entry);
     ws.on('pong', () => (entry.alive = true));
     ws.on('close', () => {
+      touchDevice(db, user.deviceId);
       sockets.delete(entry);
       notes.onClose(entry);
     });
@@ -1189,6 +1204,12 @@ const heartbeat = setInterval(() => {
       continue;
     }
     s.alive = false;
+    // An open connection means the device is in use: keep its "last active" fresh.
+    try {
+      touchDevice(db, s.user.deviceId);
+    } catch {
+      /* ignore */
+    }
     try {
       s.ws.ping();
     } catch {

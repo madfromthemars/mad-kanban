@@ -363,6 +363,11 @@ export function userByToken(db, token) {
 
 // ---------- devices ----------
 
+/** Marks a device as seen now (an open live connection counts as being active). */
+export function touchDevice(db, deviceId, now = Date.now()) {
+  if (deviceId) db.prepare('UPDATE devices SET last_seen = ? WHERE id = ? AND last_seen < ?').run(now, deviceId, now);
+}
+
 export const PAIRING_TTL_MS = 10 * 60 * 1000;
 const PLATFORMS = ['ios', 'android', 'mac', 'windows', 'linux', ''];
 

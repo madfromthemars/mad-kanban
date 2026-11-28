@@ -587,6 +587,18 @@ test('devices: one account on many devices, pairing codes, removing one device',
   const wsPhone = await open(PHONE);
   const wsLink = await open(LINK);
 
+  // A device with Obsidian open counts as active now, even if it last signed in days ago.
+  {
+    const c2 = dbm.openDb(dataDir);
+    c2.prepare("UPDATE devices SET last_seen = ? WHERE name IN ('MacBook', 'iPhone')").run(Date.now() - 5 * 86400_000);
+    c2.close();
+    const fresh = (await api('GET', `/api/team/users/${u.json.id}/devices`, null, owner.token)).json.devices;
+    for (const d of fresh) {
+      assert.equal(d.online, true, d.name);
+      assert.ok(Date.now() - d.lastSeen < 10_000, d.name);
+    }
+  }
+
   // Rename, then remove the phone: only the phone is signed out.
   const phoneId = list.json.devices.find((d) => d.current).id;
   assert.equal((await api('PATCH', `/api/me/devices/${phoneId}`, { name: 'Old iPhone' }, MAC)).status, 200);
